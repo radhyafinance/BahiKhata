@@ -1,16 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import os
-import jwt
-import bcrypt
-import uuid
-import requests
-import logging
-import json
-import re
-import tempfile
-import random
+import os, jwt, bcrypt, uuid, requests, logging, json, re, tempfile
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List
 
@@ -20,7 +11,6 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 from bson import ObjectId
 from starlette.middleware.cors import CORSMiddleware
-
 from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithMimeType
 
 # ─── MongoDB ──────────────────────────────────────────────────────────────────
@@ -55,10 +45,7 @@ def put_object(path: str, data: bytes, content_type: str) -> dict:
 
 def get_object(path: str):
     key = init_storage()
-    resp = requests.get(
-        f"{STORAGE_URL}/objects/{path}",
-        headers={"X-Storage-Key": key}, timeout=60
-    )
+    resp = requests.get(f"{STORAGE_URL}/objects/{path}", headers={"X-Storage-Key": key}, timeout=60)
     resp.raise_for_status()
     return resp.content, resp.headers.get("Content-Type", "application/octet-stream")
 
@@ -108,7 +95,9 @@ async def get_current_user(request: Request) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
-# ─── Pydantic Models ──────────────────────────────────────────────────────────
+ROLES = ["admin", "maalik", "muneem", "sipahi"]
+
+# ─── Models ───────────────────────────────────────────────────────────────────
 class LoginRequest(BaseModel):
     email: str
     password: str
@@ -117,18 +106,30 @@ class UserCreate(BaseModel):
     name: str
     email: str
     password: str
-    role: str
-    branch: Optional[str] = None
+    role: str  # admin | maalik | muneem | sipahi
     phone: Optional[str] = None
+    assigned_illaka_ids: Optional[List[str]] = []
+    maalik_id: Optional[str] = None  # For muneem/sipahi — which maalik they report to
 
 class UserUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
     password: Optional[str] = None
     role: Optional[str] = None
-    branch: Optional[str] = None
     phone: Optional[str] = None
+    assigned_illaka_ids: Optional[List[str]] = None
+    maalik_id: Optional[str] = None
     is_active: Optional[bool] = None
+
+class IllakaCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    maalik_id: Optional[str] = None  # Admin can assign to a Maalik
+
+class MisalCreate(BaseModel):
+    name: str
+    illaka_id: str
+    description: Optional[str] = None
 
 class PersonKYCData(BaseModel):
     name: Optional[str] = None
@@ -151,13 +152,16 @@ class GPSLocation(BaseModel):
     timestamp: Optional[str] = None
 
 class KYCCreate(BaseModel):
+    illaka_id: str
+    illaka_name: str
+    misal_id: str
+    misal_name: str
     primary_borrower: PersonKYCData
     co_borrower: Optional[PersonKYCData] = None
     guarantor: Optional[PersonKYCData] = None
     live_photo_path: Optional[str] = None
     gps_location: Optional[GPSLocation] = None
     notes: Optional[str] = None
-    branch: Optional[str] = None
 
 class KYCStatusUpdate(BaseModel):
     status: str
@@ -166,9 +170,12 @@ class KYCStatusUpdate(BaseModel):
 class OCRRequest(BaseModel):
     path: str
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-def _kyc_from_doc(doc: dict) -> dict:
-    d = dict(doc)
+class AssignIllakas(BaseModel):
+    illaka_ids: List[str]
+
+# ─── Doc Helpers ──────────────────────────────────────────────────────────────
+def _doc(d: dict) -> dict:
+    d = dict(d)
     d["id"] = str(d.pop("_id"))
     return d
 
@@ -186,7 +193,7 @@ api_router = APIRouter(prefix="/api")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# ─── Auth Endpoints ───────────────────────────────────────────────────────────
+# ─── Auth ─────────────────────────────────────────────────────────────────────
 @api_router.post("/auth/login")
 async def login(req: LoginRequest, response: Response):
     email = req.email.lower().strip()
@@ -194,8 +201,8 @@ async def login(req: LoginRequest, response: Response):
     if not user or not verify_password(req.password, user.get("password_hash", "")):
         raise HTTPException(status_code=401, detail="Invalid email or password")
     if not user.get("is_active", True):
-        raise HTTPException(status_code=403, detail="Account deactivated. Contact admin.")
-    token = create_access_token(str(user["_id"]), email, user.get("role", "field_officer"))
+        raise HTTPException(status_code=403, detail="Account deactivated.")
+    token = create_access_token(str(user["_id"]), email, user.get("role", "sipahi"))
     response.set_cookie("access_token", token, httponly=True, secure=False, samesite="lax", max_age=36000, path="/")
     return _user_from_doc(user)
 
@@ -208,26 +215,42 @@ async def logout(response: Response):
 async def get_me(request: Request):
     return await get_current_user(request)
 
-# ─── User Endpoints ───────────────────────────────────────────────────────────
+# ─── Users ────────────────────────────────────────────────────────────────────
 @api_router.get("/users")
 async def list_users(request: Request):
     user = await get_current_user(request)
-    if user["role"] not in ["admin", "branch_manager"]:
+    if user["role"] == "admin":
+        docs = await db.users.find({}, {"password_hash": 0}).to_list(1000)
+    elif user["role"] == "maalik":
+        docs = await db.users.find({"maalik_id": user["id"], "role": {"$in": ["muneem", "sipahi"]}}, {"password_hash": 0}).to_list(1000)
+    else:
         raise HTTPException(status_code=403, detail="Access denied")
-    docs = await db.users.find({}, {"password_hash": 0}).to_list(1000)
     return [_user_from_doc(d) for d in docs]
 
 @api_router.post("/users")
 async def create_user(data: UserCreate, request: Request):
     user = await get_current_user(request)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if user["role"] == "admin":
+        pass  # Admin can create any role
+    elif user["role"] == "maalik":
+        if data.role not in ["muneem", "sipahi"]:
+            raise HTTPException(status_code=403, detail="Maalik can only create Muneem or Sipahi")
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     if await db.users.find_one({"email": data.email.lower()}):
         raise HTTPException(status_code=400, detail="Email already exists")
+
+    maalik_id = data.maalik_id
+    if user["role"] == "maalik" and data.role in ["muneem", "sipahi"]:
+        maalik_id = user["id"]
+
     doc = {
         "name": data.name, "email": data.email.lower().strip(),
         "password_hash": hash_password(data.password),
-        "role": data.role, "branch": data.branch, "phone": data.phone,
+        "role": data.role, "phone": data.phone,
+        "assigned_illaka_ids": data.assigned_illaka_ids or [],
+        "maalik_id": maalik_id,
         "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()
     }
     result = await db.users.insert_one(doc)
@@ -237,8 +260,15 @@ async def create_user(data: UserCreate, request: Request):
 @api_router.put("/users/{uid}")
 async def update_user(uid: str, data: UserUpdate, request: Request):
     user = await get_current_user(request)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if user["role"] == "admin":
+        pass
+    elif user["role"] == "maalik":
+        target = await db.users.find_one({"_id": ObjectId(uid)})
+        if not target or target.get("maalik_id") != user["id"]:
+            raise HTTPException(status_code=403, detail="Access denied")
+    else:
+        raise HTTPException(status_code=403, detail="Access denied")
+
     updates = {k: v for k, v in data.model_dump().items() if v is not None}
     if "password" in updates:
         updates["password_hash"] = hash_password(updates.pop("password"))
@@ -252,43 +282,174 @@ async def update_user(uid: str, data: UserUpdate, request: Request):
 @api_router.delete("/users/{uid}")
 async def delete_user(uid: str, request: Request):
     user = await get_current_user(request)
-    if user["role"] != "admin":
-        raise HTTPException(status_code=403, detail="Admin only")
+    if user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Access denied")
     await db.users.update_one({"_id": ObjectId(uid)}, {"$set": {"is_active": False}})
     return {"message": "User deactivated"}
 
-# ─── KYC Endpoints ────────────────────────────────────────────────────────────
+@api_router.post("/users/{uid}/assign-illakas")
+async def assign_illakas(uid: str, data: AssignIllakas, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    await db.users.update_one({"_id": ObjectId(uid)}, {"$set": {"assigned_illaka_ids": data.illaka_ids}})
+    return {"message": "Illakas assigned", "illaka_ids": data.illaka_ids}
+
+# ─── Illakas ──────────────────────────────────────────────────────────────────
+@api_router.get("/illakas")
+async def list_illakas(request: Request):
+    user = await get_current_user(request)
+    if user["role"] == "admin":
+        query = {}
+    elif user["role"] == "maalik":
+        query = {"maalik_id": user["id"]}
+    else:
+        # Muneem / Sipahi — return their assigned Illakas
+        assigned = user.get("assigned_illaka_ids", [])
+        if not assigned:
+            return []
+        try:
+            oids = [ObjectId(i) for i in assigned]
+            query = {"_id": {"$in": oids}}
+        except Exception:
+            return []
+    docs = await db.illakas.find(query).sort("name", 1).to_list(1000)
+    return [_doc(d) for d in docs]
+
+@api_router.post("/illakas")
+async def create_illaka(data: IllakaCreate, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Admin or Maalik only")
+    maalik_id = user["id"] if user["role"] == "maalik" else data.maalik_id
+    doc = {
+        "name": data.name, "description": data.description,
+        "maalik_id": maalik_id,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.illakas.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _doc(doc)
+
+@api_router.put("/illakas/{illaka_id}")
+async def update_illaka(illaka_id: str, data: IllakaCreate, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Admin or Maalik only")
+    updates = {"name": data.name, "description": data.description, "updated_at": datetime.now(timezone.utc).isoformat()}
+    await db.illakas.update_one({"_id": ObjectId(illaka_id)}, {"$set": updates})
+    doc = await db.illakas.find_one({"_id": ObjectId(illaka_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Illaka not found")
+    return _doc(doc)
+
+@api_router.delete("/illakas/{illaka_id}")
+async def delete_illaka(illaka_id: str, request: Request):
+    user = await get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Admin only")
+    await db.illakas.delete_one({"_id": ObjectId(illaka_id)})
+    return {"message": "Illaka deleted"}
+
+# ─── Misals ───────────────────────────────────────────────────────────────────
+@api_router.get("/misals")
+async def list_misals(request: Request, illaka_id: Optional[str] = Query(None)):
+    await get_current_user(request)
+    query = {}
+    if illaka_id:
+        query["illaka_id"] = illaka_id
+    docs = await db.misals.find(query).sort("name", 1).to_list(1000)
+    return [_doc(d) for d in docs]
+
+@api_router.post("/misals")
+async def create_misal(data: MisalCreate, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Admin or Maalik only")
+    doc = {
+        "name": data.name, "illaka_id": data.illaka_id,
+        "description": data.description,
+        "created_at": datetime.now(timezone.utc).isoformat()
+    }
+    result = await db.misals.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _doc(doc)
+
+@api_router.put("/misals/{misal_id}")
+async def update_misal(misal_id: str, data: MisalCreate, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Admin or Maalik only")
+    updates = {"name": data.name, "illaka_id": data.illaka_id, "description": data.description}
+    await db.misals.update_one({"_id": ObjectId(misal_id)}, {"$set": updates})
+    doc = await db.misals.find_one({"_id": ObjectId(misal_id)})
+    return _doc(doc)
+
+@api_router.delete("/misals/{misal_id}")
+async def delete_misal(misal_id: str, request: Request):
+    user = await get_current_user(request)
+    if user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Admin or Maalik only")
+    await db.misals.delete_one({"_id": ObjectId(misal_id)})
+    return {"message": "Misal deleted"}
+
+# ─── KYCs ─────────────────────────────────────────────────────────────────────
+async def _kyc_query_for_user(user: dict) -> dict:
+    query = {}
+    if user["role"] == "admin":
+        pass
+    elif user["role"] == "maalik":
+        illakas = await db.illakas.find({"maalik_id": user["id"]}, {"_id": 1}).to_list(1000)
+        illaka_ids = [str(ill["_id"]) for ill in illakas]
+        query["illaka_id"] = {"$in": illaka_ids}
+    elif user["role"] == "muneem":
+        assigned = user.get("assigned_illaka_ids", [])
+        query["illaka_id"] = {"$in": assigned}
+    else:  # sipahi
+        query["field_officer_id"] = user["id"]
+    return query
+
 @api_router.get("/kycs")
 async def list_kycs(
     request: Request,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    illaka_id: Optional[str] = None,
+    misal_id: Optional[str] = None,
     limit: int = 50,
     skip: int = 0
 ):
     current_user = await get_current_user(request)
-    query = {}
+    query = await _kyc_query_for_user(current_user)
     if status:
         query["status"] = status
+    if illaka_id:
+        query["illaka_id"] = illaka_id
+    if misal_id:
+        query["misal_id"] = misal_id
     if search:
         query["$or"] = [
             {"kyc_number": {"$regex": search, "$options": "i"}},
             {"primary_borrower.name": {"$regex": search, "$options": "i"}},
             {"primary_borrower.phone": {"$regex": search, "$options": "i"}},
         ]
-    if current_user["role"] == "field_officer":
-        query["field_officer_id"] = current_user["id"]
     total = await db.kycs.count_documents(query)
     docs = await db.kycs.find(query).sort("created_at", -1).skip(skip).limit(limit).to_list(limit)
-    return {"total": total, "kycs": [_kyc_from_doc(d) for d in docs]}
+    return {"total": total, "kycs": [_doc(d) for d in docs]}
 
 @api_router.post("/kycs")
 async def create_kyc(data: KYCCreate, request: Request):
     current_user = await get_current_user(request)
+    if current_user["role"] not in ["muneem", "sipahi"]:
+        raise HTTPException(status_code=403, detail="Only field agents can create KYCs")
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "kyc_number": generate_kyc_number(),
         "status": "pending",
+        "illaka_id": data.illaka_id,
+        "illaka_name": data.illaka_name,
+        "misal_id": data.misal_id,
+        "misal_name": data.misal_name,
         "primary_borrower": data.primary_borrower.model_dump(),
         "co_borrower": data.co_borrower.model_dump() if data.co_borrower else None,
         "guarantor": data.guarantor.model_dump() if data.guarantor else None,
@@ -296,13 +457,13 @@ async def create_kyc(data: KYCCreate, request: Request):
         "gps_location": data.gps_location.model_dump() if data.gps_location else None,
         "field_officer_id": current_user["id"],
         "field_officer_name": current_user["name"],
-        "branch": data.branch or current_user.get("branch"),
+        "field_officer_role": current_user["role"],
         "notes": data.notes,
         "created_at": now, "updated_at": now
     }
     result = await db.kycs.insert_one(doc)
     doc["_id"] = result.inserted_id
-    return _kyc_from_doc(doc)
+    return _doc(doc)
 
 @api_router.get("/kycs/{kyc_id}")
 async def get_kyc(kyc_id: str, request: Request):
@@ -310,12 +471,14 @@ async def get_kyc(kyc_id: str, request: Request):
     doc = await db.kycs.find_one({"_id": ObjectId(kyc_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="KYC not found")
-    return _kyc_from_doc(doc)
+    return _doc(doc)
 
 @api_router.put("/kycs/{kyc_id}")
 async def update_kyc(kyc_id: str, data: KYCCreate, request: Request):
     await get_current_user(request)
     updates = {
+        "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
+        "misal_id": data.misal_id, "misal_name": data.misal_name,
         "primary_borrower": data.primary_borrower.model_dump(),
         "co_borrower": data.co_borrower.model_dump() if data.co_borrower else None,
         "guarantor": data.guarantor.model_dump() if data.guarantor else None,
@@ -327,12 +490,12 @@ async def update_kyc(kyc_id: str, data: KYCCreate, request: Request):
     result = await db.kycs.update_one({"_id": ObjectId(kyc_id)}, {"$set": updates})
     if not result.matched_count:
         raise HTTPException(status_code=404, detail="KYC not found")
-    return _kyc_from_doc(await db.kycs.find_one({"_id": ObjectId(kyc_id)}))
+    return _doc(await db.kycs.find_one({"_id": ObjectId(kyc_id)}))
 
 @api_router.patch("/kycs/{kyc_id}/status")
 async def update_kyc_status(kyc_id: str, data: KYCStatusUpdate, request: Request):
     current_user = await get_current_user(request)
-    if current_user["role"] not in ["admin", "branch_manager"]:
+    if current_user["role"] not in ["admin", "maalik", "muneem"]:
         raise HTTPException(status_code=403, detail="Insufficient permissions")
     if data.status not in ["pending", "approved", "rejected"]:
         raise HTTPException(status_code=400, detail="Invalid status")
@@ -347,7 +510,7 @@ async def update_kyc_status(kyc_id: str, data: KYCStatusUpdate, request: Request
     result = await db.kycs.update_one({"_id": ObjectId(kyc_id)}, {"$set": updates})
     if not result.matched_count:
         raise HTTPException(status_code=404, detail="KYC not found")
-    return _kyc_from_doc(await db.kycs.find_one({"_id": ObjectId(kyc_id)}))
+    return _doc(await db.kycs.find_one({"_id": ObjectId(kyc_id)}))
 
 # ─── File Upload & Serve ──────────────────────────────────────────────────────
 @api_router.post("/upload")
@@ -378,7 +541,7 @@ async def serve_file(path: str, request: Request, auth: str = Query(None)):
     except Exception:
         raise HTTPException(status_code=404, detail="File not found")
 
-# ─── OCR Endpoint ─────────────────────────────────────────────────────────────
+# ─── OCR ──────────────────────────────────────────────────────────────────────
 @api_router.post("/ocr/aadhaar")
 async def ocr_aadhaar(data: OCRRequest, request: Request):
     await get_current_user(request)
@@ -396,29 +559,41 @@ async def ocr_aadhaar(data: OCRRequest, request: Request):
         chat = LlmChat(
             api_key=EMERGENT_KEY,
             session_id=f"ocr-{uuid.uuid4()}",
-            system_message="You are an expert OCR system for Indian government documents. Extract text with high accuracy."
+            system_message="You are an expert OCR system for Indian Aadhaar cards. Extract all visible text accurately."
         ).with_model("gemini", "gemini-2.5-flash")
 
         img = FileContentWithMimeType(file_path=tmp_path, mime_type=ct or "image/jpeg")
         msg = UserMessage(
-            text="""Extract information from this Aadhaar card image. Return ONLY valid JSON (no markdown, no explanation):
+            text="""Carefully examine this Indian Aadhaar card image and extract the following details.
+
+On Aadhaar cards:
+- The cardholder's NAME is printed in English (sometimes also in regional script)
+- DATE OF BIRTH is shown after "DOB:" or "Date of Birth:" in DD/MM/YYYY format
+- GENDER is printed as "MALE" or "FEMALE"
+- ADDRESS appears in the lower portion, often spanning multiple lines: house/door no, street/mohalla, village/town, district, state, PIN code
+- AADHAAR NUMBER is the 12-digit number printed prominently (may have spaces like XXXX XXXX XXXX)
+
+Return ONLY a valid JSON object — no markdown, no code blocks, no explanation:
 {
-  "name": "full name of cardholder",
+  "name": "full name exactly as printed in English",
   "dob": "DD/MM/YYYY",
-  "address": "full address",
-  "aadhaar_number": "XXXX XXXX XXXX",
-  "gender": "Male or Female or Other"
+  "address": "complete address — house no, street, village, district, state, PIN — all on one line",
+  "aadhaar_number": "12-digit number with spaces",
+  "gender": "Male or Female"
 }
-Use null for any field not visible or unreadable.""",
+
+Use null for any field that is not clearly readable.""",
             file_contents=[img]
         )
         raw = await chat.send_message(msg)
+        # Strip any markdown code fences
+        raw = re.sub(r'```[a-z]*\n?', '', raw).strip()
         m = re.search(r'\{.*\}', raw, re.DOTALL)
         extracted = json.loads(m.group()) if m else {}
         return extracted
     except Exception as e:
         logger.error(f"OCR error: {e}")
-        return {"name": None, "dob": None, "address": None, "aadhaar_number": None, "gender": None, "error": str(e)}
+        return {"name": None, "dob": None, "address": None, "aadhaar_number": None, "gender": None}
     finally:
         try:
             os.unlink(tmp_path)
@@ -429,9 +604,7 @@ Use null for any field not visible or unreadable.""",
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(request: Request):
     current_user = await get_current_user(request)
-    query = {}
-    if current_user["role"] == "field_officer":
-        query["field_officer_id"] = current_user["id"]
+    query = await _kyc_query_for_user(current_user)
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     return {
         "total": await db.kycs.count_documents(query),
@@ -439,10 +612,11 @@ async def dashboard_stats(request: Request):
         "approved": await db.kycs.count_documents({**query, "status": "approved"}),
         "rejected": await db.kycs.count_documents({**query, "status": "rejected"}),
         "today": await db.kycs.count_documents({**query, "created_at": {"$gte": today}}),
-        "field_officers": await db.users.count_documents({"role": "field_officer", "is_active": True}),
+        "sipahi_count": await db.users.count_documents({"role": "sipahi", "is_active": True}),
+        "muneem_count": await db.users.count_documents({"role": "muneem", "is_active": True}),
     }
 
-# ─── App Configuration ────────────────────────────────────────────────────────
+# ─── App ──────────────────────────────────────────────────────────────────────
 app.include_router(api_router)
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
@@ -460,6 +634,10 @@ async def startup():
     await db.kycs.create_index([("created_at", -1)])
     await db.kycs.create_index("field_officer_id")
     await db.kycs.create_index("status")
+    await db.kycs.create_index("illaka_id")
+    await db.kycs.create_index("misal_id")
+    await db.illakas.create_index("maalik_id")
+    await db.misals.create_index("illaka_id")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@bahikhata.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
@@ -468,7 +646,7 @@ async def startup():
         await db.users.insert_one({
             "name": "Super Admin", "email": admin_email,
             "password_hash": hash_password(admin_password),
-            "role": "admin", "branch": "HQ", "is_active": True,
+            "role": "admin", "assigned_illaka_ids": [], "is_active": True,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
         logger.info(f"Admin created: {admin_email}")
@@ -477,7 +655,7 @@ async def startup():
 
     try:
         init_storage()
-        logger.info("Object storage initialized")
+        logger.info("Storage initialized")
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
 

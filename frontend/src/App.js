@@ -10,6 +10,7 @@ import KYCForm from "./components/KYCForm";
 import ClientList from "./components/ClientList";
 import ClientDetail from "./components/ClientDetail";
 import UserManagement from "./components/UserManagement";
+import IllakaManagement from "./components/IllakaManagement";
 
 const ProtectedRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
@@ -49,9 +50,17 @@ function App() {
             <Route path="clients" element={<ClientList />} />
             <Route path="clients/:id" element={<ClientDetail />} />
             <Route
+              path="illakas"
+              element={
+                <ProtectedRoute roles={["admin", "maalik"]}>
+                  <IllakaManagement />
+                </ProtectedRoute>
+              }
+            />
+            <Route
               path="users"
               element={
-                <ProtectedRoute roles={["admin"]}>
+                <ProtectedRoute roles={["admin", "maalik"]}>
                   <UserManagement />
                 </ProtectedRoute>
               }

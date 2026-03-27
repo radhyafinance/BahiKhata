@@ -1,20 +1,35 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
-import {
-  LayoutDashboard, UserPlus, Users, Settings, LogOut, Menu, X, FileText
-} from "lucide-react";
+import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-const NAV_ITEMS = [
-  { to: "/", icon: LayoutDashboard, label: "Dashboard", labelHi: "डैशबोर्ड" },
-  { to: "/kyc/new", icon: UserPlus, label: "New KYC", labelHi: "नया KYC" },
-  { to: "/clients", icon: FileText, label: "Clients", labelHi: "ग्राहक" },
-];
+const ROLE_LABELS = {
+  admin: "Administrator",
+  maalik: "Maalik",
+  muneem: "Muneem",
+  sipahi: "Sipahi",
+};
 
-const ADMIN_ITEMS = [
-  { to: "/users", icon: Users, label: "Users", labelHi: "उपयोगकर्ता" },
-];
+const ROLE_COLOR = {
+  admin: "bg-purple-100 text-purple-800",
+  maalik: "bg-amber-100 text-amber-800",
+  muneem: "bg-blue-100 text-blue-800",
+  sipahi: "bg-green-100 text-green-800",
+};
+
+function getNavItems(role) {
+  const base = [{ to: "/", icon: LayoutDashboard, label: "Dashboard", labelHi: "डैशबोर्ड" }];
+  if (role === "muneem" || role === "sipahi") {
+    base.push({ to: "/kyc/new", icon: UserPlus, label: "New KYC", labelHi: "नया KYC" });
+  }
+  base.push({ to: "/clients", icon: FileText, label: "Clients", labelHi: "ग्राहक" });
+  if (role === "admin" || role === "maalik") {
+    base.push({ to: "/illakas", icon: MapPin, label: "Illakas", labelHi: "इलाके / मिसाल" });
+    base.push({ to: "/users", icon: Users, label: "Team", labelHi: "टीम" });
+  }
+  return base;
+}
 
 export default function Layout() {
   const { user, logout } = useAuth();
@@ -23,20 +38,11 @@ export default function Layout() {
 
   const handleLogout = async () => {
     await logout();
-    toast.success("Logged out successfully");
+    toast.success("Logged out");
     navigate("/login");
   };
 
-  const navItems = [
-    ...NAV_ITEMS,
-    ...(user?.role === "admin" ? ADMIN_ITEMS : []),
-  ];
-
-  const roleLabel = {
-    admin: "Administrator",
-    branch_manager: "Branch Manager",
-    field_officer: "Field Officer",
-  }[user?.role] || user?.role;
+  const navItems = getNavItems(user?.role);
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
@@ -48,7 +54,7 @@ export default function Layout() {
           </div>
           <div>
             <h1 className="font-bold text-xl text-foreground font-['Outfit']">Bahi Khata</h1>
-            <p className="text-xs text-muted-foreground">NBFC-MFI Platform</p>
+            <p className="text-xs text-muted-foreground">Sahukar Platform</p>
           </div>
         </div>
       </div>
@@ -62,7 +68,7 @@ export default function Layout() {
             end={item.to === "/"}
             onClick={() => setSidebarOpen(false)}
             className={({ isActive }) =>
-              `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 group ${
+              `flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 ${
                 isActive
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "text-foreground hover:bg-muted"
@@ -81,20 +87,22 @@ export default function Layout() {
       {/* User + Logout */}
       <div className="p-4 border-t border-border">
         <div className="flex items-center gap-3 px-2 py-2 mb-2">
-          <div className="w-9 h-9 bg-primary/15 rounded-full flex items-center justify-center">
+          <div className="w-9 h-9 bg-primary/15 rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-primary font-bold text-sm">
               {user?.name?.charAt(0)?.toUpperCase()}
             </span>
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-foreground truncate">{user?.name}</p>
-            <p className="text-xs text-muted-foreground">{roleLabel}</p>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${ROLE_COLOR[user?.role] || ""}`}>
+              {ROLE_LABELS[user?.role] || user?.role}
+            </span>
           </div>
         </div>
         <button
           onClick={handleLogout}
           data-testid="logout-btn"
-          className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-destructive hover:bg-destructive/10 transition-colors duration-200"
+          className="flex items-center gap-3 w-full px-4 py-3 rounded-lg text-destructive hover:bg-destructive/10 transition-colors"
         >
           <LogOut size={18} />
           <span className="text-sm font-semibold">Logout / लॉगआउट</span>
@@ -110,13 +118,10 @@ export default function Layout() {
         <SidebarContent />
       </aside>
 
-      {/* Mobile Sidebar Overlay */}
+      {/* Mobile overlay */}
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
-          <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setSidebarOpen(false)}
-          />
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
           <aside className="absolute left-0 top-0 h-full w-72 bg-card border-r border-border shadow-xl z-10">
             <div className="absolute top-4 right-4">
               <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-lg hover:bg-muted">
@@ -128,9 +133,8 @@ export default function Layout() {
         </div>
       )}
 
-      {/* Main Content */}
+      {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Mobile Header */}
         <header className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-muted" data-testid="mobile-menu-btn">
             <Menu size={22} />
@@ -141,14 +145,10 @@ export default function Layout() {
             </div>
             <span className="font-bold text-foreground font-['Outfit']">Bahi Khata</span>
           </div>
-          <div className="w-9 h-9 bg-primary/15 rounded-full flex items-center justify-center">
-            <span className="text-primary font-bold text-xs">
-              {user?.name?.charAt(0)?.toUpperCase()}
-            </span>
-          </div>
+          <span className={`text-xs px-2 py-1 rounded-full font-semibold ${ROLE_COLOR[user?.role] || ""}`}>
+            {ROLE_LABELS[user?.role] || user?.role}
+          </span>
         </header>
-
-        {/* Page Content */}
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>
