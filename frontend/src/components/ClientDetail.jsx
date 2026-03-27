@@ -57,6 +57,7 @@ const PersonCard = ({ title, titleHi, data, icon: Icon }) => {
           <InfoRow label="Phone / फ़ोन" value={data.phone} />
           <InfoRow label="Date of Birth / जन्म तिथि" value={data.dob} />
           <InfoRow label="Gender / लिंग" value={data.gender} />
+          <InfoRow label="Husband's / Father's Name / पति-पिता" value={data.relative_name} />
           <InfoRow label="Aadhaar Number / आधार" value={data.aadhaar_number} />
           <InfoRow label="Address / पता" value={data.address} multiLine />
         </div>

@@ -19,7 +19,7 @@ const STEPS = [
 ];
 
 const emptyPerson = {
-  phone: "", name: "", dob: "", address: "", gender: "",
+  phone: "", name: "", dob: "", address: "", relative_name: "", gender: "",
   aadhaar_number: "", aadhaar_front_path: null, aadhaar_back_path: null,
   document_type: "voter_id", document_front_path: null, document_back_path: null,
 };
@@ -120,6 +120,8 @@ function DocUpload({ label, labelHi, value, onChange, required, testId }) {
 function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandatory }) {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrDone, setOcrDone] = useState(false);
+  const [backOcrLoading, setBackOcrLoading] = useState(false);
+  const [backOcrDone, setBackOcrDone] = useState(false);
 
   const handleAadhaarFront = async (path) => {
     onChange("aadhaar_front_path", path);
@@ -132,13 +134,14 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
       const updates = {};
       if (d.name) updates.name = d.name;
       if (d.dob) updates.dob = d.dob;
-      if (d.address) updates.address = d.address;
       if (d.aadhaar_number) updates.aadhaar_number = d.aadhaar_number;
       if (d.gender) updates.gender = d.gender;
+      // address from front is a fallback; back takes priority
+      if (d.address && !data.address) updates.address = d.address;
       if (Object.keys(updates).length > 0) {
         onBatchChange(updates);
         setOcrDone(true);
-        toast.success("Aadhaar details auto-filled! / आधार विवरण स्वतः भरा गया");
+        toast.success("Aadhaar front details auto-filled! / आधार (सामने) भरा गया");
       } else {
         toast.info("OCR could not read all fields — please fill manually");
       }
@@ -149,14 +152,39 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
     }
   };
 
-  const hi = (f) => ocrDone && data[f] ? "border-green-400 bg-green-50/60" : "";
+  const handleAadhaarBack = async (path) => {
+    onChange("aadhaar_back_path", path);
+    setBackOcrDone(false);
+    if (!path) return;
+    setBackOcrLoading(true);
+    try {
+      const res = await axios.post(`${API}/ocr/aadhaar-back`, { path }, { withCredentials: true });
+      const d = res.data;
+      const updates = {};
+      if (d.address) updates.address = d.address;
+      if (d.relative_name) updates.relative_name = d.relative_name;
+      if (Object.keys(updates).length > 0) {
+        onBatchChange(updates);
+        setBackOcrDone(true);
+        toast.success("Address & Guardian name auto-filled! / पता और अभिभावक का नाम भरा गया");
+      } else {
+        toast.info("Back OCR could not read address — please fill manually");
+      }
+    } catch {
+      toast.info("Back OCR failed — fill address manually");
+    } finally {
+      setBackOcrLoading(false);
+    }
+  };
+
+  const hi = (f) => ocrDone && data[f] ? "border-green-400 bg-green-50/60" : backOcrDone && data[f] ? "border-blue-400 bg-blue-50/60" : "";
 
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2 pb-2 border-b border-border">
         <h3 className="text-lg font-bold font-['Outfit']">{title}</h3>
         <span className="text-sm text-muted-foreground">{titleHi}</span>
-        {ocrLoading && <span className="flex items-center gap-1 text-primary text-xs ml-2 animate-pulse"><Loader2 size={12} className="animate-spin" />Reading Aadhaar...</span>}
+        {(ocrLoading || backOcrLoading) && <span className="flex items-center gap-1 text-primary text-xs ml-2 animate-pulse"><Loader2 size={12} className="animate-spin" />{backOcrLoading ? "Reading back..." : "Reading Aadhaar..."}</span>}
       </div>
 
       <div>
@@ -165,7 +193,7 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
       </div>
 
       <DocUpload
-        label="Aadhaar Card (Front)" labelHi="आधार कार्ड (सामने) — OCR will auto-fill"
+        label="Aadhaar Card (Front)" labelHi="आधार कार्ड (सामने) — OCR: Name, DOB, Gender"
         value={data.aadhaar_front_path} onChange={handleAadhaarFront}
         required={isMandatory} testId={`aadhaar-front-${title.toLowerCase().replace(/\s+/g, "-")}`}
       />
@@ -173,13 +201,13 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
       {ocrLoading && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-primary text-sm animate-pulse">
           <Loader2 size={16} className="animate-spin flex-shrink-0" />
-          Extracting details from Aadhaar... please wait / आधार से विवरण निकाला जा रहा है...
+          Extracting details from Aadhaar front... / आधार से विवरण निकाला जा रहा है...
         </div>
       )}
       {ocrDone && !ocrLoading && (
         <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">
           <Sparkles size={15} className="flex-shrink-0" />
-          Fields auto-filled from Aadhaar OCR — please verify below / आधार से स्वतः भरा गया, कृपया जांचें
+          Name, DOB & Gender auto-filled from front — upload back for Address &amp; Guardian name
         </div>
       )}
 
@@ -192,11 +220,6 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
           <label className="bk-label"><span className="bk-label-en">Date of Birth<span className="text-destructive">*</span></span><span className="bk-label-hi">जन्म तिथि</span></label>
           <input type="text" value={data.dob} onChange={e => onChange("dob", e.target.value)} className={`bk-input ${hi("dob")}`} placeholder="DD/MM/YYYY" data-testid={`dob-${title.toLowerCase().replace(/\s+/g, "-")}`} />
         </div>
-      </div>
-
-      <div className={`transition-opacity duration-200 ${ocrLoading ? "opacity-40 pointer-events-none" : ""}`}>
-        <label className="bk-label"><span className="bk-label-en">Address<span className="text-destructive">*</span></span><span className="bk-label-hi">पता</span></label>
-        <textarea value={data.address} onChange={e => onChange("address", e.target.value)} className={`bk-input h-auto py-3 resize-none ${hi("address")}`} rows={3} placeholder="Auto-filled from Aadhaar" data-testid={`address-${title.toLowerCase().replace(/\s+/g, "-")}`} />
       </div>
 
       <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity duration-200 ${ocrLoading ? "opacity-40 pointer-events-none" : ""}`}>
@@ -215,11 +238,35 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
         </div>
       </div>
 
+      {/* Aadhaar Back — OCR for Address + Relative Name */}
       <DocUpload
-        label="Aadhaar Card (Back)" labelHi="आधार कार्ड (पीछे)"
-        value={data.aadhaar_back_path} onChange={v => onChange("aadhaar_back_path", v)}
+        label="Aadhaar Card (Back)" labelHi="आधार कार्ड (पीछे) — OCR: पता और अभिभावक नाम"
+        value={data.aadhaar_back_path} onChange={handleAadhaarBack}
         required={isMandatory} testId={`aadhaar-back-${title.toLowerCase().replace(/\s+/g, "-")}`}
       />
+
+      {backOcrLoading && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm animate-pulse">
+          <Loader2 size={16} className="animate-spin flex-shrink-0" />
+          Reading address & guardian name from Aadhaar back... / पीछे से पता निकाला जा रहा है...
+        </div>
+      )}
+      {backOcrDone && !backOcrLoading && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm">
+          <Sparkles size={15} className="flex-shrink-0" />
+          Address &amp; Guardian name auto-filled from Aadhaar back — please verify below
+        </div>
+      )}
+
+      <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
+        <label className="bk-label"><span className="bk-label-en">Husband's / Father's Name<span className="text-destructive">*</span></span><span className="bk-label-hi">पति / पिता का नाम</span></label>
+        <input type="text" value={data.relative_name} onChange={e => onChange("relative_name", e.target.value)} className={`bk-input ${hi("relative_name")}`} placeholder="Auto-filled from Aadhaar back" data-testid={`relative-name-${title.toLowerCase().replace(/\s+/g, "-")}`} />
+      </div>
+
+      <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
+        <label className="bk-label"><span className="bk-label-en">Address<span className="text-destructive">*</span></span><span className="bk-label-hi">पता</span></label>
+        <textarea value={data.address} onChange={e => onChange("address", e.target.value)} className={`bk-input h-auto py-3 resize-none ${hi("address")}`} rows={3} placeholder="Auto-filled from Aadhaar back" data-testid={`address-${title.toLowerCase().replace(/\s+/g, "-")}`} />
+      </div>
 
       {/* Additional Doc — OPTIONAL */}
       <div className="pt-3 border-t border-dashed border-border">
@@ -448,6 +495,8 @@ function ReviewSection({ formData, illaka, misal, includeCoBorrower, includeGuar
           <div><span className="text-muted-foreground">Phone:</span> <span className="font-medium">{data.phone || "—"}</span></div>
           <div><span className="text-muted-foreground">DOB:</span> <span className="font-medium">{data.dob || "—"}</span></div>
           <div><span className="text-muted-foreground">Aadhaar:</span> <span className="font-medium">{data.aadhaar_number || "—"}</span></div>
+          <div><span className="text-muted-foreground">Husband/Father:</span> <span className="font-medium">{data.relative_name || "—"}</span></div>
+          <div className="col-span-2"><span className="text-muted-foreground">Address:</span> <span className="font-medium">{data.address || "—"}</span></div>
         </div>
       </div>
     );
@@ -541,6 +590,7 @@ export default function KYCForm() {
       if (!p.phone) { toast.error("Primary borrower phone required"); return false; }
       if (!p.name) { toast.error("Primary borrower name required"); return false; }
       if (!p.dob) { toast.error("Date of birth required"); return false; }
+      if (!p.relative_name) { toast.error("Husband's / Father's name required / पति/पिता का नाम अनिवार्य है"); return false; }
       if (!p.address) { toast.error("Address required"); return false; }
       if (!p.aadhaar_number) { toast.error("Aadhaar number required"); return false; }
       if (!p.aadhaar_front_path) { toast.error("Aadhaar front photo required"); return false; }

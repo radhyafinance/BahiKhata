@@ -135,6 +135,7 @@ class PersonKYCData(BaseModel):
     name: Optional[str] = None
     dob: Optional[str] = None
     address: Optional[str] = None
+    relative_name: Optional[str] = None  # Husband's / Father's name (from Aadhaar back)
     gender: Optional[str] = None
     phone: Optional[str] = None
     aadhaar_number: Optional[str] = None
@@ -446,6 +447,17 @@ async def create_kyc(data: KYCCreate, request: Request):
     current_user = await get_current_user(request)
     if current_user["role"] not in ["muneem", "sipahi"]:
         raise HTTPException(status_code=403, detail="Only field agents can create KYCs")
+
+    # Duplicate Aadhaar check
+    pb_aadhaar = data.primary_borrower.aadhaar_number
+    if pb_aadhaar:
+        digits = re.sub(r'\D', '', pb_aadhaar)  # extract only digits
+        if len(digits) == 12:
+            # Pattern matches the 12 digits with any whitespace between them
+            pattern = r'\s*'.join(list(digits))
+            if await db.kycs.find_one({"primary_borrower.aadhaar_number": {"$regex": pattern}}):
+                raise HTTPException(status_code=400, detail=f"KYC already exists for Aadhaar {pb_aadhaar}. Duplicate entry not allowed / इस आधार नंबर से KYC पहले से मौजूद है।")
+
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "kyc_number": generate_kyc_number(),
@@ -598,6 +610,58 @@ Use null for any field that is not clearly readable.""",
     except Exception as e:
         logger.error(f"OCR error: {e}")
         return {"name": None, "dob": None, "address": None, "aadhaar_number": None, "gender": None}
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except Exception:
+            pass
+
+@api_router.post("/ocr/aadhaar-back")
+async def ocr_aadhaar_back(data: OCRRequest, request: Request):
+    """OCR for Aadhaar card back side — extracts Address and Husband/Father name."""
+    await get_current_user(request)
+    try:
+        file_data, ct = get_object(data.path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found in storage")
+
+    ext = data.path.rsplit(".", 1)[-1] if "." in data.path else "jpg"
+    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+        tmp.write(file_data)
+        tmp_path = tmp.name
+
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=f"ocr-back-{uuid.uuid4()}",
+            system_message="You are an expert OCR system for Indian Aadhaar cards. Extract all visible text accurately."
+        ).with_model("gemini", "gemini-2.5-flash")
+
+        img = FileContentWithMimeType(file_path=tmp_path, mime_type=ct or "image/jpeg")
+        msg = UserMessage(
+            text="""Examine this image of the BACK side of an Indian Aadhaar card.
+
+The back of an Aadhaar card typically contains:
+- RELATIVE'S NAME: printed as "S/O" (Son of), "W/O" (Wife of), "D/O" (Daughter of), or "C/O" (Care of) followed by the relative's name. This is the husband's or father's name.
+- ADDRESS: full residential address spanning multiple lines — house/door no, street/mohalla/locality, village/town/city, district, state, PIN code.
+
+Extract these two fields and return ONLY a valid JSON object — no markdown, no code blocks, no explanation:
+{
+  "relative_name": "full name of the relative as printed (without the S/O W/O D/O prefix)",
+  "address": "complete address — all components joined on one line separated by commas"
+}
+
+Use null if a field is not clearly readable.""",
+            file_contents=[img]
+        )
+        raw = await chat.send_message(msg)
+        raw = re.sub(r'```[a-z]*\n?', '', raw).strip()
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        extracted = json.loads(m.group()) if m else {}
+        return extracted
+    except Exception as e:
+        logger.error(f"Aadhaar back OCR error: {e}")
+        return {"relative_name": None, "address": None}
     finally:
         try:
             os.unlink(tmp_path)
@@ -826,6 +890,7 @@ async def startup():
     await db.kycs.create_index("status")
     await db.kycs.create_index("illaka_id")
     await db.kycs.create_index("misal_id")
+    await db.kycs.create_index("primary_borrower.aadhaar_number")
     await db.illakas.create_index("maalik_id")
     await db.misals.create_index("illaka_id")
     await db.loans.create_index("kyc_id")

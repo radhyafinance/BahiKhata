@@ -1,0 +1,41 @@
+{
+  "summary": "Tested new features: relative_name field, /api/ocr/aadhaar-back endpoint, duplicate Aadhaar check. All 7 backend tests pass. Frontend UI shows relative_name field, validation working, ClientDetail shows Husband's/Father's Name correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "KYC Form Step 2 (Primary Borrower)",
+        "issues": [
+          "Field order: 'Husband's / Father's Name' appears BEFORE 'Address' in the form. The requirement states it should appear AFTER Address. Current order: Aadhaar Back upload → Husband's/Father's Name → Address. Expected: Aadhaar Back upload → Address → Husband's/Father's Name. This is a minor UX deviation - functionally working."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/new_features_results.xml"
+  ],
+  "action_items": [
+    "Optional: Reorder form fields so Address appears before Husband's/Father's Name in PersonSection (per requirement spec). Currently relative_name is shown before address in the form."
+  ],
+  "critical_code_review_comments": [
+    "Field ordering in KYCForm.jsx: relative_name input (line ~263) appears before address textarea (line ~268). Requirement says relative_name should be AFTER address. Minor ordering issue."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_new_features.py"
+  ],
+  "success_rate": {
+    "backend": "100% (7/7)",
+    "frontend": "95% - all features working, minor field ordering note"
+  },
+  "seed_data_creation": "Created test KYC with Aadhaar 1111 2222 3456 during unique Aadhaar test",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All new features (relative_name field, aadhaar-back OCR endpoint, duplicate Aadhaar check) are working. Backend 7/7 tests pass. Duplicate check works for both space and no-space Aadhaar formats. ClientDetail shows Husband's/Father's Name row. Validation blocks Next if relative_name is empty. Minor: field order in form puts relative_name before address (requirement says after).",
+  "test_credentials": "Admin: admin@bahikhata.com/Admin@123, Sipahi: TEST_sipahi_loans@bahikhata.com/Test@1234"
+}
