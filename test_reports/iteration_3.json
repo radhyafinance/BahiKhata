@@ -1,0 +1,52 @@
+{
+  "summary": "Loan Tracking Module - Full backend + frontend testing. All 18 backend tests passed (100%). Frontend: loans nav, list, detail, payment recording, status update all working correctly.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Loan creation form - client search for sipahi",
+        "issue": "Sipahi can only search KYCs where field_officer_id == their user id. A newly created sipahi user with no KYCs assigned will find no clients in the search. In practice, a sipahi can only create loans for clients whose KYC THEY created. This may limit the workflow if a muneem creates KYC but sipahi needs to create the loan.",
+        "affected_selectors": ["[data-testid='client-search-input']", "[data-testid='client-dropdown']"]
+      }
+    ],
+    "design_issues": [
+      {
+        "screen": "Loan Form - Date inputs",
+        "issues": ["Loan Date and Due Date use browser's native date picker (HTML input type=date) instead of a custom calendar component. Inconsistent with the app's design if other forms use shadcn calendar."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_loans.py",
+    "/app/test_reports/pytest/loan_results.xml"
+  ],
+  "action_items": [
+    "Consider widening KYC search scope for sipahi in loan creation: either search across all KYCs in their assigned illaka, or allow muneem to also search across their assigned illakas. Currently sipahi can only find clients they personally onboarded.",
+    "Consider replacing native date inputs with shadcn calendar in loan form for design consistency (minor/optional)"
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 852 lines - exceeds the 700-line limit. Should be split into modules: loans.py, payments.py, kycs.py, auth.py etc.",
+    "In _loan_query_for_user for sipahi: returns {'sipahi_id': user['id']} (correct). But for loan creation, KYC search still uses _kyc_query_for_user which filters by field_officer_id for sipahi. This means sipahi cannot find clients they didn't personally KYC during loan form client search.",
+    "add_payment endpoint does NOT gate by loan status - payments can be added to closed/overdue loans. The UI hides the button for non-active loans but the API allows it. Consider adding status check in the backend."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_loans.py"
+  ],
+  "success_rate": {
+    "backend": "100% (18/18 tests passed)",
+    "frontend": "95% - all major flows verified; client search for fresh sipahi users returns no results due to scope limitation"
+  },
+  "test_credentials": {
+    "admin": "admin@bahikhata.com / Admin@123",
+    "sipahi": "TEST_sipahi_loans@bahikhata.com / Test@1234 (created during testing)"
+  },
+  "seed_data_creation": "Created TEST_sipahi_loans@bahikhata.com sipahi user. Created 1 test loan with TEST Borrower client (principal ₹10,000, 2.5%/month). Added multiple test payments during testing.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Loan tracking module fully working. All backend APIs: GET/POST /api/loans, GET /api/loans/{id}, PATCH /api/loans/{id}/status, POST/DELETE /api/loans/{id}/payments. Role gates: admin/maalik/muneem can update status and delete payments. Sipahi can create loans and add payments. Admin CANNOT create loans (403). Dashboard stats include active_loans and total_loans. Test sipahi user: TEST_sipahi_loans@bahikhata.com / Test@1234. Known test loan id visible in loans page.",
+  "rca_of_issue": "Client search limitation for sipahi: The KYC listing API uses _kyc_query_for_user which for sipahi returns {field_officer_id: user.id}. This scopes KYC search to only the sipahi's own clients. Since the loan form uses the same /api/kycs endpoint, a sipahi creating a loan can only find clients they personally KYC-verified. This is by design in current implementation but may need review for operational workflows where muneem does KYC and sipahi disburses loans."
+}

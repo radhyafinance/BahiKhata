@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
-import { Search, Filter, UserPlus, ChevronRight } from "lucide-react";
+import { useAuth } from "./AuthContext";
+import { Search, UserPlus } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -21,6 +22,7 @@ const StatusBadge = ({ status }) => {
 
 export default function ClientList() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [kycs, setKycs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -61,13 +63,15 @@ export default function ClientList() {
           <h1 className="text-2xl font-bold text-foreground font-['Outfit']">Clients / ग्राहक</h1>
           <p className="text-muted-foreground text-sm">{total} total KYC records</p>
         </div>
-        <button
-          onClick={() => navigate("/kyc/new")}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-lg font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all shadow-sm text-sm"
-          data-testid="new-kyc-btn"
-        >
-          <UserPlus size={16} /> New KYC
-        </button>
+        {(user?.role === "muneem" || user?.role === "sipahi") && (
+          <button
+            onClick={() => navigate("/kyc/new")}
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-5 py-3 rounded-lg font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all shadow-sm text-sm"
+            data-testid="new-kyc-btn"
+          >
+            <UserPlus size={16} /> New KYC
+          </button>
+        )}
       </div>
 
       {/* Filters */}

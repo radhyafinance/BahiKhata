@@ -11,6 +11,9 @@ import ClientList from "./components/ClientList";
 import ClientDetail from "./components/ClientDetail";
 import UserManagement from "./components/UserManagement";
 import IllakaManagement from "./components/IllakaManagement";
+import LoanList from "./components/LoanList";
+import LoanForm from "./components/LoanForm";
+import LoanDetail from "./components/LoanDetail";
 
 const ProtectedRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
@@ -65,6 +68,10 @@ function App() {
                 </ProtectedRoute>
               }
             />
+            <Route path="loans" element={<LoanList />} />
+            <Route path="loans/new" element={<ProtectedRoute roles={["muneem", "sipahi"]}><LoanForm /></ProtectedRoute>} />
+            <Route path="loans/:id" element={<LoanDetail />} />
+            <Route path="loans/:id/edit" element={<ProtectedRoute roles={["admin", "maalik", "muneem", "sipahi"]}><LoanForm /></ProtectedRoute>} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -600,20 +600,201 @@ Use null for any field that is not clearly readable.""",
         except Exception:
             pass
 
+# ─── Loans ────────────────────────────────────────────────────────────────────
+class LoanCreate(BaseModel):
+    kyc_id: str
+    client_name: str
+    client_phone: Optional[str] = None
+    illaka_id: str
+    illaka_name: str
+    misal_id: str
+    misal_name: str
+    principal_amount: float
+    interest_rate: float          # per month %
+    loan_date: str                # YYYY-MM-DD
+    due_date: Optional[str] = None
+    notes: Optional[str] = None
+
+class LoanStatusUpdate(BaseModel):
+    status: str  # active | closed | overdue
+    notes: Optional[str] = None
+
+class PaymentCreate(BaseModel):
+    amount: float
+    payment_date: str             # YYYY-MM-DD
+    notes: Optional[str] = None
+
+async def _loan_query_for_user(user: dict) -> dict:
+    if user["role"] == "admin":
+        return {}
+    elif user["role"] == "maalik":
+        illakas = await db.illakas.find({"maalik_id": user["id"]}, {"_id": 1}).to_list(1000)
+        ids = [str(i["_id"]) for i in illakas]
+        return {"illaka_id": {"$in": ids}}
+    elif user["role"] == "muneem":
+        assigned = user.get("assigned_illaka_ids", [])
+        return {"illaka_id": {"$in": assigned}}
+    else:  # sipahi
+        return {"sipahi_id": user["id"]}
+
+@api_router.get("/loans")
+async def list_loans(
+    request: Request,
+    illaka_id: Optional[str] = None,
+    misal_id: Optional[str] = None,
+    status: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 50,
+    skip: int = 0,
+):
+    current_user = await get_current_user(request)
+    query = await _loan_query_for_user(current_user)
+    if illaka_id:
+        query["illaka_id"] = illaka_id
+    if misal_id:
+        query["misal_id"] = misal_id
+    if status:
+        query["status"] = status
+    if search:
+        query["$or"] = [
+            {"client_name": {"$regex": search, "$options": "i"}},
+            {"client_phone": {"$regex": search, "$options": "i"}},
+        ]
+    total = await db.loans.count_documents(query)
+    docs = await db.loans.find(query).sort("loan_date", -1).skip(skip).limit(limit).to_list(limit)
+    return {"total": total, "loans": [_doc(d) for d in docs]}
+
+@api_router.post("/loans")
+async def create_loan(data: LoanCreate, request: Request):
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["muneem", "sipahi"]:
+        raise HTTPException(status_code=403, detail="Only field agents can create loans")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "kyc_id": data.kyc_id,
+        "client_name": data.client_name,
+        "client_phone": data.client_phone,
+        "illaka_id": data.illaka_id,
+        "illaka_name": data.illaka_name,
+        "misal_id": data.misal_id,
+        "misal_name": data.misal_name,
+        "principal_amount": data.principal_amount,
+        "interest_rate": data.interest_rate,
+        "loan_date": data.loan_date,
+        "due_date": data.due_date,
+        "status": "active",
+        "sipahi_id": current_user["id"],
+        "sipahi_name": current_user["name"],
+        "total_paid": 0.0,
+        "notes": data.notes,
+        "created_at": now, "updated_at": now,
+    }
+    result = await db.loans.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    return _doc(doc)
+
+@api_router.get("/loans/{loan_id}")
+async def get_loan(loan_id: str, request: Request):
+    await get_current_user(request)
+    doc = await db.loans.find_one({"_id": ObjectId(loan_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    return _doc(doc)
+
+@api_router.put("/loans/{loan_id}")
+async def update_loan(loan_id: str, data: LoanCreate, request: Request):
+    current_user = await get_current_user(request)
+    loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    if current_user["role"] not in ["admin", "maalik", "muneem"] and loan.get("sipahi_id") != current_user["id"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    updates = {
+        "client_name": data.client_name, "client_phone": data.client_phone,
+        "principal_amount": data.principal_amount, "interest_rate": data.interest_rate,
+        "loan_date": data.loan_date, "due_date": data.due_date, "notes": data.notes,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db.loans.update_one({"_id": ObjectId(loan_id)}, {"$set": updates})
+    return _doc(await db.loans.find_one({"_id": ObjectId(loan_id)}))
+
+@api_router.patch("/loans/{loan_id}/status")
+async def update_loan_status(loan_id: str, data: LoanStatusUpdate, request: Request):
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik", "muneem"]:
+        raise HTTPException(status_code=403, detail="Insufficient permissions")
+    if data.status not in ["active", "closed", "overdue"]:
+        raise HTTPException(status_code=400, detail="Invalid status")
+    updates = {"status": data.status, "updated_at": datetime.now(timezone.utc).isoformat()}
+    if data.notes:
+        updates["notes"] = data.notes
+    result = await db.loans.update_one({"_id": ObjectId(loan_id)}, {"$set": updates})
+    if not result.matched_count:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    return _doc(await db.loans.find_one({"_id": ObjectId(loan_id)}))
+
+# ─── Payments ─────────────────────────────────────────────────────────────────
+@api_router.get("/loans/{loan_id}/payments")
+async def list_payments(loan_id: str, request: Request):
+    await get_current_user(request)
+    docs = await db.payments.find({"loan_id": loan_id}).sort("payment_date", -1).to_list(500)
+    return [_doc(d) for d in docs]
+
+@api_router.post("/loans/{loan_id}/payments")
+async def add_payment(loan_id: str, data: PaymentCreate, request: Request):
+    current_user = await get_current_user(request)
+    loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    now = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "loan_id": loan_id,
+        "amount": data.amount,
+        "payment_date": data.payment_date,
+        "collected_by_id": current_user["id"],
+        "collected_by_name": current_user["name"],
+        "notes": data.notes,
+        "created_at": now,
+    }
+    result = await db.payments.insert_one(doc)
+    doc["_id"] = result.inserted_id
+    # Update total_paid on the loan
+    total_paid = loan.get("total_paid", 0.0) + data.amount
+    await db.loans.update_one({"_id": ObjectId(loan_id)}, {"$set": {"total_paid": total_paid, "updated_at": now}})
+    return _doc(doc)
+
+@api_router.delete("/loans/{loan_id}/payments/{payment_id}")
+async def delete_payment(loan_id: str, payment_id: str, request: Request):
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik", "muneem"]:
+        raise HTTPException(status_code=403, detail="Access denied")
+    payment = await db.payments.find_one({"_id": ObjectId(payment_id), "loan_id": loan_id})
+    if not payment:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    await db.payments.delete_one({"_id": ObjectId(payment_id)})
+    # Recalculate total_paid
+    payments = await db.payments.find({"loan_id": loan_id}).to_list(1000)
+    total_paid = sum(p["amount"] for p in payments)
+    await db.loans.update_one({"_id": ObjectId(loan_id)}, {"$set": {"total_paid": total_paid, "updated_at": datetime.now(timezone.utc).isoformat()}})
+    return {"message": "Payment deleted"}
+
 # ─── Dashboard Stats ──────────────────────────────────────────────────────────
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(request: Request):
     current_user = await get_current_user(request)
-    query = await _kyc_query_for_user(current_user)
+    kyc_query = await _kyc_query_for_user(current_user)
+    loan_query = await _loan_query_for_user(current_user)
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     return {
-        "total": await db.kycs.count_documents(query),
-        "pending": await db.kycs.count_documents({**query, "status": "pending"}),
-        "approved": await db.kycs.count_documents({**query, "status": "approved"}),
-        "rejected": await db.kycs.count_documents({**query, "status": "rejected"}),
-        "today": await db.kycs.count_documents({**query, "created_at": {"$gte": today}}),
+        "total": await db.kycs.count_documents(kyc_query),
+        "pending": await db.kycs.count_documents({**kyc_query, "status": "pending"}),
+        "approved": await db.kycs.count_documents({**kyc_query, "status": "approved"}),
+        "rejected": await db.kycs.count_documents({**kyc_query, "status": "rejected"}),
+        "today": await db.kycs.count_documents({**kyc_query, "created_at": {"$gte": today}}),
         "sipahi_count": await db.users.count_documents({"role": "sipahi", "is_active": True}),
         "muneem_count": await db.users.count_documents({"role": "muneem", "is_active": True}),
+        "active_loans": await db.loans.count_documents({**loan_query, "status": "active"}),
+        "total_loans": await db.loans.count_documents(loan_query),
     }
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -638,6 +819,12 @@ async def startup():
     await db.kycs.create_index("misal_id")
     await db.illakas.create_index("maalik_id")
     await db.misals.create_index("illaka_id")
+    await db.loans.create_index("kyc_id")
+    await db.loans.create_index("sipahi_id")
+    await db.loans.create_index("illaka_id")
+    await db.loans.create_index("status")
+    await db.loans.create_index([("loan_date", -1)])
+    await db.payments.create_index("loan_id")
 
     admin_email = os.environ.get("ADMIN_EMAIL", "admin@bahikhata.com")
     admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")

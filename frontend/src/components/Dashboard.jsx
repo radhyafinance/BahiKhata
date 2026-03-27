@@ -161,6 +161,28 @@ export default function Dashboard() {
         </div>
       )}
 
+      {/* Loan Stats */}
+      {!loading && (
+        <div className="grid grid-cols-2 gap-4">
+          <StatCard
+            icon={TrendingUp}
+            label="Active Loans"
+            labelHi="सक्रिय कर्ज"
+            value={stats?.active_loans}
+            color="bg-emerald-600"
+            testId="stat-active-loans"
+          />
+          <StatCard
+            icon={TrendingUp}
+            label="Total Loans"
+            labelHi="कुल कर्ज"
+            value={stats?.total_loans}
+            color="bg-amber-600"
+            testId="stat-total-loans"
+          />
+        </div>
+      )}
+
       {/* Recent KYCs */}
       <div className="bk-card">
         <div className="flex items-center justify-between mb-4">
