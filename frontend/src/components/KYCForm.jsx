@@ -4,7 +4,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import {
   Camera, MapPin, Upload, Loader2, CheckCircle, ChevronRight, ChevronLeft,
-  X, RefreshCw, User, Users, Shield
+  X, RefreshCw, User, Users, Shield, ImageIcon, Sparkles
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -32,14 +32,17 @@ const emptyPerson = {
 };
 
 // ─── Document Upload Field ─────────────────────────────────────────────────
-function DocUpload({ label, labelHi, value, onChange, accept = "image/*", testId }) {
+function DocUpload({ label, labelHi, value, onChange, testId }) {
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState(null);
-  const inputRef = useRef();
+  const galleryRef = useRef();
+  const cameraRef = useRef();
 
-  const handleChange = async (e) => {
+  const handleFile = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    // Reset input so same file can be re-selected
+    e.target.value = "";
     setPreview(URL.createObjectURL(file));
     setUploading(true);
     try {
@@ -47,7 +50,6 @@ function DocUpload({ label, labelHi, value, onChange, accept = "image/*", testId
       fd.append("file", file);
       const res = await axios.post(`${API}/upload`, fd, { withCredentials: true });
       onChange(res.data.path);
-      toast.success(`${label} uploaded`);
     } catch {
       toast.error(`Failed to upload ${label}`);
       setPreview(null);
@@ -64,64 +66,105 @@ function DocUpload({ label, labelHi, value, onChange, accept = "image/*", testId
         <span className="bk-label-en">{label}</span>
         {labelHi && <span className="bk-label-hi">{labelHi}</span>}
       </label>
-      <div
-        className="border-2 border-dashed border-border rounded-xl overflow-hidden cursor-pointer hover:border-primary transition-colors bg-muted/20"
-        onClick={() => inputRef.current?.click()}
-        data-testid={testId || `upload-${label.toLowerCase().replace(/\s+/g, "-")}`}
-      >
-        {imgSrc ? (
-          <div className="relative">
-            <img src={imgSrc} alt={label} className="w-full max-h-44 object-contain p-2" />
-            {uploading && (
-              <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
-                <Loader2 className="animate-spin text-primary" size={28} />
-              </div>
-            )}
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); setPreview(null); onChange(null); }}
-              className="absolute top-2 right-2 bg-destructive text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-destructive/90"
-            >
-              <X size={14} />
-            </button>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
-            {uploading ? (
+
+      {/* Preview Area */}
+      {imgSrc && (
+        <div className="relative border border-border rounded-xl overflow-hidden mb-2 bg-muted/10">
+          <img src={imgSrc} alt={label} className="w-full max-h-44 object-contain p-2" />
+          {uploading && (
+            <div className="absolute inset-0 bg-white/80 flex items-center justify-center">
               <Loader2 className="animate-spin text-primary" size={28} />
-            ) : (
-              <>
-                <Upload size={28} className="opacity-50" />
-                <span className="text-sm font-medium">Click to upload</span>
-                <span className="text-xs opacity-70">JPG, PNG supported</span>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-      <input ref={inputRef} type="file" accept={accept} onChange={handleChange} className="hidden" />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={() => { setPreview(null); onChange(null); }}
+            className="absolute top-2 right-2 bg-destructive text-white rounded-full w-7 h-7 flex items-center justify-center hover:bg-destructive/90 shadow"
+          >
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Upload Buttons */}
+      {!imgSrc && (
+        <div
+          className="border-2 border-dashed border-border rounded-xl bg-muted/20 p-4 text-center mb-2"
+          data-testid={testId}
+        >
+          {uploading ? (
+            <div className="flex flex-col items-center gap-2 py-2 text-muted-foreground">
+              <Loader2 className="animate-spin text-primary" size={28} />
+              <span className="text-sm">Uploading...</span>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground mb-3">No photo selected / कोई फ़ोटो नहीं चुनी गई</p>
+          )}
+        </div>
+      )}
+
+      {!uploading && (
+        <div className="flex gap-2">
+          {/* Gallery / File Upload */}
+          <button
+            type="button"
+            onClick={() => galleryRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-2 h-11 border border-border rounded-lg text-sm font-medium text-foreground bg-white hover:bg-muted/50 active:scale-[0.98] transition-all"
+            data-testid={`${testId}-gallery-btn`}
+          >
+            <ImageIcon size={16} className="text-muted-foreground" />
+            <span>Gallery / गैलरी</span>
+          </button>
+
+          {/* Camera Capture */}
+          <button
+            type="button"
+            onClick={() => cameraRef.current?.click()}
+            className="flex-1 flex items-center justify-center gap-2 h-11 border border-primary/40 rounded-lg text-sm font-medium text-primary bg-primary/5 hover:bg-primary/10 active:scale-[0.98] transition-all"
+            data-testid={`${testId}-camera-btn`}
+          >
+            <Camera size={16} />
+            <span>Camera / कैमरा</span>
+          </button>
+        </div>
+      )}
+
+      {/* Hidden inputs */}
+      <input ref={galleryRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
     </div>
   );
 }
 
 // ─── Person KYC Section ───────────────────────────────────────────────────────
-function PersonSection({ title, titleHi, data, onChange }) {
+function PersonSection({ title, titleHi, data, onChange, onBatchChange }) {
   const [ocrLoading, setOcrLoading] = useState(false);
+  const [ocrDone, setOcrDone] = useState(false);
 
   const handleAadhaarFront = async (path) => {
     onChange("aadhaar_front_path", path);
+    setOcrDone(false);
     if (!path) return;
     setOcrLoading(true);
     try {
       const res = await axios.post(`${API}/ocr/aadhaar`, { path }, { withCredentials: true });
-      if (res.data.name) onChange("name", res.data.name);
-      if (res.data.dob) onChange("dob", res.data.dob);
-      if (res.data.address) onChange("address", res.data.address);
-      if (res.data.aadhaar_number) onChange("aadhaar_number", res.data.aadhaar_number);
-      if (res.data.gender) onChange("gender", res.data.gender);
-      toast.success("Aadhaar data extracted automatically / आधार डेटा स्वतः निकाला गया");
+      const d = res.data;
+      // Batch update all OCR fields atomically in one setState call
+      const updates = {};
+      if (d.name) updates.name = d.name;
+      if (d.dob) updates.dob = d.dob;
+      if (d.address) updates.address = d.address;
+      if (d.aadhaar_number) updates.aadhaar_number = d.aadhaar_number;
+      if (d.gender) updates.gender = d.gender;
+      if (Object.keys(updates).length > 0) {
+        onBatchChange(updates);
+        setOcrDone(true);
+        toast.success("Aadhaar details auto-filled! / आधार विवरण स्वतः भरा गया!");
+      } else {
+        toast.info("Could not extract data — please fill manually / डेटा नहीं मिला, मैन्युअल भरें");
+      }
     } catch {
-      toast.info("Please fill details manually / कृपया विवरण मैन्युअल भरें");
+      toast.info("OCR failed — please fill details manually / कृपया विवरण मैन्युअल भरें");
     } finally {
       setOcrLoading(false);
     }
@@ -159,14 +202,28 @@ function PersonSection({ title, titleHi, data, onChange }) {
       {/* Aadhaar Front */}
       <DocUpload
         label="Aadhaar Card (Front)"
-        labelHi="आधार कार्ड (सामने) — OCR will auto-fill details"
+        labelHi="आधार कार्ड (सामने)"
         value={data.aadhaar_front_path}
         onChange={handleAadhaarFront}
         testId={`aadhaar-front-${title.toLowerCase().replace(/\s+/g, "-")}`}
       />
 
+      {/* OCR Status Banner */}
+      {ocrLoading && (
+        <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-primary text-sm animate-pulse">
+          <Loader2 size={16} className="animate-spin flex-shrink-0" />
+          <span>Reading Aadhaar card... details will auto-fill below / आधार कार्ड पढ़ा जा रहा है...</span>
+        </div>
+      )}
+      {ocrDone && !ocrLoading && (
+        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">
+          <Sparkles size={16} className="flex-shrink-0" />
+          <span>Details auto-filled from Aadhaar OCR / आधार OCR से विवरण स्वतः भरा गया। Please verify below.</span>
+        </div>
+      )}
+
       {/* OCR Fields */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity ${ocrLoading ? "opacity-50 pointer-events-none" : ""}`}>
         <div>
           <label className="bk-label">
             <span className="bk-label-en">Full Name</span>
@@ -176,8 +233,8 @@ function PersonSection({ title, titleHi, data, onChange }) {
             type="text"
             value={data.name}
             onChange={(e) => onChange("name", e.target.value)}
-            className="bk-input"
-            placeholder="Auto-filled from Aadhaar"
+            className={`bk-input ${ocrDone && data.name ? "border-green-400 bg-green-50" : ""}`}
+            placeholder="Auto-filled from Aadhaar / आधार से स्वतः भरेगा"
             data-testid={`name-${title.toLowerCase().replace(/\s+/g, "-")}`}
           />
         </div>
@@ -190,14 +247,14 @@ function PersonSection({ title, titleHi, data, onChange }) {
             type="text"
             value={data.dob}
             onChange={(e) => onChange("dob", e.target.value)}
-            className="bk-input"
+            className={`bk-input ${ocrDone && data.dob ? "border-green-400 bg-green-50" : ""}`}
             placeholder="DD/MM/YYYY"
             data-testid={`dob-${title.toLowerCase().replace(/\s+/g, "-")}`}
           />
         </div>
       </div>
 
-      <div>
+      <div className={`transition-opacity ${ocrLoading ? "opacity-50 pointer-events-none" : ""}`}>
         <label className="bk-label">
           <span className="bk-label-en">Address</span>
           <span className="bk-label-hi">पता</span>
@@ -205,14 +262,14 @@ function PersonSection({ title, titleHi, data, onChange }) {
         <textarea
           value={data.address}
           onChange={(e) => onChange("address", e.target.value)}
-          className="bk-input h-auto py-3 resize-none"
+          className={`bk-input h-auto py-3 resize-none ${ocrDone && data.address ? "border-green-400 bg-green-50" : ""}`}
           rows={3}
-          placeholder="Auto-filled from Aadhaar"
+          placeholder="Auto-filled from Aadhaar / आधार से स्वतः भरेगा"
           data-testid={`address-${title.toLowerCase().replace(/\s+/g, "-")}`}
         />
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity ${ocrLoading ? "opacity-50 pointer-events-none" : ""}`}>
         <div>
           <label className="bk-label">
             <span className="bk-label-en">Aadhaar Number</span>
@@ -222,7 +279,7 @@ function PersonSection({ title, titleHi, data, onChange }) {
             type="text"
             value={data.aadhaar_number}
             onChange={(e) => onChange("aadhaar_number", e.target.value)}
-            className="bk-input"
+            className={`bk-input ${ocrDone && data.aadhaar_number ? "border-green-400 bg-green-50" : ""}`}
             placeholder="XXXX XXXX XXXX"
             data-testid={`aadhaar-num-${title.toLowerCase().replace(/\s+/g, "-")}`}
           />
@@ -235,7 +292,7 @@ function PersonSection({ title, titleHi, data, onChange }) {
           <select
             value={data.gender}
             onChange={(e) => onChange("gender", e.target.value)}
-            className="bk-input"
+            className={`bk-input ${ocrDone && data.gender ? "border-green-400 bg-green-50" : ""}`}
             data-testid={`gender-${title.toLowerCase().replace(/\s+/g, "-")}`}
           >
             <option value="">Select / चुनें</option>
@@ -588,6 +645,14 @@ export default function KYCForm() {
     }));
   };
 
+  // Batch update multiple OCR fields atomically in one setState
+  const updatePersonBatch = (key) => (updates) => {
+    setFormData((prev) => ({
+      ...prev,
+      [key]: { ...prev[key], ...updates },
+    }));
+  };
+
   const handleSubmit = async () => {
     if (!formData.primaryBorrower.phone) {
       toast.error("Primary borrower phone number is required");
@@ -666,6 +731,7 @@ export default function KYCForm() {
             titleHi="प्राथमिक उधारकर्ता"
             data={formData.primaryBorrower}
             onChange={updatePerson("primaryBorrower")}
+            onBatchChange={updatePersonBatch("primaryBorrower")}
           />
         )}
         {step === 2 && (
@@ -674,6 +740,7 @@ export default function KYCForm() {
             titleHi="सह-उधारकर्ता"
             data={formData.coBorrower}
             onChange={updatePerson("coBorrower")}
+            onBatchChange={updatePersonBatch("coBorrower")}
           />
         )}
         {step === 3 && (
@@ -682,6 +749,7 @@ export default function KYCForm() {
             titleHi="गारंटर"
             data={formData.guarantor}
             onChange={updatePerson("guarantor")}
+            onBatchChange={updatePersonBatch("guarantor")}
           />
         )}
         {step === 4 && (
