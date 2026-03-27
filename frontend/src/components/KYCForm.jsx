@@ -259,13 +259,13 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
       )}
 
       <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
-        <label className="bk-label"><span className="bk-label-en">Husband's / Father's Name<span className="text-destructive">*</span></span><span className="bk-label-hi">पति / पिता का नाम</span></label>
-        <input type="text" value={data.relative_name} onChange={e => onChange("relative_name", e.target.value)} className={`bk-input ${hi("relative_name")}`} placeholder="Auto-filled from Aadhaar back" data-testid={`relative-name-${title.toLowerCase().replace(/\s+/g, "-")}`} />
+        <label className="bk-label"><span className="bk-label-en">Address<span className="text-destructive">*</span></span><span className="bk-label-hi">पता</span></label>
+        <textarea value={data.address} onChange={e => onChange("address", e.target.value)} className={`bk-input h-auto py-3 resize-none ${hi("address")}`} rows={3} placeholder="Auto-filled from Aadhaar back" data-testid={`address-${title.toLowerCase().replace(/\s+/g, "-")}`} />
       </div>
 
       <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
-        <label className="bk-label"><span className="bk-label-en">Address<span className="text-destructive">*</span></span><span className="bk-label-hi">पता</span></label>
-        <textarea value={data.address} onChange={e => onChange("address", e.target.value)} className={`bk-input h-auto py-3 resize-none ${hi("address")}`} rows={3} placeholder="Auto-filled from Aadhaar back" data-testid={`address-${title.toLowerCase().replace(/\s+/g, "-")}`} />
+        <label className="bk-label"><span className="bk-label-en">Husband's / Father's Name<span className="text-destructive">*</span></span><span className="bk-label-hi">पति / पिता का नाम</span></label>
+        <input type="text" value={data.relative_name} onChange={e => onChange("relative_name", e.target.value)} className={`bk-input ${hi("relative_name")}`} placeholder="Auto-filled from Aadhaar back" data-testid={`relative-name-${title.toLowerCase().replace(/\s+/g, "-")}`} />
       </div>
 
       {/* Additional Doc — OPTIONAL */}

@@ -91,6 +91,13 @@ Business Model: Sahukar Illaka model
 
 ## Prioritized Backlog
 
+## Recently Completed (Feb 2026)
+- Husband's/Father's Name field added to all PersonKYC sections (extracted via Aadhaar back OCR)
+- New `/api/ocr/aadhaar-back` endpoint (Gemini 2.5 Flash) for address + relative_name
+- Duplicate Aadhaar validation on KYC creation (digit-based regex, handles spaces/no-spaces)
+- Field order: Aadhaar Front → Name/DOB/Gender/Aadhaar# → Aadhaar Back → Address → Husband/Father Name
+- Loan Tracking Module: LoanList, LoanForm, LoanDetail, payments (CRUD), dashboard loan stats
+
 ### P0 (Next Sprint)
 - [ ] EMI repayment tracking & collection schedules (weekly/monthly)
 - [ ] Loan origination with formal sanction workflow
