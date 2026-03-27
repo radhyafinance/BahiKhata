@@ -158,7 +158,7 @@ export default function ClientDetail() {
     );
   }
 
-  const canUpdateStatus = user?.role === "admin" || user?.role === "branch_manager";
+  const canUpdateStatus = user?.role === "admin" || user?.role === "maalik" || user?.role === "muneem";
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
@@ -183,7 +183,7 @@ export default function ClientDetail() {
           </div>
         </div>
 
-        {user?.role === "field_officer" && (
+        {(user?.role === "sipahi" || user?.role === "muneem") && (
           <button
             onClick={() => navigate(`/kyc/${id}/edit`)}
             className="flex items-center gap-2 bg-muted text-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border transition-colors"
@@ -194,11 +194,11 @@ export default function ClientDetail() {
         )}
       </div>
 
-      {/* KYC Meta */}
       <div className="bk-card">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-          <InfoRow label="Field Officer" value={kyc.field_officer_name} />
-          <InfoRow label="Branch / शाखा" value={kyc.branch} />
+          <InfoRow label="Field Agent / एजेंट" value={`${kyc.field_officer_name || "—"} (${kyc.field_officer_role || "—"})`} />
+          <InfoRow label="Illaka / इलाका" value={kyc.illaka_name} />
+          <InfoRow label="Misal / मिसाल" value={kyc.misal_name} />
           <InfoRow label="Created / बनाया" value={kyc.created_at ? new Date(kyc.created_at).toLocaleDateString("en-IN") : "—"} />
           <InfoRow label="Reviewed By" value={kyc.reviewed_by} />
         </div>

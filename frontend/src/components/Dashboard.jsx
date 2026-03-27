@@ -66,8 +66,9 @@ export default function Dashboard() {
 
   const roleGreeting = {
     admin: "Administrator",
-    branch_manager: "Branch Manager",
-    field_officer: "Field Officer",
+    maalik: "Maalik (Owner)",
+    muneem: "Muneem (Senior Agent)",
+    sipahi: "Sipahi (Field Agent)",
   }[user?.role] || "";
 
   return (
@@ -82,14 +83,16 @@ export default function Dashboard() {
             {roleGreeting} — {new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
           </p>
         </div>
-        <button
-          onClick={() => navigate("/kyc/new")}
-          className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-lg font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all shadow-sm"
-          data-testid="new-kyc-btn"
-        >
-          <UserPlus size={18} />
-          <span>New KYC / नया KYC</span>
-        </button>
+        {(user?.role === "muneem" || user?.role === "sipahi") && (
+          <button
+            onClick={() => navigate("/kyc/new")}
+            className="flex items-center gap-2 bg-primary text-primary-foreground px-6 py-3 rounded-lg font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all shadow-sm"
+            data-testid="new-kyc-btn"
+          >
+            <UserPlus size={18} />
+            <span>New KYC / नया KYC</span>
+          </button>
+        )}
       </div>
 
       {/* Stats */}
@@ -137,7 +140,7 @@ export default function Dashboard() {
       )}
 
       {/* Secondary Stats */}
-      {!loading && user?.role !== "field_officer" && (
+      {!loading && user?.role !== "sipahi" && (
         <div className="grid grid-cols-2 gap-4">
           <StatCard
             icon={XCircle}
@@ -149,9 +152,9 @@ export default function Dashboard() {
           />
           <StatCard
             icon={Users}
-            label="Field Officers"
-            labelHi="फील्ड अधिकारी"
-            value={stats?.field_officers}
+            label="Sipahi Count"
+            labelHi="सिपाही"
+            value={stats?.sipahi_count}
             color="bg-indigo-600"
             testId="stat-officers"
           />
