@@ -405,8 +405,12 @@ async def _kyc_query_for_user(user: dict) -> dict:
     elif user["role"] == "muneem":
         assigned = user.get("assigned_illaka_ids", [])
         query["illaka_id"] = {"$in": assigned}
-    else:  # sipahi
-        query["field_officer_id"] = user["id"]
+    else:  # sipahi — see all KYCs in their assigned Illakas (per product requirements)
+        assigned = user.get("assigned_illaka_ids", [])
+        if not assigned:
+            query["field_officer_id"] = user["id"]  # Fallback: only their own
+        else:
+            query["illaka_id"] = {"$in": assigned}
     return query
 
 @api_router.get("/kycs")
@@ -634,8 +638,11 @@ async def _loan_query_for_user(user: dict) -> dict:
     elif user["role"] == "muneem":
         assigned = user.get("assigned_illaka_ids", [])
         return {"illaka_id": {"$in": assigned}}
-    else:  # sipahi
-        return {"sipahi_id": user["id"]}
+    else:  # sipahi — see loans in their assigned Illakas
+        assigned = user.get("assigned_illaka_ids", [])
+        if not assigned:
+            return {"sipahi_id": user["id"]}  # Fallback: only their own loans
+        return {"illaka_id": {"$in": assigned}}
 
 @api_router.get("/loans")
 async def list_loans(
@@ -746,6 +753,8 @@ async def add_payment(loan_id: str, data: PaymentCreate, request: Request):
     loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    if loan.get("status") == "closed":
+        raise HTTPException(status_code=400, detail="Cannot add payment to a closed loan")
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "loan_id": loan_id,
