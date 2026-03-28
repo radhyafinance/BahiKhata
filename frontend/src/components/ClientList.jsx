@@ -137,8 +137,13 @@ export default function ClientList() {
                   </div>
                   <div>
                     <p className="font-semibold text-foreground text-sm">
-                      {kyc.primary_borrower?.name || "—"}
+                      {(user?.role === "muneem" || user?.role === "sipahi")
+                        ? (kyc.primary_borrower?.name_hindi || kyc.primary_borrower?.name || "—")
+                        : (kyc.primary_borrower?.name || "—")}
                     </p>
+                    {(user?.role === "muneem" || user?.role === "sipahi") && kyc.primary_borrower?.name_hindi && (
+                      <p className="text-xs text-muted-foreground">{kyc.primary_borrower.name}</p>
+                    )}
                     <p className="text-xs text-muted-foreground sm:hidden">
                       {kyc.primary_borrower?.phone} · {kyc.customer_id || kyc.kyc_number}
                     </p>

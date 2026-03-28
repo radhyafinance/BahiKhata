@@ -19,7 +19,8 @@ const STEPS = [
 ];
 
 const emptyPerson = {
-  phone: "", name: "", dob: "", address: "", relative_name: "", gender: "",
+  phone: "", name: "", name_hindi: "", dob: "", address: "",
+  relative_name: "", relative_name_hindi: "", gender: "",
   aadhaar_number: "", aadhaar_front_path: null, aadhaar_back_path: null,
   document_type: "voter_id", document_front_path: null, document_back_path: null,
 };
@@ -125,8 +126,19 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
   const [frontAadhaarNum, setFrontAadhaarNum] = useState("");
   const [wrongSideWarning, setWrongSideWarning] = useState(false);
   const [aadhaarMismatch, setAadhaarMismatch] = useState(false);
+  const [transField, setTransField] = useState(""); // which field is being transliterated
 
   const normalizeAadhaar = (s) => s ? s.replace(/\D/g, "") : "";
+
+  const autoTransliterate = async (text, hindiField) => {
+    if (!text || !text.trim()) return;
+    setTransField(hindiField);
+    try {
+      const res = await axios.post(`${API}/transliterate`, { text: text.trim() }, { withCredentials: true });
+      if (res.data.hindi) onChange(hindiField, res.data.hindi);
+    } catch {}
+    finally { setTransField(""); }
+  };
 
   const handleAadhaarFront = async (path) => {
     onChange("aadhaar_front_path", path);
@@ -154,6 +166,8 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
         onBatchChange(updates);
         setOcrDone(true);
         toast.success("Aadhaar front details auto-filled! / आधार (सामने) भरा गया");
+        // Auto-transliterate name to Hindi
+        if (updates.name) autoTransliterate(updates.name, "name_hindi");
       } else {
         toast.info("OCR could not read all fields — please fill manually");
       }
@@ -187,6 +201,8 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
         onBatchChange(updates);
         setBackOcrDone(true);
         toast.success("Address & Guardian name auto-filled! / पता और अभिभावक का नाम भरा गया");
+        // Auto-transliterate relative name to Hindi
+        if (updates.relative_name) autoTransliterate(updates.relative_name, "relative_name_hindi");
       } else {
         toast.info("Back OCR could not read address — please fill manually");
       }
@@ -245,7 +261,26 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
       <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity duration-200 ${ocrLoading ? "opacity-40 pointer-events-none" : ""}`}>
         <div>
           <label className="bk-label"><span className="bk-label-en">Full Name<span className="text-destructive">*</span></span><span className="bk-label-hi">पूरा नाम</span></label>
-          <input type="text" value={data.name} onChange={e => onChange("name", e.target.value)} className={`bk-input ${hi("name")}`} placeholder="Auto-filled from Aadhaar" data-testid={`name-${title.toLowerCase().replace(/\s+/g, "-")}`} />
+          <input
+            type="text" value={data.name}
+            onChange={e => onChange("name", e.target.value)}
+            onBlur={e => { if (e.target.value && !data.name_hindi) autoTransliterate(e.target.value, "name_hindi"); }}
+            className={`bk-input ${hi("name")}`} placeholder="Auto-filled from Aadhaar"
+            data-testid={`name-${title.toLowerCase().replace(/\s+/g, "-")}`}
+          />
+        </div>
+        <div>
+          <label className="bk-label">
+            <span className="bk-label-en">Name in Hindi {transField === "name_hindi" && <span className="text-xs text-primary animate-pulse ml-1">(transliterating...)</span>}</span>
+            <span className="bk-label-hi">हिंदी नाम</span>
+          </label>
+          <input
+            type="text" value={data.name_hindi || ""}
+            onChange={e => onChange("name_hindi", e.target.value)}
+            className="bk-input border-amber-300 bg-amber-50/40 focus:border-amber-500"
+            placeholder="Auto-filled · हिंदी में नाम"
+            data-testid={`name-hindi-${title.toLowerCase().replace(/\s+/g, "-")}`}
+          />
         </div>
         <div>
           <label className="bk-label"><span className="bk-label-en">Date of Birth<span className="text-destructive">*</span></span><span className="bk-label-hi">जन्म तिथि</span></label>
@@ -307,7 +342,27 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
 
       <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
         <label className="bk-label"><span className="bk-label-en">Husband's / Father's Name<span className="text-destructive">*</span></span><span className="bk-label-hi">पति / पिता का नाम</span></label>
-        <input type="text" value={data.relative_name} onChange={e => onChange("relative_name", e.target.value)} className={`bk-input ${hi("relative_name")}`} placeholder="Auto-filled from Aadhaar back" data-testid={`relative-name-${title.toLowerCase().replace(/\s+/g, "-")}`} />
+        <input
+          type="text" value={data.relative_name}
+          onChange={e => onChange("relative_name", e.target.value)}
+          onBlur={e => { if (e.target.value && !data.relative_name_hindi) autoTransliterate(e.target.value, "relative_name_hindi"); }}
+          className={`bk-input ${hi("relative_name")}`} placeholder="Auto-filled from Aadhaar back"
+          data-testid={`relative-name-${title.toLowerCase().replace(/\s+/g, "-")}`}
+        />
+      </div>
+
+      <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
+        <label className="bk-label">
+          <span className="bk-label-en">Husband's / Father's Name in Hindi {transField === "relative_name_hindi" && <span className="text-xs text-primary animate-pulse ml-1">(transliterating...)</span>}</span>
+          <span className="bk-label-hi">पति / पिता का हिंदी नाम</span>
+        </label>
+        <input
+          type="text" value={data.relative_name_hindi || ""}
+          onChange={e => onChange("relative_name_hindi", e.target.value)}
+          className="bk-input border-amber-300 bg-amber-50/40 focus:border-amber-500"
+          placeholder="Auto-filled · हिंदी में पति/पिता का नाम"
+          data-testid={`relative-name-hindi-${title.toLowerCase().replace(/\s+/g, "-")}`}
+        />
       </div>
 
       {/* Additional Doc — OPTIONAL */}

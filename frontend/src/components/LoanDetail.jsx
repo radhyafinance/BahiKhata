@@ -147,7 +147,14 @@ export default function LoanDetail() {
             <ArrowLeft size={20} />
           </button>
           <div>
-            <h1 className="text-xl sm:text-2xl font-bold font-['Outfit']">{loan.client_name}</h1>
+            <h1 className="text-xl sm:text-2xl font-bold font-['Outfit']">
+              {(user?.role === "muneem" || user?.role === "sipahi")
+                ? (loan.client_name_hindi || loan.client_name)
+                : loan.client_name}
+            </h1>
+            {(user?.role === "muneem" || user?.role === "sipahi") && loan.client_name_hindi && (
+              <p className="text-sm text-muted-foreground">{loan.client_name}</p>
+            )}
             <div className="flex items-center gap-2 mt-1">
               <span className="font-mono text-sm text-muted-foreground">{loan.loan_number || "—"}</span>
               <span className="text-sm text-muted-foreground">{loan.illaka_name} / {loan.misal_name}</span>

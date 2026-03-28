@@ -138,7 +138,14 @@ export default function LoanList() {
                       <span className="text-primary font-bold text-sm">{loan.client_name?.charAt(0)?.toUpperCase() || "?"}</span>
                     </div>
                     <div>
-                      <p className="font-semibold text-foreground text-sm">{loan.client_name}</p>
+                      <p className="font-semibold text-foreground text-sm">
+                        {(user?.role === "muneem" || user?.role === "sipahi")
+                          ? (loan.client_name_hindi || loan.client_name)
+                          : loan.client_name}
+                      </p>
+                      {(user?.role === "muneem" || user?.role === "sipahi") && loan.client_name_hindi && (
+                        <p className="text-xs text-muted-foreground">{loan.client_name}</p>
+                      )}
                       <p className="text-xs text-muted-foreground font-mono">{loan.loan_number || loan.id?.slice(-6)}</p>
                     </div>
                   </div>

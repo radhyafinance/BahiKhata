@@ -1,0 +1,80 @@
+{
+  "summary": "Comprehensive testing of Hindi transliteration feature across backend and frontend. All 13 backend tests pass. All frontend UI features verified: KYC form Hindi fields (amber-tinted), Collection Sheet Hindi names, ClientDetail Hindi name rows, LoanList/LoanDetail Hindi names for sipahi role.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/loans, GET /api/loans/{id}",
+        "issue": "Old loans (created before Hindi name feature) don't include client_name_hindi field in API response at all (field is absent, not empty string). New loans correctly include it. Frontend handles gracefully with 'loan.client_name_hindi || loan.client_name' fallback.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend_tests": {
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "file": "/app/backend/tests/test_hindi_transliteration.py"
+    },
+    "frontend_checks": {
+      "kyc_form_step2_name_hindi_field_visible": "PASS - data-testid=name-hindi-primary-borrower visible in Step 2",
+      "kyc_form_name_hindi_amber_styling": "PASS - class contains 'amber-300' and 'amber-50' styling",
+      "kyc_form_name_hindi_accepts_devanagari_input": "PASS - filled 'राम कुमार' successfully",
+      "kyc_form_relative_name_hindi_field_visible": "PASS - data-testid=relative-name-hindi-primary-borrower visible in Step 2",
+      "kyc_form_relative_name_hindi_amber_styling": "PASS - has amber styling",
+      "kyc_form_relative_name_hindi_accepts_input": "PASS - filled 'श्याम लाल' successfully",
+      "collection_sheet_hindi_primary_april2026": "PASS - 5 Hindi-named rows shown: सुनीता देवी, रमेश यादव, अजय सिंह as primary bold text",
+      "collection_sheet_english_as_secondary": "PASS - TEST_AutoLoanHindi_691560 shown as secondary text under Hindi name",
+      "collection_sheet_sodo_relative_hindi": "PASS - 's/o d/o w/o मोहन लाल' shown for relative name",
+      "client_list_hindi_name_primary_for_sipahi": "PASS - राम कुमार shown as primary name in client list row",
+      "client_detail_hindi_naam_label": "PASS - 'हिंदी नाम: राम कुमार' row visible",
+      "client_detail_pati_pita_hindi_label": "PASS - 'पति/पिता का हिंदी नाम: श्याम लाल' row visible",
+      "loan_list_hindi_primary_for_sipahi": "PASS - सुनीता देवी, रमेश यादव, अजय सिंह shown as primary text in loan list",
+      "loan_detail_hindi_header_for_sipahi": "PASS - 'सुनीता देवी' shown as h1 in loan detail with 'TEST_AutoLoanHindi_691560' as subtitle"
+    }
+  },
+  "backend_features_verified": [
+    "POST /api/transliterate: 'Ram Kumar' -> Devanagari output with correct script range U+0900-U+097F",
+    "POST /api/transliterate: empty string input returns empty hindi",
+    "POST /api/transliterate: whitespace-only returns empty hindi",
+    "POST /api/transliterate: requires authentication (returns 401/403 for unauthenticated)",
+    "POST /api/kycs with name_hindi='राम कुमार' persists - GET returns same value",
+    "POST /api/kycs with relative_name_hindi='श्याम लाल' persists correctly",
+    "KYC without name_hindi still succeeds (optional field)",
+    "KYC with disbursement_amount creates auto-loan with client_name_hindi from name_hindi",
+    "GET /api/collections/sheet: rows include client_name_hindi and relative_name_hindi keys",
+    "GET /api/collections/sheet?month=2026-04: Hindi-named loans show correct client_name_hindi and relative_name_hindi",
+    "GET /api/loans: newly created loans include client_name_hindi field",
+    "GET /api/loans/{id}: loan detail includes client_name_hindi"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_hindi_transliteration.py",
+    "/app/test_reports/pytest/hindi_transliteration_results.xml"
+  ],
+  "action_items": [
+    "Optional: For backward compatibility, update _doc() function or loan serializer to include 'client_name_hindi': '' as a default for old loans that don't have this field in MongoDB"
+  ],
+  "critical_code_review_comments": [
+    "Old loans in MongoDB don't have client_name_hindi field - API response is inconsistent (field absent for old loans, present for new loans). Frontend has fallback so UI works, but API consumers may need to handle missing field. Fix: add .get('client_name_hindi', '') default in loan serialization.",
+    "autoTransliterate in KYCForm correctly calls POST /api/transliterate on blur of name field when name_hindi is empty - good UX",
+    "Collection sheet uses kyc_map to fetch relative_name_hindi from KYC collection separately, and client_name_hindi from loan collection - correctly handles both old and new data",
+    "KYCForm PersonSection correctly generates data-testid as 'name-hindi-primary-borrower' using title.toLowerCase().replace() - maintainable selector pattern"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_hindi_transliteration.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13)",
+    "frontend": "100% (14/14 checks)"
+  },
+  "seed_data_creation": "Created multiple Hindi-named KYCs in Delhi illaka during backend tests: TEST_Hindi_691768, TEST_AutoLoanHindi_691768, TEST_Sheet_691768, TEST_LoanList_691768 with name_hindi fields set.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Hindi transliteration feature fully tested and working. Backend test file at /app/backend/tests/test_hindi_transliteration.py (13 tests, 100% pass). Frontend verified: KYC form Step 2 has amber-tinted Hindi name fields, Collection Sheet shows Hindi primary names for April 2026, ClientDetail shows hindi_naam and pati_pita_hindi_naam rows, LoanDetail shows Hindi name as primary header for sipahi. Minor issue: old loans in loan API response don't include client_name_hindi key at all (field absent, not empty). Frontend handles with || fallback so no UI breakage. Delhi illaka now has many test KYCs with Hindi names (DE0011 through DE0020). Collection sheet for March 2026 shows only TEST_Illaka_Central loans (old); for April 2026 shows all Delhi Hindi-named loans."
+}

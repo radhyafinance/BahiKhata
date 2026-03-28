@@ -54,10 +54,12 @@ const PersonCard = ({ title, titleHi, data, icon: Icon }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-3">
           <InfoRow label="Full Name / नाम" value={data.name} />
+          {data.name_hindi && <InfoRow label="हिंदी नाम" value={data.name_hindi} />}
           <InfoRow label="Phone / फ़ोन" value={data.phone} />
           <InfoRow label="Date of Birth / जन्म तिथि" value={data.dob} />
           <InfoRow label="Gender / लिंग" value={data.gender} />
           <InfoRow label="Husband's / Father's Name / पति-पिता" value={data.relative_name} />
+          {data.relative_name_hindi && <InfoRow label="पति/पिता का हिंदी नाम" value={data.relative_name_hindi} />}
           <InfoRow label="Aadhaar Number / आधार" value={data.aadhaar_number} />
           <InfoRow label="Address / पता" value={data.address} multiLine />
         </div>

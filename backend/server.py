@@ -133,9 +133,11 @@ class MisalCreate(BaseModel):
 
 class PersonKYCData(BaseModel):
     name: Optional[str] = None
+    name_hindi: Optional[str] = None           # Transliterated Hindi name
     dob: Optional[str] = None
     address: Optional[str] = None
-    relative_name: Optional[str] = None  # Husband's / Father's name (from Aadhaar back)
+    relative_name: Optional[str] = None        # Husband's / Father's name (from Aadhaar back)
+    relative_name_hindi: Optional[str] = None  # Hindi transliteration of relative's name
     gender: Optional[str] = None
     phone: Optional[str] = None
     aadhaar_number: Optional[str] = None
@@ -567,7 +569,9 @@ async def create_kyc(data: KYCCreate, request: Request):
             "customer_id": customer_id,
             "loan_number": loan_number,
             "relative_name": data.primary_borrower.relative_name or "",
+            "relative_name_hindi": data.primary_borrower.relative_name_hindi or "",
             "client_name": data.primary_borrower.name or "",
+            "client_name_hindi": data.primary_borrower.name_hindi or "",
             "client_phone": data.primary_borrower.phone,
             "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
             "misal_id": data.misal_id, "misal_name": data.misal_name,
@@ -780,6 +784,34 @@ Use null if a field is not clearly readable.""",
         except Exception:
             pass
 
+# ─── Transliterate ────────────────────────────────────────────────────────────
+class TransliterateRequest(BaseModel):
+    text: str
+
+@api_router.post("/transliterate")
+async def transliterate_to_hindi(data: TransliterateRequest, request: Request):
+    """Transliterate an English Indian name to Hindi (Devanagari script) using Gemini."""
+    await get_current_user(request)
+    if not data.text or not data.text.strip():
+        return {"hindi": ""}
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=f"trans-{uuid.uuid4()}",
+            system_message="You are an expert transliterator for Indian names. Your only task is to convert English text to Hindi Devanagari script phonetically."
+        ).with_model("gemini", "gemini-2.5-flash")
+        msg = UserMessage(
+            text=f"""Transliterate the following Indian person name from English into Hindi (Devanagari script).
+Return ONLY the Devanagari transliteration — nothing else, no explanation, no punctuation.
+Name: {data.text.strip()}"""
+        )
+        result = await chat.send_message(msg)
+        return {"hindi": result.strip()}
+    except Exception as e:
+        logger.error(f"Transliteration error: {e}")
+        return {"hindi": ""}
+
+
 # ─── Loans ────────────────────────────────────────────────────────────────────
 class LoanCreate(BaseModel):
     kyc_id: str
@@ -859,15 +891,20 @@ async def create_loan(data: LoanCreate, request: Request):
     # Lookup customer_id and relative_name from KYC
     customer_id = "—"
     relative_name = ""
+    relative_name_hindi = ""
+    client_name_hindi = ""
     if data.kyc_id:
         try:
             kyc = await db.kycs.find_one(
                 {"_id": ObjectId(data.kyc_id)},
-                {"customer_id": 1, "primary_borrower.relative_name": 1}
+                {"customer_id": 1, "primary_borrower.relative_name": 1, "primary_borrower.relative_name_hindi": 1, "primary_borrower.name_hindi": 1}
             )
             if kyc:
                 customer_id = kyc.get("customer_id") or "—"
-                relative_name = (kyc.get("primary_borrower") or {}).get("relative_name") or ""
+                pb = kyc.get("primary_borrower") or {}
+                relative_name = pb.get("relative_name") or ""
+                relative_name_hindi = pb.get("relative_name_hindi") or ""
+                client_name_hindi = pb.get("name_hindi") or ""
         except Exception:
             pass
 
@@ -878,7 +915,9 @@ async def create_loan(data: LoanCreate, request: Request):
         "customer_id": customer_id,
         "loan_number": loan_number,
         "relative_name": relative_name,
+        "relative_name_hindi": relative_name_hindi,
         "client_name": data.client_name,
+        "client_name_hindi": client_name_hindi,
         "client_phone": data.client_phone,
         "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
         "misal_id": data.misal_id, "misal_name": data.misal_name,
@@ -1060,7 +1099,7 @@ async def get_collection_sheet(
     if valid_oids:
         raw_kycs = await db.kycs.find(
             {"_id": {"$in": valid_oids}},
-            {"_id": 1, "primary_borrower.relative_name": 1, "customer_id": 1}
+            {"_id": 1, "primary_borrower.relative_name": 1, "primary_borrower.relative_name_hindi": 1, "customer_id": 1}
         ).to_list(5000)
         kyc_map = {str(k["_id"]): k for k in raw_kycs}
 
@@ -1083,6 +1122,7 @@ async def get_collection_sheet(
 
         kyc = kyc_map.get(kyc_id, {})
         relative_name = (kyc.get("primary_borrower") or {}).get("relative_name") or ""
+        relative_name_hindi = (kyc.get("primary_borrower") or {}).get("relative_name_hindi") or ""
         customer_id = loan.get("customer_id") or kyc.get("customer_id") or "—"
 
         total_repayable = loan.get("total_repayable") or ((loan.get("emi_amount") or 0) * 12)
@@ -1093,7 +1133,9 @@ async def get_collection_sheet(
             "loan_number": loan.get("loan_number") or "—",
             "customer_id": customer_id,
             "client_name": loan.get("client_name") or "",
+            "client_name_hindi": loan.get("client_name_hindi") or "",
             "relative_name": relative_name,
+            "relative_name_hindi": relative_name_hindi,
             "emi_amount": emi.get("amount", 0),
             "emi_month": emi.get("due_month", month),
             "emi_status": emi.get("status", "pending"),

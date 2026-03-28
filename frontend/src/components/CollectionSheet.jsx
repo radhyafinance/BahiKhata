@@ -167,9 +167,16 @@ function MisalSection({ misal, month, onCollect }) {
 
                 {/* Name + Husband */}
                 <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground text-sm truncate">{row.client_name || "—"}</p>
-                  <p className="text-xs text-muted-foreground truncate">
-                    {row.relative_name ? `s/o d/o w/o ${row.relative_name}` : "—"}
+                  <p className="font-semibold text-foreground text-sm truncate">
+                    {row.client_name_hindi || row.client_name || "—"}
+                  </p>
+                  {row.client_name_hindi && (
+                    <p className="text-xs text-muted-foreground truncate">{row.client_name}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground truncate mt-0.5">
+                    {(row.relative_name_hindi || row.relative_name)
+                      ? `s/o d/o w/o ${row.relative_name_hindi || row.relative_name}`
+                      : "—"}
                   </p>
                 </div>
 
