@@ -1224,7 +1224,7 @@ app.include_router(api_router)
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:3000", "https://bahi-khata-loan.preview.emergentagent.com"],
+    allow_origins=[FRONTEND_URL, "http://localhost:3000", "https://emi-tracker-22.preview.emergentagent.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
