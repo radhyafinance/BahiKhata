@@ -1,138 +1,149 @@
-# Bahi Khata - NBFC-MFI Platform PRD
+# Bahi Khata — NBFC-MFI Platform PRD
 
-## Problem Statement
-Build a complete software solution to run an NBFC-MFI / Sahukar (informal lending) operation.
-App Name: Bahi Khata
-Language: English + Hindi (bilingual)
-Business Model: Sahukar Illaka model
+## Original Problem Statement
+Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning to a "Sahukar Illaka" model.
 
-## Architecture
-- **Frontend**: React + Tailwind CSS + shadcn UI (port 3000)
-- **Backend**: FastAPI + MongoDB (port 8001)
-- **Storage**: Emergent Object Storage (cloud)
-- **OCR**: Google Gemini 2.5 Flash (via Emergent LLM key)
-- **Auth**: JWT httpOnly cookies
+## User Personas & Roles Hierarchy
+- **Admin** — Super admin; full system access
+- **Maalik** (Owner) — Owns Illakas (geographic areas); manages Muneems and Sipahis
+- **Muneem** (Senior field agent) — Assigned to Illakas; supervises collections
+- **Sipahi** (Junior field agent) — Assigned to Illakas; does KYC and daily collections
 
-## User Personas & Roles
-1. **Admin** - Full access, user management, KYC + loan status updates
-2. **Maalik (Owner)** - Owns Illakas, manages Muneem/Sipahi under them
-3. **Muneem (Senior Agent)** - Assigned to Illakas, creates KYCs and loans, can approve/reject
-4. **Sipahi (Field Agent)** - Assigned to Illakas, creates KYCs and loans for clients in their Illakas
+## Core Requirements
 
-## Geography
-- Maalik owns Illakas (areas/territories)
-- Muneems are assigned to Illakas
-- Sipahis are assigned to Illakas and see all clients/loans in those Illakas
+### Geography
+- Maaliks own Illakas (areas). Muneems & Sipahis are assigned to Illakas.
+- Each Illaka has multiple Misals (villages).
 
-## Core Requirements (Static)
-### KYC
-- KYC with Aadhaar (front/back), secondary document (Voter ID/PAN/Ration Card)
-- OCR extraction from Aadhaar: Name, DOB, Address, Aadhaar Number, Gender
-- Phone number capture per borrower
-- Co-borrower full KYC (optional)
-- Guarantor full KYC (optional)
-- Live photo capture via webcam + GPS location (both mandatory)
-- Cloud document storage with image compression
-- Role-based access control (RBAC)
-- Select Illaka -> Misal before KYC
+### KYC Flow (Multi-step Form)
+1. Select Illaka → Misal
+2. Primary Borrower details (Aadhaar OCR front + back, Hindi transliteration)
+3. Co-borrower (optional)
+4. Guarantor (optional)
+5. Live Photo (back camera, auto-GPS capture)
+6. Review + Disbursement Amount → Submit
 
-### Loan Tracking
-- Create loan for KYC-verified client
-- Track: principal amount, interest rate (% per month), loan date, due date, status
-- Loan statuses: active, overdue, closed
-- Payment recording with date and amount
-- Outstanding balance auto-calculated (principal - total_paid)
-- Monthly interest display
-- Payment history per loan
+- Aadhaar front OCR: Name, DOB, Gender, Aadhaar number
+- Aadhaar back OCR: Relative name (Husband/Father), Address, Aadhaar number
+- Hindi transliteration via Gemini (English → Devanagari for all names)
+- Unique Aadhaar + unique mobile validation
+- GPS restricted to Admin/Maalik views
+
+### Loan Module
+- Fixed 1-year tenure, 12 EMIs, flat 17% per annum
+- Auto-creates loan on KYC submission (with disbursement_amount)
+- Customer ID: `{IllakaPrefix}{4-digit-seq}` e.g. `DE0001`
+- Loan ID: `{customer_id}-L{n}` e.g. `DE0001-L1`
+
+### Tracking & Collections
+- Collection Sheet (Vasuli): Grouped by Illaka → Misal → Rows
+- Per-client Loan Passbook on ClientDetail page (Passbook tab)
+- EMI Notes on unpaid EMIs (in LoanDetail, ClientDetail Passbook, CollectionSheet)
+- Field agents can record payments, add notes to unpaid EMIs
+
+## Code Architecture
+
+```
+/app/
+├── backend/
+│   ├── server.py          # Thin app setup, CORS, startup/shutdown, include routers
+│   ├── core/
+│   │   ├── database.py    # MongoDB connection (client, db)
+│   │   ├── storage.py     # Object storage helpers + EMERGENT_KEY + APP_NAME
+│   │   └── auth.py        # JWT, hash_password, get_current_user, _user_from_doc
+│   ├── models.py          # All Pydantic models
+│   ├── helpers.py         # _doc, generate_customer_id, generate_loan_number, EMI helpers, _kyc_query_for_user, _loan_query_for_user
+│   ├── routes/
+│   │   ├── auth.py        # /api/auth/login, logout, me
+│   │   ├── users.py       # /api/users CRUD
+│   │   ├── illakas.py     # /api/illakas, /api/misals CRUD
+│   │   ├── kycs.py        # /api/kycs CRUD + customer ID + auto-loan
+│   │   ├── loans.py       # /api/loans CRUD + payments + PATCH emi-note
+│   │   ├── ocr.py         # /api/upload, /api/files, /api/ocr/aadhaar*, /api/transliterate
+│   │   ├── collections.py # /api/collections/sheet
+│   │   └── dashboard.py   # /api/dashboard/stats
+│   └── tests/
+│       ├── test_bahikhata.py
+│       ├── test_loans_emi.py
+│       ├── test_new_features.py
+│       ├── test_loan_passbook.py
+│       └── test_refactoring.py
+├── frontend/
+│   └── src/
+│       ├── App.js
+│       └── components/
+│           ├── Layout.jsx
+│           ├── Login.jsx
+│           ├── Dashboard.jsx
+│           ├── KYCForm.jsx          # Slim orchestrator (imports from kyc/)
+│           ├── kyc/
+│           │   ├── utils.js         # API, STEPS, emptyPerson, compressImage
+│           │   ├── DocUpload.jsx    # Photo upload with camera/gallery
+│           │   ├── PersonSection.jsx # Person KYC fields + OCR + transliteration
+│           │   ├── LivePhotoGPS.jsx  # Camera capture + GPS
+│           │   └── ReviewSection.jsx # Disbursement + review summary
+│           ├── ClientList.jsx
+│           ├── ClientDetail.jsx     # KYC tab + Passbook tab
+│           ├── LoanList.jsx
+│           ├── LoanDetail.jsx       # EMI grid + Note modal + Collect modal
+│           └── CollectionSheet.jsx  # Vasuli view grouped by Illaka → Misal
+```
+
+## DB Schema
+- **users**: {email, password_hash, role, name, assigned_illaka_ids, maalik_id, is_active}
+- **illakas**: {name, maalik_id, description}
+- **misals**: {name, illaka_id, description}
+- **kycs**: {customer_id, kyc_number, illaka_id, misal_id, primary_borrower {name, name_hindi, relative_name, relative_name_hindi, aadhaar_number, dob, gender, phone, address, aadhaar_front_path, aadhaar_back_path}, co_borrower, guarantor, live_photo_path, gps_location, field_officer_id, status, loan_id, disbursement_amount}
+- **loans**: {loan_number, customer_id, kyc_id, principal_amount, interest_rate, emi_amount, total_repayable, loan_date, status, emi_schedule [{month, due_month, amount, status, paid_amount, paid_date, note}], total_paid, illaka_id, misal_id}
+- **payments**: {loan_id, emi_month, amount, payment_date, collected_by_id, collected_by_name, notes}
+
+## 3rd Party Integrations
+- **Emergent Object Storage** — profile photos, Aadhaar scans
+- **Google Gemini (via Emergent LLM Key)** — Aadhaar OCR + Hindi transliteration (gemini-2.5-flash)
+
+## Key API Endpoints
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | /api/auth/login | Login |
+| GET | /api/auth/me | Current user |
+| GET | /api/illakas | List illakas |
+| GET | /api/misals?illaka_id= | List misals |
+| POST | /api/kycs | Create KYC + auto-loan |
+| GET | /api/kycs | List KYCs with filters |
+| GET | /api/loans | List loans |
+| GET | /api/loans/{id} | Get loan with EMI schedule |
+| POST | /api/loans/{id}/payments | Record EMI payment |
+| DELETE | /api/loans/{id}/payments/{emi_month} | Undo payment |
+| PATCH | /api/loans/{id}/emi-note | Add/edit EMI note |
+| GET | /api/collections/sheet | Vasuli collection sheet |
+| GET | /api/dashboard/stats | Dashboard statistics |
+| POST | /api/upload | Upload file to object storage |
+| GET | /api/files/{path} | Serve stored file |
+| POST | /api/ocr/aadhaar | OCR Aadhaar front |
+| POST | /api/ocr/aadhaar-back | OCR Aadhaar back |
+| POST | /api/transliterate | Transliterate to Hindi |
 
 ## What's Been Implemented
+See CHANGELOG.md for full history.
 
-### Backend (server.py)
-- JWT authentication with httpOnly cookies
-- Admin auto-seeding on startup
-- Object storage integration (Emergent)
-- Gemini 2.5 Flash OCR for Aadhaar
-- CRUD: Users (maalik/muneem/sipahi), Illakas, Misals, KYCs, Loans, Payments
-- File upload & serve endpoints
-- Dashboard stats endpoint (KYC + loan counts)
-- MongoDB indexes
-- Role-based query filtering for all collections
+## Prioritized Backlog (P0/P1/P2)
 
-### Frontend
-- Login page (split-screen, branded, bilingual)
-- Responsive sidebar layout (desktop + mobile)
-- Dashboard with stats (KYC + loan counts), recent KYCs
-- 6-step KYC form:
-  1. Illaka & Misal selection
-  2. Primary Borrower (Aadhaar + OCR + additional doc)
-  3. Co-borrower KYC (optional toggle)
-  4. Guarantor KYC (optional toggle)
-  5. Live Photo (webcam/gallery) + GPS location (mandatory)
-  6. Review + Submit
-- Client List with search & status filter
-- Client Detail with full document view + Approve/Reject/Pending
-- Illaka Management (Admin/Maalik): CRUD Illakas + nested Misals
-- User Management (Admin/Maalik): Create/Edit/Deactivate Muneem/Sipahi with Illaka assignment
-- Loan List with search and status filter
-- Loan Form: Client search (KYC lookup), principal/interest/dates
-- Loan Detail: Summary cards, payment history, status management, Add Payment modal
+### P0 (Critical) — All Done ✓
+- [x] Role-based auth (Admin/Maalik/Muneem/Sipahi)
+- [x] KYC multi-step form with Aadhaar OCR
+- [x] English → Hindi transliteration (Gemini)
+- [x] Auto loan creation on KYC submit (17% flat, 12 EMIs)
+- [x] Customer ID (`DE0001`) and Loan ID (`DE0001-L1`)
+- [x] Collection Sheet (Vasuli) grouped by Illaka → Misal
+- [x] Loan Passbook tab on ClientDetail
+- [x] EMI Notes feature across all views
 
-## Test Credentials
-- Admin: admin@bahikhata.com / Admin@123
-- Test Sipahi: TEST_sipahi_loans@bahikhata.com / Test@1234
+### P1 (High) — All Done ✓
+- [x] Code Refactoring (backend server.py → core/ + routes/, frontend KYCForm.jsx → kyc/)
+- [x] Unique Aadhaar + mobile validation
+- [x] Live photo with back camera + auto-GPS
 
-## DB Collections
-- users: {email, password_hash, role, name, assigned_illaka_ids, maalik_id, is_active}
-- illakas: {name, description, maalik_id}
-- misals: {name, illaka_id, description}
-- kycs: {kyc_number, status, illaka_id, illaka_name, misal_id, misal_name, primary_borrower, co_borrower, guarantor, live_photo_path, gps_location, field_officer_id, field_officer_name}
-- loans: {kyc_id, client_name, client_phone, illaka_id, illaka_name, misal_id, misal_name, principal_amount, interest_rate, loan_date, due_date, status, sipahi_id, sipahi_name, total_paid, notes}
-- payments: {loan_id, amount, payment_date, collected_by_id, collected_by_name, notes}
-
-## Prioritized Backlog
-
-## Recently Completed (Mar 2026 — Sprint 4)
-- Hindi name fields added: `name_hindi` + `relative_name_hindi` on all persons in KYC
-- `POST /api/transliterate` — Gemini LLM transliterates English Indian names to Devanagari (e.g. "Ram Kumar" → "राम कुमार")
-- KYCForm: auto-transliterates on OCR fill and on field blur; editable amber-tinted Hindi fields
-- Muneem/Sipahi see Hindi names as primary in Collection Sheet, Client List, Loan List, Loan Detail
-- ClientDetail shows both English + Hindi name rows
-
-## Recently Completed (Mar 2026 — Sprint 3)
-- Customer ID generation: 2 uppercase letters from Illaka name + 4-digit sequential (e.g., `DE0001`)
-- Loan ID generation: `{customer_id}-L{n}` sequential per customer (e.g., `DE0001-L1`, `DE0001-L2`)
-- Mobile number uniqueness: no 2 KYCs can share the same phone number (400 on duplicate)
-- Collection Sheet (Vasuli/वसूली): new sidebar tab at `/collections`, EMIs due/overdue grouped by Illaka → Misal → client rows, month picker, inline Collect button, summary progress bar
-
-## Recently Completed (Feb 2026 — Sprint 2)
-- EMI module: fixed 17% flat p.a., EMI = round(P×1.17/12/100)×100, 12-month schedule generated at creation
-- Overdue detection: lazy compute on GET /loans/{id} — marks pending EMIs as overdue if past calendar month end
-- Collect EMI endpoint: POST /loans/{id}/payments with emi_month. Undo: DELETE /loans/{id}/payments/{emi_month}
-- Loan auto-created on KYC submit when disbursement_amount provided. KYC status now 'active' (no approval)
-- Aadhaar wrong-side detection (if back uploaded in front slot → error), Aadhaar number cross-validation (front vs back)
-- Back camera used for live photo. GPS auto-captured on photo click (no separate GPS button). GPS visible only to Admin/Maalik
-- Removed approval buttons from ClientDetail. Added 'View Loan' link when loan_id exists
-
-## Recently Completed (Feb 2026 — Sprint 1)
-- Husband's/Father's Name field added; extracted via Aadhaar back OCR (/api/ocr/aadhaar-back)
-- Duplicate Aadhaar validation on KYC creation (digit-only regex handles spaces)
-- Loan Tracking Module: LoanList, LoanForm, LoanDetail, payments, dashboard loan stats
-
-### P0 (Next Sprint)
-- [x] Loan Passbook Feature: two tabs on ClientDetail (KYC + Passbook), full 12-EMI schedule, collect/undo inline
-- [ ] Dashboard: show collection efficiency for current month (% EMIs collected vs due)
-
-### P1
-- [ ] Individual loan ledger / passbook view per client
-- [ ] Repayment schedule generation (installment calendar)
-- [ ] Overdue auto-flagging (cron job / scheduled task)
-- [ ] SMS notifications (Twilio) for payment reminders
-- [ ] Disbursement tracking
-
-### P2
-- [ ] Reports & analytics (repayment rate, collection efficiency, delinquency)
-- [ ] Branch/Illaka-wise performance dashboard
-- [ ] Document expiry alerts (Aadhaar/PAN)
-- [ ] Bulk KYC import from CSV
-- [ ] Audit trail / activity logs
-- [ ] server.py refactor: split into routes/ (auth.py, kycs.py, loans.py, users.py, illakas.py)
+### P2 (Backlog)
+- [ ] Days Overdue badge on Collection Sheet EMI rows
+- [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
+- [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
