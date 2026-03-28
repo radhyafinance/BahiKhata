@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
@@ -25,6 +25,8 @@ export default function KYCForm() {
   const [selectedMisal, setSelectedMisal] = useState(null);
   const [includeCoBorrower, setIncludeCoBorrower] = useState(false);
   const [includeGuarantor, setIncludeGuarantor] = useState(false);
+  // true only when the user explicitly changes the illaka via the dropdown
+  const illakaChangedByUser = useRef(false);
 
   const [formData, setFormData] = useState({
     primaryBorrower: { ...emptyPerson },
@@ -43,7 +45,15 @@ export default function KYCForm() {
   useEffect(() => {
     if (!selectedIllaka) { setMisals([]); setSelectedMisal(null); return; }
     axios.get(`${API}/misals?illaka_id=${selectedIllaka.id}`, { withCredentials: true })
-      .then(r => { setMisals(r.data); setSelectedMisal(null); }).catch(() => {});
+      .then(r => {
+        setMisals(r.data);
+        // Only reset misal when the user explicitly changed the illaka;
+        // on initial edit-mode load, selectedMisal is already set directly.
+        if (illakaChangedByUser.current) {
+          setSelectedMisal(null);
+          illakaChangedByUser.current = false;
+        }
+      }).catch(() => {});
   }, [selectedIllaka]);
 
   useEffect(() => {
@@ -98,10 +108,12 @@ export default function KYCForm() {
       return true;
     }
     if (step === 6) {
-      const amt = parseFloat(formData.disbursementAmount);
-      if (!formData.disbursementAmount || isNaN(amt) || amt <= 0) {
-        toast.error("Enter disbursement amount / वितरण राशि दर्ज करें");
-        return false;
+      if (!id) {
+        const amt = parseFloat(formData.disbursementAmount);
+        if (!formData.disbursementAmount || isNaN(amt) || amt <= 0) {
+          toast.error("Enter disbursement amount / वितरण राशि दर्ज करें");
+          return false;
+        }
       }
       return true;
     }
@@ -123,7 +135,7 @@ export default function KYCForm() {
         live_photo_path: formData.livePhotoPath,
         gps_location: formData.gpsLocation,
         notes: formData.notes,
-        disbursement_amount: parseFloat(formData.disbursementAmount) || null,
+        disbursement_amount: id ? null : (parseFloat(formData.disbursementAmount) || null),
       };
       const res = id
         ? await axios.put(`${API}/kycs/${id}`, payload, { withCredentials: true })
@@ -183,7 +195,7 @@ export default function KYCForm() {
                   No Illakas assigned to you yet. Contact your Maalik or Admin.
                 </div>
               ) : (
-                <select value={selectedIllaka?.id || ""} onChange={e => { const ill = illakas.find(i => i.id === e.target.value); setSelectedIllaka(ill || null); }} className="bk-input" data-testid="illaka-select">
+                <select value={selectedIllaka?.id || ""} onChange={e => { illakaChangedByUser.current = true; const ill = illakas.find(i => i.id === e.target.value); setSelectedIllaka(ill || null); }} className="bk-input" data-testid="illaka-select">
                   <option value="">— Select Illaka —</option>
                   {illakas.map(ill => <option key={ill.id} value={ill.id}>{ill.name}</option>)}
                 </select>
@@ -298,6 +310,7 @@ export default function KYCForm() {
             misal={selectedMisal}
             includeCoBorrower={includeCoBorrower}
             includeGuarantor={includeGuarantor}
+            isEdit={!!id}
             disbursementAmount={formData.disbursementAmount}
             setDisbursementAmount={v => setFormData(p => ({ ...p, disbursementAmount: v }))}
           />
