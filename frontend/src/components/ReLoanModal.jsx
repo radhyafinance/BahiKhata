@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { X, Loader2, RefreshCw, ChevronDown, ChevronUp } from "lucide-react";
+import { PersonSection } from "./kyc/PersonSection";
+import { emptyPerson } from "./kyc/utils";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -12,15 +14,20 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
   const today = new Date().toISOString().split("T")[0];
   const [kycLoading, setKycLoading] = useState(!!kycId);
   const [submitting, setSubmitting] = useState(false);
+
+  // Core fields
   const [newAmount, setNewAmount] = useState("");
   const [loanDate, setLoanDate] = useState(today);
   const [netOff, setNetOff] = useState(false);
   const [phone, setPhone] = useState(currentLoan?.client_phone || "");
-  const [showCoBorrower, setShowCoBorrower] = useState(false);
-  const [coBorrower, setCoBorrower] = useState({ name: "", phone: "" });
-  const [showGuarantor, setShowGuarantor] = useState(false);
-  const [guarantor, setGuarantor] = useState({ name: "", phone: "" });
 
+  // Co-borrower / guarantor — full KYC person objects
+  const [showCoBorrower, setShowCoBorrower] = useState(false);
+  const [coBorrowerData, setCoBorrowerData] = useState({ ...emptyPerson });
+  const [showGuarantor, setShowGuarantor] = useState(false);
+  const [guarantorData, setGuarantorData] = useState({ ...emptyPerson });
+
+  // Derived
   const outstanding = Math.max(
     0,
     (currentLoan?.total_repayable || (currentLoan?.emi_amount || 0) * 12) - (currentLoan?.total_paid || 0)
@@ -29,24 +36,37 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
   const newAmountNum = parseFloat(newAmount) || 0;
   const netDisbursement = netOff ? newAmountNum - outstanding : newAmountNum;
 
+  // Fetch KYC to pre-fill phone, co-borrower, guarantor
   useEffect(() => {
     if (!kycId) { setKycLoading(false); return; }
     axios.get(`${API}/kycs/${kycId}`, { withCredentials: true })
       .then(r => {
         const pb = r.data.primary_borrower || {};
         setPhone(pb.phone || currentLoan?.client_phone || "");
+
         if (r.data.co_borrower?.name) {
           setShowCoBorrower(true);
-          setCoBorrower({ name: r.data.co_borrower.name || "", phone: r.data.co_borrower.phone || "" });
+          setCoBorrowerData({ ...emptyPerson, ...r.data.co_borrower });
         }
         if (r.data.guarantor?.name) {
           setShowGuarantor(true);
-          setGuarantor({ name: r.data.guarantor.name || "", phone: r.data.guarantor.phone || "" });
+          setGuarantorData({ ...emptyPerson, ...r.data.guarantor });
         }
       })
       .catch(() => {})
       .finally(() => setKycLoading(false));
   }, [kycId]);
+
+  // PersonSection change handlers
+  const handleCoBorrowerChange = (field, value) =>
+    setCoBorrowerData(p => ({ ...p, [field]: value }));
+  const handleCoBorrowerBatch = (updates) =>
+    setCoBorrowerData(p => ({ ...p, ...updates }));
+
+  const handleGuarantorChange = (field, value) =>
+    setGuarantorData(p => ({ ...p, [field]: value }));
+  const handleGuarantorBatch = (updates) =>
+    setGuarantorData(p => ({ ...p, ...updates }));
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -65,8 +85,12 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
           ? `Re-loan with net-off of ${fmt(outstanding)} from ${currentLoan?.loan_number || "previous loan"}`
           : "Re-loan",
       };
-      if (showCoBorrower && coBorrower.name) payload.co_borrower = { name: coBorrower.name, phone: coBorrower.phone || undefined };
-      if (showGuarantor && guarantor.name) payload.guarantor = { name: guarantor.name, phone: guarantor.phone || undefined };
+      if (showCoBorrower && coBorrowerData.name) {
+        payload.co_borrower = coBorrowerData;
+      }
+      if (showGuarantor && guarantorData.name) {
+        payload.guarantor = guarantorData;
+      }
 
       const res = await axios.post(`${API}/loans/${loanId}/reloan`, payload, { withCredentials: true });
       toast.success(`Re-loan ${res.data.loan_number} created successfully!`);
@@ -82,7 +106,7 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" data-testid="reloan-modal">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-card w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl border border-border max-h-[92vh] flex flex-col">
+      <div className="relative bg-card w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl shadow-2xl border border-border max-h-[92vh] flex flex-col">
 
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-border flex-shrink-0">
@@ -92,7 +116,7 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
             </div>
             <div>
               <h2 className="font-bold text-lg font-['Outfit']">Re-Loan / पुनः ऋण</h2>
-              <p className="text-xs text-muted-foreground truncate max-w-[220px]">{clientName}</p>
+              <p className="text-xs text-muted-foreground truncate max-w-[260px]">{clientName}</p>
             </div>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted" data-testid="reloan-modal-close">
@@ -100,8 +124,8 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
           </button>
         </div>
 
-        {/* Scrollable form body */}
-        <form onSubmit={handleSubmit} id="reloan-form" className="overflow-y-auto flex-1 p-5 space-y-5">
+        {/* Scrollable body */}
+        <form onSubmit={handleSubmit} id="reloan-form" className="overflow-y-auto flex-1 p-5 space-y-6">
 
           {/* Existing loan summary */}
           {currentLoan && (
@@ -158,7 +182,6 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
                   <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${netOff ? "translate-x-6" : "translate-x-1"}`} />
                 </button>
               </div>
-
               {netOff && newAmountNum > 0 && (
                 <div className="bg-white rounded-lg p-3 border border-amber-200 space-y-1.5" data-testid="reloan-netoff-preview">
                   <div className="flex justify-between text-sm">
@@ -215,7 +238,7 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
             />
           </div>
 
-          {/* Client phone */}
+          {/* Client phone (only primary borrower phone editable) */}
           <div>
             <label className="bk-label">
               <span className="bk-label-en">Client Phone</span>
@@ -231,7 +254,7 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
             />
           </div>
 
-          {/* Co-borrower (collapsible) */}
+          {/* ── Co-borrower (full KYC PersonSection) ── */}
           <div className="border border-border rounded-xl overflow-hidden">
             <button
               type="button"
@@ -239,41 +262,32 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
               className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors"
               data-testid="reloan-coborrower-toggle"
             >
-              <span className="text-sm font-semibold text-foreground">
-                Co-Borrower / सह-उधारकर्ता{" "}
-                <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
-              </span>
+              <div className="text-left">
+                <span className="text-sm font-semibold text-foreground">
+                  Co-Borrower / सह-उधारकर्ता{" "}
+                  <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
+                </span>
+                {coBorrowerData.name && (
+                  <p className="text-xs text-primary mt-0.5">{coBorrowerData.name}</p>
+                )}
+              </div>
               {showCoBorrower ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
             {showCoBorrower && (
-              <div className="p-4 space-y-3 border-t border-border">
-                <div>
-                  <label className="bk-label"><span className="bk-label-en">Name</span><span className="bk-label-hi">नाम</span></label>
-                  <input
-                    type="text"
-                    value={coBorrower.name}
-                    onChange={e => setCoBorrower(p => ({ ...p, name: e.target.value }))}
-                    className="bk-input"
-                    placeholder="Co-borrower full name"
-                    data-testid="reloan-coborrower-name"
-                  />
-                </div>
-                <div>
-                  <label className="bk-label"><span className="bk-label-en">Phone</span><span className="bk-label-hi">फ़ोन</span></label>
-                  <input
-                    type="tel"
-                    value={coBorrower.phone}
-                    onChange={e => setCoBorrower(p => ({ ...p, phone: e.target.value }))}
-                    className="bk-input"
-                    placeholder="Phone number"
-                    data-testid="reloan-coborrower-phone"
-                  />
-                </div>
+              <div className="p-5 border-t border-border">
+                <PersonSection
+                  title="Co-Borrower"
+                  titleHi="सह-उधारकर्ता"
+                  data={coBorrowerData}
+                  onChange={handleCoBorrowerChange}
+                  onBatchChange={handleCoBorrowerBatch}
+                  isMandatory={false}
+                />
               </div>
             )}
           </div>
 
-          {/* Guarantor (collapsible) */}
+          {/* ── Guarantor (full KYC PersonSection) ── */}
           <div className="border border-border rounded-xl overflow-hidden">
             <button
               type="button"
@@ -281,36 +295,27 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
               className="w-full flex items-center justify-between px-4 py-3 bg-muted/30 hover:bg-muted/50 transition-colors"
               data-testid="reloan-guarantor-toggle"
             >
-              <span className="text-sm font-semibold text-foreground">
-                Guarantor / गारंटर{" "}
-                <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
-              </span>
+              <div className="text-left">
+                <span className="text-sm font-semibold text-foreground">
+                  Guarantor / गारंटर{" "}
+                  <span className="text-xs text-muted-foreground font-normal">(Optional)</span>
+                </span>
+                {guarantorData.name && (
+                  <p className="text-xs text-primary mt-0.5">{guarantorData.name}</p>
+                )}
+              </div>
               {showGuarantor ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
             </button>
             {showGuarantor && (
-              <div className="p-4 space-y-3 border-t border-border">
-                <div>
-                  <label className="bk-label"><span className="bk-label-en">Name</span><span className="bk-label-hi">नाम</span></label>
-                  <input
-                    type="text"
-                    value={guarantor.name}
-                    onChange={e => setGuarantor(p => ({ ...p, name: e.target.value }))}
-                    className="bk-input"
-                    placeholder="Guarantor full name"
-                    data-testid="reloan-guarantor-name"
-                  />
-                </div>
-                <div>
-                  <label className="bk-label"><span className="bk-label-en">Phone</span><span className="bk-label-hi">फ़ोन</span></label>
-                  <input
-                    type="tel"
-                    value={guarantor.phone}
-                    onChange={e => setGuarantor(p => ({ ...p, phone: e.target.value }))}
-                    className="bk-input"
-                    placeholder="Phone number"
-                    data-testid="reloan-guarantor-phone"
-                  />
-                </div>
+              <div className="p-5 border-t border-border">
+                <PersonSection
+                  title="Guarantor"
+                  titleHi="गारंटर"
+                  data={guarantorData}
+                  onChange={handleGuarantorChange}
+                  onBatchChange={handleGuarantorBatch}
+                  isMandatory={false}
+                />
               </div>
             )}
           </div>
