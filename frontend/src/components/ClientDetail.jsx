@@ -242,7 +242,7 @@ function PassbookNoteModal({ emi, loanId, onClose, onSaved }) {
 }
 
 // ─── Passbook: Loan Card ──────────────────────────────────────────────────────
-function LoanPassbookCard({ loan: initialLoan, navigate }) {
+function LoanPassbookCard({ loan: initialLoan, navigate, onLoanUpdated }) {
   const [loan, setLoan] = useState(initialLoan);
   const [expanded, setExpanded] = useState(true);
   const [collectingEmi, setCollectingEmi] = useState(null);
@@ -255,8 +255,13 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
   const outstanding = (loan.total_repayable || loan.emi_amount * 12) - (loan.total_paid || 0);
   const today = new Date().toISOString().slice(0, 7);
 
-  const handleCollected = (updatedLoan) => setLoan(updatedLoan);
-  const handleNoteSaved = (updatedLoan) => setLoan(updatedLoan);
+  const updateLoan = (updatedLoan) => {
+    setLoan(updatedLoan);
+    onLoanUpdated?.(updatedLoan);
+  };
+
+  const handleCollected = (updatedLoan) => updateLoan(updatedLoan);
+  const handleNoteSaved = (updatedLoan) => updateLoan(updatedLoan);
 
   const handleUndo = async (emiMonth) => {
     if (!window.confirm("Undo this EMI collection? / यह किस्त वापस करें?")) return;
@@ -264,7 +269,7 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
     try {
       await axios.delete(`${API}/loans/${loan.id}/payments/${emiMonth}`, { withCredentials: true });
       const res = await axios.get(`${API}/loans/${loan.id}`, { withCredentials: true });
-      setLoan(res.data);
+      updateLoan(res.data);
       toast.success("EMI collection undone");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed");
@@ -499,6 +504,10 @@ export default function ClientDetail() {
     setActiveTab(tab);
     if (tab === "passbook") fetchLoans();
   };
+
+  const handleLoanUpdated = useCallback((updatedLoan) => {
+    setLoans(prev => prev ? prev.map(l => l.id === updatedLoan.id ? updatedLoan : l) : prev);
+  }, []);
 
   const updateStatus = async (status) => {
     setStatusLoading(true);
@@ -742,8 +751,8 @@ export default function ClientDetail() {
                 </div>
               )}
 
-              {loans.map((loan) => (
-                <LoanPassbookCard key={loan.id} loan={loan} navigate={navigate} />
+              {[...loans].reverse().map((loan) => (
+                <LoanPassbookCard key={loan.id} loan={loan} navigate={navigate} onLoanUpdated={handleLoanUpdated} />
               ))}
             </>
           )}
