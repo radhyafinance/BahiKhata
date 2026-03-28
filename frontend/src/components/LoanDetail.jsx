@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, Edit, CheckCircle, AlertCircle, Clock, X, Loader2, Pencil, User, RefreshCw, MinusCircle } from "lucide-react";
+import { ArrowLeft, Edit, CheckCircle, AlertCircle, Clock, X, Loader2, Pencil, User, RefreshCw, MinusCircle, Lock } from "lucide-react";
 import ReLoanModal from "./ReLoanModal";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -209,6 +209,14 @@ export default function LoanDetail() {
   const canManage = user?.role === "admin" || user?.role === "maalik" || user?.role === "muneem";
   const canEdit = canManage || loan.sipahi_id === user?.id;
 
+  // Returns true when a muneem/sipahi can no longer modify a past-month EMI
+  const isPastMonthFrozen = (dueMonth) => {
+    if (user?.role === "admin" || user?.role === "maalik") return false;
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return dueMonth < currentYM;
+  };
+
   const STATUS_BADGE = {
     active: "bg-green-100 text-green-800",
     overdue: "bg-red-100 text-red-700",
@@ -350,7 +358,8 @@ export default function LoanDetail() {
               const Icon = style.icon;
               const isCurrentMonth = emi.due_month === today;
               const isNetoff = emi.status === "netoff";
-              const canCollect = emi.status !== "paid" && !isNetoff && loan.status !== "closed";
+              const frozen = isPastMonthFrozen(emi.due_month);
+              const canCollect = emi.status !== "paid" && !isNetoff && loan.status !== "closed" && !frozen;
 
               return (
                 <div
@@ -378,7 +387,7 @@ export default function LoanDetail() {
                         {emi.paid_date ? new Date(emi.paid_date).toLocaleDateString("en-IN") : "—"}
                       </p>
                       <p className="text-xs text-muted-foreground truncate">{emi.collected_by_name}</p>
-                      {canManage && (
+                      {canManage && !frozen && (
                         <button
                           onClick={() => handleUndo(emi.due_month)}
                           disabled={undoLoading === emi.due_month}
@@ -401,6 +410,10 @@ export default function LoanDetail() {
                     >
                       Collect / जमा करें
                     </button>
+                  ) : frozen ? (
+                    <div className="flex items-center justify-center gap-1 text-[10px] text-muted-foreground mt-1" title="Past month — only Maalik/Admin can edit">
+                      <Lock size={10} /> Locked
+                    </div>
                   ) : null}
 
                   {/* Note display */}
@@ -410,8 +423,8 @@ export default function LoanDetail() {
                     </div>
                   )}
 
-                  {/* Note button (only on unpaid, non-netoff) */}
-                  {emi.status !== "paid" && !isNetoff && (
+                  {/* Note button (only on unpaid, non-netoff, non-frozen) */}
+                  {emi.status !== "paid" && !isNetoff && !frozen && (
                     <button
                       onClick={() => setNotingEmi(emi)}
                       className="w-full flex items-center justify-center gap-1 text-xs py-1 rounded border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50 transition-colors mt-1"

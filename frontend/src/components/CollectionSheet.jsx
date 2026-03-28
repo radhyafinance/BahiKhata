@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
-  X, Loader2, ExternalLink, IndianRupee, Pencil
+  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -182,7 +182,7 @@ function NoteModal({ row, onClose, onSaved }) {
   );
 }
 
-function MisalSection({ misal, month, onCollect, onNote }) {
+function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
   const [expanded, setExpanded] = useState(true);
   const navigate = useNavigate();
   const total = misal.rows.length;
@@ -272,6 +272,11 @@ function MisalSection({ misal, month, onCollect, onNote }) {
                 <div className="flex flex-col items-center gap-1 pt-0.5">
                   {isPaid ? (
                     <CheckCircle size={20} className="text-green-500" />
+                  ) : isFrozen ? (
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Lock size={14} className="text-muted-foreground" />
+                      <span className="text-[9px] text-muted-foreground">Locked</span>
+                    </div>
                   ) : (
                     <>
                       <button
@@ -464,6 +469,10 @@ export default function CollectionSheet() {
                     key={misal.misal_id}
                     misal={misal}
                     month={month}
+                    isFrozen={
+                      (user?.role === "muneem" || user?.role === "sipahi") &&
+                      month < defaultMonth
+                    }
                     onCollect={setCollectingRow}
                     onNote={setNotingRow}
                   />

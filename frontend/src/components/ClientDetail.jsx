@@ -7,7 +7,7 @@ import {
   ArrowLeft, Edit, CheckCircle, XCircle, Clock, MapPin, Camera,
   Phone, User, Shield, Users, FileText, TrendingUp, AlertCircle,
   X, Loader2, PlusCircle, BookOpen, Undo2, ExternalLink, Pencil,
-  RefreshCw, MinusCircle
+  RefreshCw, MinusCircle, Lock
 } from "lucide-react";
 import ReLoanModal from "./ReLoanModal";
 
@@ -255,6 +255,13 @@ function LoanPassbookCard({ loan: initialLoan, navigate, onLoanUpdated }) {
   const outstanding = (loan.total_repayable || loan.emi_amount * 12) - (loan.total_paid || 0);
   const today = new Date().toISOString().slice(0, 7);
 
+  const isPastMonthFrozen = (dueMonth) => {
+    if (user?.role === "admin" || user?.role === "maalik") return false;
+    const now = new Date();
+    const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    return dueMonth < currentYM;
+  };
+
   const updateLoan = (updatedLoan) => {
     setLoan(updatedLoan);
     onLoanUpdated?.(updatedLoan);
@@ -397,16 +404,26 @@ function LoanPassbookCard({ loan: initialLoan, navigate, onLoanUpdated }) {
                   {emi.status === "netoff" ? (
                     <span className="text-[10px] px-2 py-1 rounded bg-purple-50 text-purple-600 font-semibold border border-purple-200">Net-off</span>
                   ) : isPaid ? (
-                    <button
-                      onClick={() => handleUndo(emi.due_month)}
-                      disabled={undoLoading === emi.due_month}
-                      className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-muted hover:bg-red-50 hover:text-red-600 text-muted-foreground transition-colors"
-                      title="Undo collection"
-                      data-testid={`passbook-undo-${loan.id}-${emi.month}`}
-                    >
-                      {undoLoading === emi.due_month ? <Loader2 size={10} className="animate-spin" /> : <Undo2 size={10} />}
-                      Undo
-                    </button>
+                    isPastMonthFrozen(emi.due_month) ? (
+                      <div className="flex items-center gap-1 text-[10px] text-muted-foreground" title="Past month locked">
+                        <Lock size={10} /> Locked
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => handleUndo(emi.due_month)}
+                        disabled={undoLoading === emi.due_month}
+                        className="flex items-center gap-1 text-[10px] px-2 py-1 rounded bg-muted hover:bg-red-50 hover:text-red-600 text-muted-foreground transition-colors"
+                        title="Undo collection"
+                        data-testid={`passbook-undo-${loan.id}-${emi.month}`}
+                      >
+                        {undoLoading === emi.due_month ? <Loader2 size={10} className="animate-spin" /> : <Undo2 size={10} />}
+                        Undo
+                      </button>
+                    )
+                  ) : isPastMonthFrozen(emi.due_month) ? (
+                    <div className="flex items-center gap-1 text-[10px] text-muted-foreground" title="Past month — only Maalik/Admin can edit">
+                      <Lock size={10} /> Locked
+                    </div>
                   ) : (
                     <>
                       <button
