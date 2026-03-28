@@ -1,0 +1,119 @@
+<analysis>**original_problem_statement**: 
+The user requested a software solution to run an NBFC-MFI app named Bahi Khata with bilingual support (Hindi/English). The business pivoted to a Sahukar Illaka model. 
+**PRODUCT REQUIREMENTS:**
+- **Roles Hierarchy**: Admin -> Maalik (owners) -> Muneem (Senior field agent) -> Sipahi (Junior field agent).
+- **Geography**: Maaliks own Illakas (areas). Muneems are assigned to Illakas. Sipahis are assigned to Illakas and can access all Misals (villages) within them.
+- **KYC Flow**: Agents select Illaka -> Misal -> Fill KYC. Aadhaar front/back OCR automatically extracts details, Husband/Father Name, and validates that both sides match the same Aadhaar Number. Duplicate Aadhaar entries are blocked. Live photo utilizes the back camera and auto-captures GPS (GPS coordinates are restricted to Admin/Maalik views).
+- **Loan Module**: Loans have a fixed 1-year tenure, 12 EMIs, and a flat 17% per annum interest rate (e.g., ₹10,300 loan -> ₹1,700 interest -> ₹1,000 EMI -> ₹12,000 total). No manual approval needed—the agent enters the disbursement amount during KYC, which auto-creates the active loan.
+- **Tech integrations**: Object Storage (Cloud), Google Gemini (OCR).
+
+**User's preferred language**: English (You MUST respond in English only, but ensure the UI remains bilingual in Hindi/English as per the product requirements).
+
+**what currently exists?** 
+A robust React + FastAPI + MongoDB application. The codebase fully supports the Sahukar Illaka hierarchy. It features a sophisticated KYC form with dual-sided Aadhaar OCR via Gemini, auto-GPS capture, and Aadhaar cross-validation. It also includes a fully functional Loan Tracking Module with automated 12-month EMI schedule generation based on a flat 17% interest rate, integrated directly into the KYC submission flow.
+
+**Last working item**: 
+    - Last item agent was working: Implementing the fixed 17% flat EMI logic, auto-loan creation upon KYC submission (bypassing manual approval), Aadhaar front/back cross-validation, and auto-GPS capture on Live Photo click.
+    - Status: USER VERIFICATION PENDING
+    - Agent Testing Done: Y
+    - Which testing method agent to use? NA (Testing subagent  was used successfully resulting in 100% backend/frontend pass rates).
+    - User Testing Done: N
+
+**All Pending/In progress Issue list**:  
+  - None at the moment. All explicit bugs and requirements from the previous session were successfully implemented and tested.
+
+**In progress Task List**: 
+  - None.
+
+**Upcoming and Future Tasks**
+    Upcoming Tasks:
+    - Task 1 (P1): **Collection Sheet / Daily Dashboard**. Create a single-page view showing Sipahis all EMIs due or overdue for the current month across their assigned Illaka.
+    - Task 2 (P2): **Loan Passbook Feature**. Add a direct view/shortcut on the client's KYC detail page so field agents can instantly see all their loans and payment history in one view.
+    
+    Future Tasks:
+    - Task 3 (P2): **Code Refactoring**.  and  are both approaching ~900 lines of code. Break  into smaller sub-components (e.g., , ) and split  into modular routers.
+
+**Completed work in this session**
+- Validated and fixed routing/visibility bugs for the Sahukar Model (, , ). (DONE)
+- Built Loan Tracking Module (, , ) with payment recording APIs. (DONE)
+- Added Husband/Father Name via Aadhaar back OCR () and Duplicate Aadhaar blocking. (DONE)
+- Implemented fixed 17% EMI calculation, 12-month schedules, and auto-loan creation on KYC submit. (DONE)
+- Added Aadhaar number cross-validation between front/back photos and auto-GPS capture. (DONE)
+
+**Earlier issues found/mentioned but not fixed**
+   - None
+
+**Known issue recurrence from previous fork**
+  - Issue recurrence in previous fork: N/A
+  - Recurrence count: 0
+  - Status: NOT STARTED
+
+**Code Architecture**
+
+
+**Key Technical Concepts**
+React, Tailwind CSS, Shadcn UI, FastAPI, MongoDB, JWT Auth, Emergent Object Storage, Gemini (via Emergent LLM Key) for OCR.
+
+**key DB schema**
+  - users: {email, password, role [admin, maalik, muneem, sipahi], name}
+  - illakas: {name, maalik_id}
+  - misals: {name, illaka_id}
+  - kycs: {kyc_number, illaka_id, misal_id, primary_borrower (contains relative_name, aadhaar_number), gps_location, disbursement_amount, status}
+  - loans: {loan_number, client_id, kyc_id, principal, total_amount, emi_amount, status, created_at}
+  - payments: {loan_id, amount, emi_month, collected_by, date}
+
+**changes in tech stack**
+  - None
+
+**All files of reference** 
+  -  (Updated with flat 17% EMI logic and auto-loan creation)
+  -  (Updated with auto-GPS, Aadhaar cross-validation, and disbursement UI)
+  -  (Newly created EMI schedule grid)
+  -  (Newly created)
+  -  (Newly created)
+  -  (Updated to hide GPS from sipahis and link to loans)
+
+**Areas that need refactoring**: 
+ (900+ lines) and  (900+ lines). They are functionally perfect right now, but will become difficult to maintain if more features are added without componentization.
+
+**key api endpoints**
+- 
+-  (Auto-creates loan using )
+-  and  (Calculates overdue dynamically)
+- 
+-  and 
+
+**Critical Info for New Agent**
+- **Loan Logic**: Fixed at 17% flat interest per year, strictly 12 EMIs. . This logic is handled dynamically in the backend (). Do not introduce variable interest rates.
+- **KYC Submissions**: There is NO manual approval step anymore. A field agent inputs the disbursement amount on Step 6 of the KYC form, and upon submission, both the KYC and the Loan are created actively.
+- **Role Permissions**: Sipahis must NEVER see GPS coordinates.
+
+**documents and test reports created in this job**
+  - /app/memory/PRD.md
+  - /app/memory/test_credentials.md
+  - /app/test_reports/iteration_2.json to /app/test_reports/iteration_5.json
+
+**Last 10 User Messages and any pending HUMAN messages** 
+ - *User*: Detailed loan rules (1 yr, 12 EMIs, flat 17%). KYC changes (Aadhaar cross check, back camera, auto GPS). No approval post-KYC, auto loan creation. (COMPLETED - User Verification Pending)
+ - *User*: Add Husband's/Father's name to KYC (Aadhaar back OCR) & Duplicate Aadhaar check. (COMPLETED)
+ - *User*: Requested use of ask_human to confirm plan. (COMPLETED)
+ - *User*: Provided initial handoff info (Sahukar model, pending bug fixes). (COMPLETED)
+
+**Project Health Check:**
+Healthy.
+
+**3rd Party Integrations**
+  - Emergent Object Storage — requires Emergent Storage setup
+  - Google Gemini (Aadhaar OCR) — uses Emergent LLM Key
+
+**Testing status**
+  - Testing agent used after significant changes: YES ( was used 4 times; latest run achieved a 100% pass rate).
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: , 
+  - Known regressions: None
+
+**Credentials to test flow:**
+Available in  (e.g., admin@bahikhata.com / Admin@123, TEST_sipahi_loans@bahikhata.com / Test@1234).
+
+**What agent forgot to execute**
+Everything requested was meticulously executed and tested. Next agent can proceed directly with gathering feedback or starting on the Collection Sheet feature.</analysis>
