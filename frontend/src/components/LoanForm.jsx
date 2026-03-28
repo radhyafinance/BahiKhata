@@ -91,16 +91,14 @@ export default function LoanForm() {
     if (!form.principal_amount || isNaN(form.principal_amount) || Number(form.principal_amount) <= 0) {
       toast.error("Enter a valid principal amount"); return;
     }
-    if (!form.interest_rate || isNaN(form.interest_rate)) {
-      toast.error("Enter a valid interest rate"); return;
-    }
     setSubmitting(true);
     try {
       const payload = {
         ...form,
         principal_amount: Number(form.principal_amount),
-        interest_rate: Number(form.interest_rate),
       };
+      delete payload.interest_rate;
+      delete payload.due_date;
       if (isEdit) {
         await axios.put(`${API}/loans/${id}`, payload, { withCredentials: true });
         toast.success("Loan updated");
@@ -188,62 +186,51 @@ export default function LoanForm() {
             <div>
               <label className="bk-label"><span className="bk-label-en">Principal Amount (₹) *</span><span className="bk-label-hi">मूलधन राशि</span></label>
               <input
-                type="number"
-                value={form.principal_amount}
+                type="number" value={form.principal_amount}
                 onChange={e => f("principal_amount", e.target.value)}
-                className="bk-input"
-                placeholder="e.g. 50000"
-                min="1"
-                required
+                className="bk-input" placeholder="e.g. 10300" min="1" required
                 data-testid="principal-input"
-              />
-            </div>
-            <div>
-              <label className="bk-label"><span className="bk-label-en">Interest Rate (% / month) *</span><span className="bk-label-hi">मासिक ब्याज दर</span></label>
-              <input
-                type="number"
-                value={form.interest_rate}
-                onChange={e => f("interest_rate", e.target.value)}
-                className="bk-input"
-                placeholder="e.g. 2.5"
-                step="0.01"
-                min="0"
-                required
-                data-testid="interest-rate-input"
               />
             </div>
             <div>
               <label className="bk-label"><span className="bk-label-en">Loan Date *</span><span className="bk-label-hi">कर्ज तारीख</span></label>
               <input
-                type="date"
-                value={form.loan_date}
+                type="date" value={form.loan_date}
                 onChange={e => f("loan_date", e.target.value)}
-                className="bk-input"
-                required
+                className="bk-input" required
                 data-testid="loan-date-input"
-              />
-            </div>
-            <div>
-              <label className="bk-label"><span className="bk-label-en">Due Date</span><span className="bk-label-hi">देय तारीख (वैकल्पिक)</span></label>
-              <input
-                type="date"
-                value={form.due_date}
-                onChange={e => f("due_date", e.target.value)}
-                className="bk-input"
-                data-testid="due-date-input"
               />
             </div>
           </div>
 
+          {/* EMI Preview */}
+          {form.principal_amount && !isNaN(parseFloat(form.principal_amount)) && parseFloat(form.principal_amount) > 0 && (() => {
+            const p = parseFloat(form.principal_amount);
+            const emi = Math.round(p * 1.17 / 12 / 100) * 100;
+            const total = emi * 12;
+            const interest = total - p;
+            return (
+              <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 grid grid-cols-3 gap-3 text-center" data-testid="emi-preview">
+                <div>
+                  <p className="text-xs text-muted-foreground">Monthly EMI</p>
+                  <p className="text-lg font-bold text-primary font-['Outfit']">₹{emi.toLocaleString("en-IN")}</p>
+                  <p className="text-xs text-muted-foreground">× 12 months</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Interest @17%</p>
+                  <p className="text-lg font-bold font-['Outfit']">₹{interest.toLocaleString("en-IN")}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground">Total Repayable</p>
+                  <p className="text-lg font-bold text-green-700 font-['Outfit']">₹{total.toLocaleString("en-IN")}</p>
+                </div>
+              </div>
+            );
+          })()}
+
           <div>
             <label className="bk-label"><span className="bk-label-en">Notes (Optional)</span><span className="bk-label-hi">टिप्पणियाँ</span></label>
-            <textarea
-              value={form.notes}
-              onChange={e => f("notes", e.target.value)}
-              className="bk-input h-auto py-3 resize-none"
-              rows={2}
-              data-testid="loan-notes-input"
-            />
+            <textarea value={form.notes} onChange={e => f("notes", e.target.value)} className="bk-input h-auto py-3 resize-none" rows={2} data-testid="loan-notes-input" />
           </div>
         </div>
 

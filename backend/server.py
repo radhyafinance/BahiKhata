@@ -1,8 +1,8 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import os, jwt, bcrypt, uuid, requests, logging, json, re, tempfile
-from datetime import datetime, timezone, timedelta
+import os, jwt, bcrypt, uuid, requests, logging, json, re, tempfile, calendar
+from datetime import datetime, timezone, timedelta, date as date_type
 from typing import Optional, List
 
 from fastapi import FastAPI, APIRouter, HTTPException, Request, Response, UploadFile, File, Query
@@ -163,6 +163,7 @@ class KYCCreate(BaseModel):
     live_photo_path: Optional[str] = None
     gps_location: Optional[GPSLocation] = None
     notes: Optional[str] = None
+    disbursement_amount: Optional[float] = None  # auto-creates loan on submit
 
 class KYCStatusUpdate(BaseModel):
     status: str
@@ -182,6 +183,51 @@ def _doc(d: dict) -> dict:
 
 def generate_kyc_number() -> str:
     return f"BK{datetime.now().strftime('%Y%m%d')}{str(uuid.uuid4()).replace('-','')[:6].upper()}"
+
+# ─── Loan EMI Helpers ──────────────────────────────────────────────────────────
+def _add_months(dt: date_type, months: int) -> date_type:
+    m = dt.month - 1 + months
+    return dt.replace(year=dt.year + m // 12, month=m % 12 + 1)
+
+def _apply_overdue_to_schedule(schedule: list) -> bool:
+    today = date_type.today()
+    changed = False
+    for item in schedule:
+        if item["status"] == "pending":
+            y, mo = map(int, item["due_month"].split("-"))
+            last_day = calendar.monthrange(y, mo)[1]
+            if today > date_type(y, mo, last_day):
+                item["status"] = "overdue"
+                changed = True
+    return changed
+
+def _get_loan_status(schedule: list) -> str:
+    if not schedule:
+        return "active"
+    if all(e["status"] == "paid" for e in schedule):
+        return "closed"
+    if any(e["status"] == "overdue" for e in schedule):
+        return "overdue"
+    return "active"
+
+def _build_emi_schedule(principal: float, loan_date: date_type) -> tuple:
+    """Returns (emi_amount, schedule_list)."""
+    emi_amount = round(principal * 1.17 / 12 / 100) * 100
+    schedule = []
+    for i in range(12):
+        due = _add_months(loan_date, i + 1)
+        schedule.append({
+            "month": i + 1,
+            "due_month": due.strftime("%Y-%m"),
+            "amount": emi_amount,
+            "status": "pending",
+            "paid_amount": 0.0,
+            "paid_date": None,
+            "collected_by_id": None,
+            "collected_by_name": None,
+        })
+    _apply_overdue_to_schedule(schedule)
+    return emi_amount, schedule
 
 MIME_TYPES = {
     "jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png",
@@ -461,7 +507,7 @@ async def create_kyc(data: KYCCreate, request: Request):
     now = datetime.now(timezone.utc).isoformat()
     doc = {
         "kyc_number": generate_kyc_number(),
-        "status": "pending",
+        "status": "active",
         "illaka_id": data.illaka_id,
         "illaka_name": data.illaka_name,
         "misal_id": data.misal_id,
@@ -475,10 +521,41 @@ async def create_kyc(data: KYCCreate, request: Request):
         "field_officer_name": current_user["name"],
         "field_officer_role": current_user["role"],
         "notes": data.notes,
+        "disbursement_amount": data.disbursement_amount,
+        "loan_id": None,
         "created_at": now, "updated_at": now
     }
     result = await db.kycs.insert_one(doc)
     doc["_id"] = result.inserted_id
+
+    # Auto-create loan if disbursement amount provided
+    if data.disbursement_amount and data.disbursement_amount > 0:
+        loan_date_obj = date_type.today()
+        emi_amount, schedule = _build_emi_schedule(data.disbursement_amount, loan_date_obj)
+        loan_doc = {
+            "kyc_id": str(result.inserted_id),
+            "client_name": data.primary_borrower.name or "",
+            "client_phone": data.primary_borrower.phone,
+            "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
+            "misal_id": data.misal_id, "misal_name": data.misal_name,
+            "principal_amount": data.disbursement_amount,
+            "interest_rate": 17.0,
+            "emi_amount": emi_amount,
+            "total_repayable": emi_amount * 12,
+            "interest_amount": (emi_amount * 12) - data.disbursement_amount,
+            "loan_date": loan_date_obj.isoformat(),
+            "due_date": _add_months(loan_date_obj, 12).isoformat(),
+            "status": _get_loan_status(schedule),
+            "sipahi_id": current_user["id"], "sipahi_name": current_user["name"],
+            "total_paid": 0.0, "notes": None,
+            "emi_schedule": schedule,
+            "created_at": now, "updated_at": now,
+        }
+        loan_res = await db.loans.insert_one(loan_doc)
+        loan_id = str(loan_res.inserted_id)
+        await db.kycs.update_one({"_id": result.inserted_id}, {"$set": {"loan_id": loan_id}})
+        doc["loan_id"] = loan_id
+
     return _doc(doc)
 
 @api_router.get("/kycs/{kyc_id}")
@@ -644,11 +721,13 @@ async def ocr_aadhaar_back(data: OCRRequest, request: Request):
 The back of an Aadhaar card typically contains:
 - RELATIVE'S NAME: printed as "S/O" (Son of), "W/O" (Wife of), "D/O" (Daughter of), or "C/O" (Care of) followed by the relative's name. This is the husband's or father's name.
 - ADDRESS: full residential address spanning multiple lines — house/door no, street/mohalla/locality, village/town/city, district, state, PIN code.
+- AADHAAR NUMBER: 12-digit number (may appear as text or encoded in the barcode/QR code — look for any 12-digit number).
 
-Extract these two fields and return ONLY a valid JSON object — no markdown, no code blocks, no explanation:
+Extract these fields and return ONLY a valid JSON object — no markdown, no code blocks, no explanation:
 {
   "relative_name": "full name of the relative as printed (without the S/O W/O D/O prefix)",
-  "address": "complete address — all components joined on one line separated by commas"
+  "address": "complete address — all components joined on one line separated by commas",
+  "aadhaar_number": "12-digit Aadhaar number formatted as XXXX XXXX XXXX or null if not visible"
 }
 
 Use null if a field is not clearly readable.""",
@@ -678,17 +757,17 @@ class LoanCreate(BaseModel):
     misal_id: str
     misal_name: str
     principal_amount: float
-    interest_rate: float          # per month %
     loan_date: str                # YYYY-MM-DD
-    due_date: Optional[str] = None
     notes: Optional[str] = None
+    # interest_rate is FIXED at 17% flat p.a. — not user-configurable
 
 class LoanStatusUpdate(BaseModel):
     status: str  # active | closed | overdue
     notes: Optional[str] = None
 
 class PaymentCreate(BaseModel):
-    amount: float
+    emi_month: str                # YYYY-MM — which calendar month's EMI is being collected
+    amount: Optional[float] = None  # defaults to scheduled emi_amount
     payment_date: str             # YYYY-MM-DD
     notes: Optional[str] = None
 
@@ -741,23 +820,25 @@ async def create_loan(data: LoanCreate, request: Request):
     if current_user["role"] not in ["muneem", "sipahi"]:
         raise HTTPException(status_code=403, detail="Only field agents can create loans")
     now = datetime.now(timezone.utc).isoformat()
+    loan_date_obj = date_type.fromisoformat(data.loan_date)
+    emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)
     doc = {
         "kyc_id": data.kyc_id,
         "client_name": data.client_name,
         "client_phone": data.client_phone,
-        "illaka_id": data.illaka_id,
-        "illaka_name": data.illaka_name,
-        "misal_id": data.misal_id,
-        "misal_name": data.misal_name,
+        "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
+        "misal_id": data.misal_id, "misal_name": data.misal_name,
         "principal_amount": data.principal_amount,
-        "interest_rate": data.interest_rate,
+        "interest_rate": 17.0,
+        "emi_amount": emi_amount,
+        "total_repayable": emi_amount * 12,
+        "interest_amount": (emi_amount * 12) - data.principal_amount,
         "loan_date": data.loan_date,
-        "due_date": data.due_date,
-        "status": "active",
-        "sipahi_id": current_user["id"],
-        "sipahi_name": current_user["name"],
-        "total_paid": 0.0,
-        "notes": data.notes,
+        "due_date": _add_months(loan_date_obj, 12).isoformat(),
+        "status": _get_loan_status(schedule),
+        "sipahi_id": current_user["id"], "sipahi_name": current_user["name"],
+        "total_paid": 0.0, "notes": data.notes,
+        "emi_schedule": schedule,
         "created_at": now, "updated_at": now,
     }
     result = await db.loans.insert_one(doc)
@@ -770,6 +851,17 @@ async def get_loan(loan_id: str, request: Request):
     doc = await db.loans.find_one({"_id": ObjectId(loan_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Loan not found")
+    schedule = doc.get("emi_schedule", [])
+    if schedule:
+        changed = _apply_overdue_to_schedule(schedule)
+        new_status = _get_loan_status(schedule)
+        if changed or new_status != doc.get("status"):
+            await db.loans.update_one(
+                {"_id": ObjectId(loan_id)},
+                {"$set": {"emi_schedule": schedule, "status": new_status, "updated_at": datetime.now(timezone.utc).isoformat()}}
+            )
+            doc["emi_schedule"] = schedule
+            doc["status"] = new_status
     return _doc(doc)
 
 @api_router.put("/loans/{loan_id}")
@@ -780,10 +872,23 @@ async def update_loan(loan_id: str, data: LoanCreate, request: Request):
         raise HTTPException(status_code=404, detail="Loan not found")
     if current_user["role"] not in ["admin", "maalik", "muneem"] and loan.get("sipahi_id") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
+    # Recalculate if principal changed
+    loan_date_obj = date_type.fromisoformat(data.loan_date)
+    emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)
+    # Preserve existing paid EMIs
+    old_schedule = loan.get("emi_schedule", [])
+    for i, item in enumerate(schedule):
+        if i < len(old_schedule) and old_schedule[i]["status"] == "paid":
+            schedule[i] = old_schedule[i]
     updates = {
         "client_name": data.client_name, "client_phone": data.client_phone,
-        "principal_amount": data.principal_amount, "interest_rate": data.interest_rate,
-        "loan_date": data.loan_date, "due_date": data.due_date, "notes": data.notes,
+        "principal_amount": data.principal_amount, "emi_amount": emi_amount,
+        "total_repayable": emi_amount * 12,
+        "interest_amount": (emi_amount * 12) - data.principal_amount,
+        "loan_date": data.loan_date,
+        "due_date": _add_months(loan_date_obj, 12).isoformat(),
+        "notes": data.notes, "emi_schedule": schedule,
+        "status": _get_loan_status(schedule),
         "updated_at": datetime.now(timezone.utc).isoformat(),
     }
     await db.loans.update_one({"_id": ObjectId(loan_id)}, {"$set": updates})
@@ -812,44 +917,64 @@ async def list_payments(loan_id: str, request: Request):
     return [_doc(d) for d in docs]
 
 @api_router.post("/loans/{loan_id}/payments")
-async def add_payment(loan_id: str, data: PaymentCreate, request: Request):
+async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     current_user = await get_current_user(request)
-    loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
-    if not loan:
+    doc = await db.loans.find_one({"_id": ObjectId(loan_id)})
+    if not doc:
         raise HTTPException(status_code=404, detail="Loan not found")
-    if loan.get("status") == "closed":
-        raise HTTPException(status_code=400, detail="Cannot add payment to a closed loan")
-    now = datetime.now(timezone.utc).isoformat()
-    doc = {
-        "loan_id": loan_id,
-        "amount": data.amount,
-        "payment_date": data.payment_date,
+    schedule = doc.get("emi_schedule", [])
+    emi_item = next((e for e in schedule if e["due_month"] == data.emi_month), None)
+    if not emi_item:
+        raise HTTPException(status_code=404, detail=f"EMI month {data.emi_month} not found in loan schedule")
+    if emi_item["status"] == "paid":
+        raise HTTPException(status_code=400, detail="This EMI is already paid / यह किस्त पहले से चुकाई जा चुकी है")
+    amount = data.amount if data.amount else emi_item["amount"]
+    emi_item.update({
+        "status": "paid",
+        "paid_amount": amount,
+        "paid_date": data.payment_date,
         "collected_by_id": current_user["id"],
         "collected_by_name": current_user["name"],
-        "notes": data.notes,
-        "created_at": now,
-    }
-    result = await db.payments.insert_one(doc)
-    doc["_id"] = result.inserted_id
-    # Update total_paid on the loan
-    total_paid = loan.get("total_paid", 0.0) + data.amount
-    await db.loans.update_one({"_id": ObjectId(loan_id)}, {"$set": {"total_paid": total_paid, "updated_at": now}})
-    return _doc(doc)
+    })
+    total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
+    new_status = _get_loan_status(schedule)
+    now = datetime.now(timezone.utc).isoformat()
+    await db.loans.update_one(
+        {"_id": ObjectId(loan_id)},
+        {"$set": {"emi_schedule": schedule, "total_paid": total_paid, "status": new_status, "updated_at": now}}
+    )
+    await db.payments.insert_one({
+        "loan_id": loan_id, "emi_month": data.emi_month,
+        "amount": amount, "payment_date": data.payment_date,
+        "collected_by_id": current_user["id"], "collected_by_name": current_user["name"],
+        "notes": data.notes, "created_at": now,
+    })
+    return _doc(await db.loans.find_one({"_id": ObjectId(loan_id)}))
 
-@api_router.delete("/loans/{loan_id}/payments/{payment_id}")
-async def delete_payment(loan_id: str, payment_id: str, request: Request):
+@api_router.delete("/loans/{loan_id}/payments/{emi_month}")
+async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     current_user = await get_current_user(request)
     if current_user["role"] not in ["admin", "maalik", "muneem"]:
         raise HTTPException(status_code=403, detail="Access denied")
-    payment = await db.payments.find_one({"_id": ObjectId(payment_id), "loan_id": loan_id})
-    if not payment:
-        raise HTTPException(status_code=404, detail="Payment not found")
-    await db.payments.delete_one({"_id": ObjectId(payment_id)})
-    # Recalculate total_paid
-    payments = await db.payments.find({"loan_id": loan_id}).to_list(1000)
-    total_paid = sum(p["amount"] for p in payments)
-    await db.loans.update_one({"_id": ObjectId(loan_id)}, {"$set": {"total_paid": total_paid, "updated_at": datetime.now(timezone.utc).isoformat()}})
-    return {"message": "Payment deleted"}
+    doc = await db.loans.find_one({"_id": ObjectId(loan_id)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    schedule = doc.get("emi_schedule", [])
+    emi_item = next((e for e in schedule if e["due_month"] == emi_month), None)
+    if not emi_item:
+        raise HTTPException(status_code=404, detail="EMI month not found")
+    y, mo = map(int, emi_month.split("-"))
+    last_day = calendar.monthrange(y, mo)[1]
+    new_emi_status = "overdue" if date_type.today() > date_type(y, mo, last_day) else "pending"
+    emi_item.update({"status": new_emi_status, "paid_amount": 0.0, "paid_date": None, "collected_by_id": None, "collected_by_name": None})
+    total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
+    now = datetime.now(timezone.utc).isoformat()
+    await db.loans.update_one(
+        {"_id": ObjectId(loan_id)},
+        {"$set": {"emi_schedule": schedule, "total_paid": total_paid, "status": _get_loan_status(schedule), "updated_at": now}}
+    )
+    await db.payments.delete_one({"loan_id": loan_id, "emi_month": emi_month})
+    return {"message": f"EMI for {emi_month} uncollected"}
 
 # ─── Dashboard Stats ──────────────────────────────────────────────────────────
 @api_router.get("/dashboard/stats")

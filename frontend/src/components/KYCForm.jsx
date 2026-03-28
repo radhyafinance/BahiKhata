@@ -122,21 +122,33 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
   const [ocrDone, setOcrDone] = useState(false);
   const [backOcrLoading, setBackOcrLoading] = useState(false);
   const [backOcrDone, setBackOcrDone] = useState(false);
+  const [frontAadhaarNum, setFrontAadhaarNum] = useState("");
+  const [wrongSideWarning, setWrongSideWarning] = useState(false);
+  const [aadhaarMismatch, setAadhaarMismatch] = useState(false);
+
+  const normalizeAadhaar = (s) => s ? s.replace(/\D/g, "") : "";
 
   const handleAadhaarFront = async (path) => {
     onChange("aadhaar_front_path", path);
-    setOcrDone(false);
+    setOcrDone(false); setWrongSideWarning(false);
     if (!path) return;
     setOcrLoading(true);
     try {
       const res = await axios.post(`${API}/ocr/aadhaar`, { path }, { withCredentials: true });
       const d = res.data;
+      // Detect if user uploaded back by mistake (has address, no name)
+      if (!d.name && d.address) {
+        setWrongSideWarning(true);
+        onChange("aadhaar_front_path", null);
+        toast.error("This appears to be the BACK of the Aadhaar card. Please upload the FRONT side. / यह आधार का पिछला भाग है, कृपया सामने का भाग अपलोड करें।");
+        setOcrLoading(false);
+        return;
+      }
       const updates = {};
       if (d.name) updates.name = d.name;
       if (d.dob) updates.dob = d.dob;
-      if (d.aadhaar_number) updates.aadhaar_number = d.aadhaar_number;
+      if (d.aadhaar_number) { updates.aadhaar_number = d.aadhaar_number; setFrontAadhaarNum(normalizeAadhaar(d.aadhaar_number)); }
       if (d.gender) updates.gender = d.gender;
-      // address from front is a fallback; back takes priority
       if (d.address && !data.address) updates.address = d.address;
       if (Object.keys(updates).length > 0) {
         onBatchChange(updates);
@@ -154,7 +166,7 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
 
   const handleAadhaarBack = async (path) => {
     onChange("aadhaar_back_path", path);
-    setBackOcrDone(false);
+    setBackOcrDone(false); setAadhaarMismatch(false);
     if (!path) return;
     setBackOcrLoading(true);
     try {
@@ -163,6 +175,14 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
       const updates = {};
       if (d.address) updates.address = d.address;
       if (d.relative_name) updates.relative_name = d.relative_name;
+      // Cross-validate Aadhaar numbers
+      if (d.aadhaar_number && frontAadhaarNum) {
+        const backNum = normalizeAadhaar(d.aadhaar_number);
+        if (backNum && backNum !== frontAadhaarNum) {
+          setAadhaarMismatch(true);
+          toast.error("Aadhaar numbers don't match on front & back! Please verify both cards belong to the same person. / आधार नंबर मेल नहीं खाते।");
+        }
+      }
       if (Object.keys(updates).length > 0) {
         onBatchChange(updates);
         setBackOcrDone(true);
@@ -197,6 +217,17 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
         value={data.aadhaar_front_path} onChange={handleAadhaarFront}
         required={isMandatory} testId={`aadhaar-front-${title.toLowerCase().replace(/\s+/g, "-")}`}
       />
+
+      {wrongSideWarning && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2" data-testid="wrong-side-warning">
+          <span className="font-bold shrink-0">!</span>
+          <div>
+            <p className="font-semibold">Wrong side uploaded / गलत तरफ अपलोड की</p>
+            <p className="text-xs mt-0.5">You uploaded the BACK of the Aadhaar card in the front slot. Please upload the correct side (the side with the photo, name and date of birth).</p>
+            <button type="button" onClick={() => setWrongSideWarning(false)} className="mt-1 text-xs underline">Try again / फिर से</button>
+          </div>
+        </div>
+      )}
 
       {ocrLoading && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-primary text-sm animate-pulse">
@@ -244,6 +275,17 @@ function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandat
         value={data.aadhaar_back_path} onChange={handleAadhaarBack}
         required={isMandatory} testId={`aadhaar-back-${title.toLowerCase().replace(/\s+/g, "-")}`}
       />
+
+      {aadhaarMismatch && (
+        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2" data-testid="aadhaar-mismatch-warning">
+          <span className="font-bold shrink-0">!</span>
+          <div>
+            <p className="font-semibold">Aadhaar number mismatch / आधार नंबर मेल नहीं खाते</p>
+            <p className="text-xs mt-0.5">The Aadhaar numbers on the front and back cards don't match. Please verify both cards belong to the same person.</p>
+            <button type="button" onClick={() => { onChange("aadhaar_back_path", null); setAadhaarMismatch(false); }} className="mt-1 text-xs underline">Retake back photo</button>
+          </div>
+        </div>
+      )}
 
       {backOcrLoading && (
         <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm animate-pulse">
@@ -327,13 +369,19 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
   const startCamera = async () => {
     try {
       const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
       });
       setStream(s);
       setCameraActive(true);
     } catch (err) {
-      console.error("Camera error:", err);
-      toast.error("Camera not available. Use gallery upload instead.");
+      // Fallback: try without facingMode constraint
+      try {
+        const s = await navigator.mediaDevices.getUserMedia({ video: true });
+        setStream(s);
+        setCameraActive(true);
+      } catch {
+        toast.error("Camera not available. Use gallery upload instead.");
+      }
     }
   };
 
@@ -341,6 +389,17 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
     stream?.getTracks().forEach(t => t.stop());
     setStream(null);
     setCameraActive(false);
+  };
+
+  const captureGpsBackground = () => {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      pos => {
+        onGPSChange({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy), timestamp: new Date().toISOString() });
+      },
+      () => {}, // silent — agent notified via toast after photo upload
+      { enableHighAccuracy: true, timeout: 15000 }
+    );
   };
 
   const capturePhoto = async () => {
@@ -352,6 +411,7 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
     canvas.getContext("2d").drawImage(video, 0, 0);
     stopCamera();
     setPhotoUploading(true);
+    captureGpsBackground();
     canvas.toBlob(async (blob) => {
       try {
         const compressed = await compressImage(new File([blob], "live.jpg", { type: "image/jpeg" }), 900, 0.8);
@@ -359,7 +419,7 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
         fd.append("file", compressed);
         const res = await axios.post(`${API}/upload`, fd, { withCredentials: true });
         onPhotoChange(res.data.path);
-        toast.success("Live photo saved!");
+        toast.success("Live photo saved! GPS location will be captured.");
       } catch { toast.error("Photo upload failed"); }
       finally { setPhotoUploading(false); }
     }, "image/jpeg", 0.85);
@@ -370,6 +430,7 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
     if (!raw) return;
     e.target.value = "";
     setPhotoUploading(true);
+    captureGpsBackground();
     try {
       const file = await compressImage(raw, 900, 0.8);
       const fd = new FormData();
@@ -381,32 +442,18 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
     finally { setPhotoUploading(false); }
   };
 
-  const captureGPS = () => {
-    if (!navigator.geolocation) { toast.error("GPS not supported"); return; }
-    setGpsLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        onGPSChange({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy), timestamp: new Date().toISOString() });
-        toast.success("GPS location captured!");
-        setGpsLoading(false);
-      },
-      err => { toast.error(`GPS error: ${err.message || "Try again"}`); setGpsLoading(false); },
-      { enableHighAccuracy: true, timeout: 30000 }
-    );
-  };
-
   return (
     <div className="space-y-8">
       <div className="flex items-center gap-2 pb-2 border-b border-border">
-        <h3 className="text-lg font-bold font-['Outfit']">Live Photo & GPS</h3>
-        <span className="text-sm text-muted-foreground">लाइव फोटो और GPS</span>
+        <h3 className="text-lg font-bold font-['Outfit']">Live Photo</h3>
+        <span className="text-sm text-muted-foreground">लाइव फोटो — GPS auto-captured</span>
       </div>
 
       {/* Live Photo */}
       <div className="space-y-3">
         <div>
           <p className="text-sm font-semibold">Live Client Photo<span className="text-destructive">*</span></p>
-          <p className="text-xs text-muted-foreground">लाइव क्लाइंट फोटो</p>
+          <p className="text-xs text-muted-foreground">Back camera — GPS location captured automatically</p>
         </div>
 
         {cameraActive ? (
@@ -414,7 +461,7 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
             <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm mx-auto rounded-xl border-4 border-primary block" data-testid="camera-preview" />
             <div className="flex gap-3 max-w-sm mx-auto">
               <button type="button" onClick={capturePhoto} className="flex-1 bk-btn-primary flex items-center justify-center gap-2" data-testid="capture-photo-btn">
-                <Camera size={18} /> Capture
+                <Camera size={18} /> Capture Photo
               </button>
               <button type="button" onClick={stopCamera} className="bk-btn-secondary px-4 w-14 flex items-center justify-center" data-testid="cancel-camera-btn">
                 <X size={18} />
@@ -424,7 +471,16 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
         ) : livePhotoPath ? (
           <div className="flex flex-col items-center gap-3">
             <img src={`${API}/files/${livePhotoPath}`} alt="Live Photo" className="w-32 h-32 object-cover rounded-full border-4 border-primary shadow-md" data-testid="live-photo-preview" />
-            <button type="button" onClick={() => { onPhotoChange(null); }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" data-testid="retake-photo-btn">
+            {gpsLocation ? (
+              <div className="flex items-center gap-2 text-green-700 text-sm">
+                <MapPin size={14} /> GPS Captured
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 text-amber-600 text-xs">
+                <MapPin size={13} /> GPS capturing...
+              </div>
+            )}
+            <button type="button" onClick={() => { onPhotoChange(null); onGPSChange(null); }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" data-testid="retake-photo-btn">
               <RefreshCw size={13} /> Retake / फिर से
             </button>
           </div>
@@ -433,20 +489,17 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
             {photoUploading ? (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Loader2 size={24} className="animate-spin text-primary" />
-                <span className="text-sm">Uploading...</span>
+                <span className="text-sm">Uploading & capturing GPS...</span>
               </div>
             ) : (
               <>
                 <Camera size={36} className="text-muted-foreground opacity-30" />
                 <div className="flex gap-3">
-                  <button type="button" onClick={startCamera} className="bk-btn-primary max-w-[180px] flex items-center justify-center gap-2 text-sm h-11" data-testid="start-camera-btn">
-                    <Camera size={16} /> Open Camera
-                  </button>
-                  <button type="button" onClick={() => galleryRef.current?.click()} className="bk-btn-secondary max-w-[160px] flex items-center justify-center gap-2 text-sm h-11" data-testid="gallery-photo-btn">
-                    <ImageIcon size={16} /> Gallery
+                  <button type="button" onClick={startCamera} className="bk-btn-primary max-w-[200px] flex items-center justify-center gap-2 text-sm h-11" data-testid="start-camera-btn">
+                    <Camera size={16} /> Open Camera (Back)
                   </button>
                 </div>
-                <p className="text-xs text-muted-foreground text-center">Camera खोलें या गैलरी से चुनें</p>
+                <p className="text-xs text-muted-foreground text-center">GPS location will be captured automatically when you take the photo</p>
               </>
             )}
           </div>
@@ -454,37 +507,12 @@ function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }
         <canvas ref={canvasRef} className="hidden" />
         <input ref={galleryRef} type="file" accept="image/*" onChange={handleGalleryPhoto} className="hidden" />
       </div>
-
-      {/* GPS — Mandatory */}
-      <div className="space-y-3">
-        <div>
-          <p className="text-sm font-semibold">GPS Location<span className="text-destructive">*</span> <span className="text-xs font-normal text-muted-foreground">(Mandatory / अनिवार्य)</span></p>
-          <p className="text-xs text-muted-foreground">GPS स्थान — KYC करने की जगह रिकॉर्ड होगी</p>
-        </div>
-
-        {gpsLocation ? (
-          <div className="p-4 rounded-xl bg-green-50 border border-green-200 space-y-2" data-testid="gps-captured">
-            <div className="flex items-center gap-2 text-green-700">
-              <MapPin size={17} />
-              <span className="font-semibold text-sm">Location Captured / स्थान रिकॉर्ड किया गया</span>
-            </div>
-            <p className="text-sm">Lat: {gpsLocation.latitude?.toFixed(6)}, Lng: {gpsLocation.longitude?.toFixed(6)}</p>
-            <p className="text-xs text-muted-foreground">Accuracy: ±{gpsLocation.accuracy}m</p>
-            <a href={`https://www.google.com/maps?q=${gpsLocation.latitude},${gpsLocation.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline">View on map →</a>
-            <button type="button" onClick={() => onGPSChange(null)} className="block text-xs text-muted-foreground hover:text-foreground mt-1" data-testid="clear-gps-btn">Clear & recapture</button>
-          </div>
-        ) : (
-          <button type="button" onClick={captureGPS} disabled={gpsLoading} className="bk-btn-secondary max-w-xs flex items-center justify-center gap-2" data-testid="capture-gps-btn">
-            {gpsLoading ? <><Loader2 size={18} className="animate-spin" /> Getting location...</> : <><MapPin size={18} /> Capture GPS Location</>}
-          </button>
-        )}
-      </div>
     </div>
   );
 }
 
 // ─── Review ───────────────────────────────────────────────────────────────────
-function ReviewSection({ formData, illaka, misal, includeCoBorrower, includeGuarantor }) {
+function ReviewSection({ formData, illaka, misal, includeCoBorrower, includeGuarantor, disbursementAmount, setDisbursementAmount }) {
   const PersonSummary = ({ title, data }) => {
     if (!data) return null;
     return (
@@ -504,12 +532,52 @@ function ReviewSection({ formData, illaka, misal, includeCoBorrower, includeGuar
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 pb-2 border-b border-border">
-        <h3 className="text-lg font-bold font-['Outfit']">Review & Submit</h3>
-        <span className="text-sm text-muted-foreground">समीक्षा करें</span>
+        <h3 className="text-lg font-bold font-['Outfit']">Disbursement & Review</h3>
+        <span className="text-sm text-muted-foreground">वितरण और समीक्षा</span>
       </div>
       <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-primary text-sm">
         <strong>Illaka:</strong> {illaka?.name || "—"} &nbsp;|&nbsp; <strong>Misal:</strong> {misal?.name || "—"}
       </div>
+
+      {/* Disbursement Amount */}
+      <div className="bk-card bg-primary/5 border-primary/30 space-y-3">
+        <div>
+          <label className="bk-label"><span className="bk-label-en text-primary font-bold">Loan Disbursement Amount (₹)<span className="text-destructive">*</span></span><span className="bk-label-hi">वितरण राशि दर्ज करें</span></label>
+          <input
+            type="number"
+            value={disbursementAmount}
+            onChange={e => setDisbursementAmount(e.target.value)}
+            className="bk-input text-xl font-bold"
+            placeholder="e.g. 10300"
+            min="1"
+            data-testid="disbursement-amount-input"
+          />
+        </div>
+        {disbursementAmount && !isNaN(parseFloat(disbursementAmount)) && parseFloat(disbursementAmount) > 0 && (() => {
+          const p = parseFloat(disbursementAmount);
+          const emi = Math.round(p * 1.17 / 12 / 100) * 100;
+          const total = emi * 12;
+          const interest = total - p;
+          return (
+            <div className="grid grid-cols-3 gap-3 pt-2 border-t border-primary/20">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Monthly EMI</p>
+                <p className="text-lg font-bold text-primary font-['Outfit']">₹{emi.toLocaleString("en-IN")}</p>
+                <p className="text-xs text-muted-foreground">× 12 months</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Interest (17%)</p>
+                <p className="text-lg font-bold font-['Outfit']">₹{interest.toLocaleString("en-IN")}</p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Total Repayable</p>
+                <p className="text-lg font-bold text-green-700 font-['Outfit']">₹{total.toLocaleString("en-IN")}</p>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
       <PersonSummary title="Primary Borrower / प्राथमिक उधारकर्ता" data={formData.primaryBorrower} />
       {includeCoBorrower && <PersonSummary title="Co-borrower / सह-उधारकर्ता" data={formData.coBorrower} />}
       {includeGuarantor && <PersonSummary title="Guarantor / गारंटर" data={formData.guarantor} />}
@@ -517,8 +585,8 @@ function ReviewSection({ formData, illaka, misal, includeCoBorrower, includeGuar
         <span className={formData.livePhotoPath ? "text-green-700" : "text-muted-foreground"}>
           {formData.livePhotoPath ? "✓" : "✗"} Live Photo
         </span>
-        <span className={formData.gpsLocation ? "text-green-700" : "text-destructive font-semibold"}>
-          {formData.gpsLocation ? "✓" : "✗"} GPS Location {!formData.gpsLocation && "(Required!)"}
+        <span className={formData.gpsLocation ? "text-green-700" : "text-amber-600"}>
+          {formData.gpsLocation ? "✓ GPS Captured" : "⏳ GPS pending..."}
         </span>
       </div>
     </div>
@@ -545,6 +613,7 @@ export default function KYCForm() {
     livePhotoPath: null,
     gpsLocation: null,
     notes: "",
+    disbursementAmount: "",
   });
 
   useEffect(() => {
@@ -605,7 +674,15 @@ export default function KYCForm() {
     }
     if (step === 5) {
       if (!formData.livePhotoPath) { toast.error("Live photo is required / लाइव फोटो अनिवार्य है"); return false; }
-      if (!formData.gpsLocation) { toast.error("GPS location is required / GPS स्थान अनिवार्य है"); return false; }
+      // GPS is auto-captured on photo — soft warning only
+      return true;
+    }
+    if (step === 6) {
+      const amt = parseFloat(formData.disbursementAmount);
+      if (!formData.disbursementAmount || isNaN(amt) || amt <= 0) {
+        toast.error("Enter disbursement amount / वितरण राशि दर्ज करें");
+        return false;
+      }
       return true;
     }
     return true;
@@ -618,7 +695,6 @@ export default function KYCForm() {
 
   const handleSubmit = async () => {
     if (!validateStep()) return;
-    if (!formData.gpsLocation) { toast.error("GPS location is required"); return; }
     setSubmitting(true);
     try {
       const payload = {
@@ -632,11 +708,12 @@ export default function KYCForm() {
         live_photo_path: formData.livePhotoPath,
         gps_location: formData.gpsLocation,
         notes: formData.notes,
+        disbursement_amount: parseFloat(formData.disbursementAmount) || null,
       };
       const res = id
         ? await axios.put(`${API}/kycs/${id}`, payload, { withCredentials: true })
         : await axios.post(`${API}/kycs`, payload, { withCredentials: true });
-      toast.success("KYC submitted successfully!");
+      toast.success(res.data.loan_id ? "KYC submitted & Loan created! / KYC दर्ज हुआ और कर्ज बना!" : "KYC submitted successfully!");
       navigate(`/clients/${res.data.id}`);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to submit KYC");
@@ -803,6 +880,8 @@ export default function KYCForm() {
             misal={selectedMisal}
             includeCoBorrower={includeCoBorrower}
             includeGuarantor={includeGuarantor}
+            disbursementAmount={formData.disbursementAmount}
+            setDisbursementAmount={v => setFormData(p => ({ ...p, disbursementAmount: v }))}
           />
         )}
       </div>

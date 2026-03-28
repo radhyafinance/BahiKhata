@@ -201,50 +201,19 @@ export default function ClientDetail() {
           <InfoRow label="Illaka / इलाका" value={kyc.illaka_name} />
           <InfoRow label="Misal / मिसाल" value={kyc.misal_name} />
           <InfoRow label="Created / बनाया" value={kyc.created_at ? new Date(kyc.created_at).toLocaleDateString("en-IN") : "—"} />
-          <InfoRow label="Reviewed By" value={kyc.reviewed_by} />
         </div>
-      </div>
-
-      {/* Status Update (Admin/BM) */}
-      {canUpdateStatus && (
-        <div className="bk-card space-y-4" data-testid="status-update-panel">
-          <h3 className="font-semibold text-foreground">Update KYC Status / स्थिति अपडेट करें</h3>
-          <textarea
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className="bk-input h-auto py-3 resize-none w-full"
-            rows={2}
-            placeholder="Review notes (optional)..."
-            data-testid="review-notes-input"
-          />
-          <div className="flex gap-3">
+        {kyc.loan_id && (
+          <div className="mt-4 pt-4 border-t border-border">
             <button
-              onClick={() => updateStatus("approved")}
-              disabled={statusLoading || kyc.status === "approved"}
-              className="flex-1 flex items-center justify-center gap-2 h-12 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 active:scale-[0.98] transition-all disabled:opacity-40"
-              data-testid="approve-btn"
+              onClick={() => navigate(`/loans/${kyc.loan_id}`)}
+              className="flex items-center gap-2 text-primary text-sm font-semibold hover:underline"
+              data-testid="view-loan-btn"
             >
-              <CheckCircle size={18} /> Approve
-            </button>
-            <button
-              onClick={() => updateStatus("rejected")}
-              disabled={statusLoading || kyc.status === "rejected"}
-              className="flex-1 flex items-center justify-center gap-2 h-12 bg-destructive text-white rounded-lg font-semibold hover:bg-destructive/90 active:scale-[0.98] transition-all disabled:opacity-40"
-              data-testid="reject-btn"
-            >
-              <XCircle size={18} /> Reject
-            </button>
-            <button
-              onClick={() => updateStatus("pending")}
-              disabled={statusLoading || kyc.status === "pending"}
-              className="flex-1 flex items-center justify-center gap-2 h-12 bg-yellow-500 text-white rounded-lg font-semibold hover:bg-yellow-600 active:scale-[0.98] transition-all disabled:opacity-40"
-              data-testid="pending-btn"
-            >
-              <Clock size={18} /> Pending
+              View Loan / कर्ज देखें → ₹{kyc.disbursement_amount?.toLocaleString("en-IN") || ""}
             </button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       {/* Person Cards */}
       <PersonCard
@@ -283,31 +252,17 @@ export default function ClientDetail() {
               />
             </div>
           )}
-          {kyc.gps_location && (
+          {kyc.gps_location && (user?.role === "admin" || user?.role === "maalik") && (
             <div>
               <div className="flex items-center gap-2 mb-3">
                 <MapPin size={16} className="text-primary" />
-                <p className="font-semibold text-sm text-foreground">GPS Location</p>
+                <p className="font-semibold text-sm text-foreground">GPS Location <span className="text-xs text-muted-foreground font-normal">(Admin/Maalik only)</span></p>
               </div>
               <div className="p-4 bg-green-50 rounded-xl border border-green-200 space-y-2" data-testid="detail-gps">
-                <p className="text-sm text-foreground">
-                  Lat: {kyc.gps_location.latitude?.toFixed(6)}
-                </p>
-                <p className="text-sm text-foreground">
-                  Lng: {kyc.gps_location.longitude?.toFixed(6)}
-                </p>
-                {kyc.gps_location.accuracy && (
-                  <p className="text-xs text-muted-foreground">±{kyc.gps_location.accuracy}m accuracy</p>
-                )}
-                <a
-                  href={`https://www.google.com/maps?q=${kyc.gps_location.latitude},${kyc.gps_location.longitude}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-primary hover:underline"
-                  data-testid="view-on-map-link"
-                >
-                  View on Google Maps →
-                </a>
+                <p className="text-sm text-foreground">Lat: {kyc.gps_location.latitude?.toFixed(6)}</p>
+                <p className="text-sm text-foreground">Lng: {kyc.gps_location.longitude?.toFixed(6)}</p>
+                {kyc.gps_location.accuracy && <p className="text-xs text-muted-foreground">±{kyc.gps_location.accuracy}m accuracy</p>}
+                <a href={`https://www.google.com/maps?q=${kyc.gps_location.latitude},${kyc.gps_location.longitude}`} target="_blank" rel="noopener noreferrer" className="text-xs text-primary hover:underline" data-testid="view-on-map-link">View on Google Maps →</a>
               </div>
             </div>
           )}
