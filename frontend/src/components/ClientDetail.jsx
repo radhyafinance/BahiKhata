@@ -243,6 +243,7 @@ function PassbookNoteModal({ emi, loanId, onClose, onSaved }) {
 
 // ─── Passbook: Loan Card ──────────────────────────────────────────────────────
 function LoanPassbookCard({ loan: initialLoan, navigate, onLoanUpdated }) {
+  const { user } = useAuth();
   const [loan, setLoan] = useState(initialLoan);
   const [expanded, setExpanded] = useState(true);
   const [collectingEmi, setCollectingEmi] = useState(null);
