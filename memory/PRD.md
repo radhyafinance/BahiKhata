@@ -91,12 +91,19 @@ Business Model: Sahukar Illaka model
 
 ## Prioritized Backlog
 
-## Recently Completed (Feb 2026)
-- Husband's/Father's Name field added to all PersonKYC sections (extracted via Aadhaar back OCR)
-- New `/api/ocr/aadhaar-back` endpoint (Gemini 2.5 Flash) for address + relative_name
-- Duplicate Aadhaar validation on KYC creation (digit-based regex, handles spaces/no-spaces)
-- Field order: Aadhaar Front → Name/DOB/Gender/Aadhaar# → Aadhaar Back → Address → Husband/Father Name
-- Loan Tracking Module: LoanList, LoanForm, LoanDetail, payments (CRUD), dashboard loan stats
+## Recently Completed (Feb 2026 — Sprint 2)
+- EMI module: fixed 17% flat p.a., EMI = round(P×1.17/12/100)×100, 12-month schedule generated at creation
+- Overdue detection: lazy compute on GET /loans/{id} — marks pending EMIs as overdue if past calendar month end
+- Collect EMI endpoint: POST /loans/{id}/payments with emi_month. Undo: DELETE /loans/{id}/payments/{emi_month}
+- Loan auto-created on KYC submit when disbursement_amount provided. KYC status now 'active' (no approval)
+- Aadhaar wrong-side detection (if back uploaded in front slot → error), Aadhaar number cross-validation (front vs back)
+- Back camera used for live photo. GPS auto-captured on photo click (no separate GPS button). GPS visible only to Admin/Maalik
+- Removed approval buttons from ClientDetail. Added 'View Loan' link when loan_id exists
+
+## Recently Completed (Feb 2026 — Sprint 1)
+- Husband's/Father's Name field added; extracted via Aadhaar back OCR (/api/ocr/aadhaar-back)
+- Duplicate Aadhaar validation on KYC creation (digit-only regex handles spaces)
+- Loan Tracking Module: LoanList, LoanForm, LoanDetail, payments, dashboard loan stats
 
 ### P0 (Next Sprint)
 - [ ] EMI repayment tracking & collection schedules (weekly/monthly)
