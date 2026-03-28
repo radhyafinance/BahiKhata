@@ -91,6 +91,12 @@ Business Model: Sahukar Illaka model
 
 ## Prioritized Backlog
 
+## Recently Completed (Mar 2026 — Sprint 3)
+- Customer ID generation: 2 uppercase letters from Illaka name + 4-digit sequential (e.g., `DE0001`)
+- Loan ID generation: `{customer_id}-L{n}` sequential per customer (e.g., `DE0001-L1`, `DE0001-L2`)
+- Mobile number uniqueness: no 2 KYCs can share the same phone number (400 on duplicate)
+- Collection Sheet (Vasuli/वसूली): new sidebar tab at `/collections`, EMIs due/overdue grouped by Illaka → Misal → client rows, month picker, inline Collect button, summary progress bar
+
 ## Recently Completed (Feb 2026 — Sprint 2)
 - EMI module: fixed 17% flat p.a., EMI = round(P×1.17/12/100)×100, 12-month schedule generated at creation
 - Overdue detection: lazy compute on GET /loans/{id} — marks pending EMIs as overdue if past calendar month end
@@ -106,8 +112,8 @@ Business Model: Sahukar Illaka model
 - Loan Tracking Module: LoanList, LoanForm, LoanDetail, payments, dashboard loan stats
 
 ### P0 (Next Sprint)
-- [ ] EMI repayment tracking & collection schedules (weekly/monthly)
-- [ ] Loan origination with formal sanction workflow
+- [ ] Loan Passbook Feature: add a per-client loan passbook view on ClientDetail (all loans + EMI history in one place)
+- [ ] Dashboard: show collection efficiency for current month (% EMIs collected vs due)
 
 ### P1
 - [ ] Individual loan ledger / passbook view per client
