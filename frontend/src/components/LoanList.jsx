@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
+import { useIllaka } from "./IllakaContext";
 import { Search, Plus, TrendingUp, IndianRupee } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -25,6 +26,7 @@ function fmt(amount) {
 export default function LoanList() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { selectedIllaka } = useIllaka();
   const [loans, setLoans] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -39,6 +41,7 @@ export default function LoanList() {
       const params = new URLSearchParams({ limit: limit.toString(), skip: (page * limit).toString() });
       if (search) params.append("search", search);
       if (statusFilter) params.append("status", statusFilter);
+      if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
       const res = await axios.get(`${API}/loans?${params}`, { withCredentials: true });
       setLoans(res.data.loans || []);
       setTotal(res.data.total || 0);
@@ -52,7 +55,7 @@ export default function LoanList() {
   useEffect(() => {
     const t = setTimeout(fetchLoans, 300);
     return () => clearTimeout(t);
-  }, [search, statusFilter, page]);
+  }, [search, statusFilter, page, selectedIllaka]);
 
   const canCreate = user?.role === "muneem" || user?.role === "sipahi";
 

@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
+import { useIllaka } from "./IllakaContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
   X, Loader2, ExternalLink, IndianRupee, Pencil, Lock
@@ -330,6 +331,7 @@ function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
 
 export default function CollectionSheet() {
   const { user } = useAuth();
+  const { selectedIllaka } = useIllaka();
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
   const [month, setMonth] = useState(defaultMonth);
@@ -341,14 +343,16 @@ export default function CollectionSheet() {
   const fetchSheet = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await axios.get(`${API}/collections/sheet?month=${month}`, { withCredentials: true });
+      const params = new URLSearchParams({ month });
+      if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
+      const res = await axios.get(`${API}/collections/sheet?${params}`, { withCredentials: true });
       setData(res.data);
     } catch (e) {
       toast.error("Failed to load collection sheet");
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, selectedIllaka]);
 
   useEffect(() => { fetchSheet(); }, [fetchSheet]);
 

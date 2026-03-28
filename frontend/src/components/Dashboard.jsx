@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
+import { useIllaka } from "./IllakaContext";
 import {
   UserPlus, FileText, Clock, CheckCircle, XCircle, Users, TrendingUp, Calendar
 } from "lucide-react";
@@ -41,6 +42,7 @@ const StatCard = ({ icon: Icon, label, labelHi, value, color, testId }) => (
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { selectedIllaka } = useIllaka();
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recent, setRecent] = useState([]);
@@ -49,9 +51,10 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
+        const illakaParam = selectedIllaka ? `&illaka_id=${selectedIllaka.id}` : "";
         const [s, k] = await Promise.all([
-          axios.get(`${API}/dashboard/stats`, { withCredentials: true }),
-          axios.get(`${API}/kycs?limit=5`, { withCredentials: true }),
+          axios.get(`${API}/dashboard/stats?${illakaParam}`, { withCredentials: true }),
+          axios.get(`${API}/kycs?limit=5${illakaParam}`, { withCredentials: true }),
         ]);
         setStats(s.data);
         setRecent(k.data.kycs || []);
@@ -62,7 +65,7 @@ export default function Dashboard() {
       }
     };
     fetchAll();
-  }, []);
+  }, [selectedIllaka]);
 
   const roleGreeting = {
     admin: "Administrator",

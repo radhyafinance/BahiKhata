@@ -3,6 +3,7 @@ import "./index.css";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "./components/AuthContext";
+import { IllakaProvider, useIllaka } from "./components/IllakaContext";
 import Login from "./components/Login";
 import Layout from "./components/Layout";
 import Dashboard from "./components/Dashboard";
@@ -15,9 +16,11 @@ import LoanList from "./components/LoanList";
 import LoanForm from "./components/LoanForm";
 import LoanDetail from "./components/LoanDetail";
 import CollectionSheet from "./components/CollectionSheet";
+import IllakaSelector from "./components/IllakaSelector";
 
 const ProtectedRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
+  const { illakaReady } = useIllaka();
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -29,56 +32,59 @@ const ProtectedRoute = ({ children, roles }) => {
     );
   }
   if (!user) return <Navigate to="/login" replace />;
+  if (!illakaReady) return <IllakaSelector />;
   if (roles && !roles.includes(user.role)) return <Navigate to="/" replace />;
   return children;
 };
 
 function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <Toaster position="top-right" richColors />
-        <Routes>
-          <Route path="/login" element={<Login />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <Layout />
-              </ProtectedRoute>
-            }
-          >
-            <Route index element={<Dashboard />} />
-            <Route path="kyc/new" element={<KYCForm />} />
-            <Route path="kyc/:id/edit" element={<KYCForm />} />
-            <Route path="clients" element={<ClientList />} />
-            <Route path="clients/:id" element={<ClientDetail />} />
+    <BrowserRouter>
+      <AuthProvider>
+        <IllakaProvider>
+          <Toaster position="top-right" richColors />
+          <Routes>
+            <Route path="/login" element={<Login />} />
             <Route
-              path="illakas"
+              path="/"
               element={
-                <ProtectedRoute roles={["admin", "maalik"]}>
-                  <IllakaManagement />
+                <ProtectedRoute>
+                  <Layout />
                 </ProtectedRoute>
               }
-            />
-            <Route
-              path="users"
-              element={
-                <ProtectedRoute roles={["admin", "maalik"]}>
-                  <UserManagement />
-                </ProtectedRoute>
-              }
-            />
-            <Route path="loans" element={<LoanList />} />
-            <Route path="loans/new" element={<ProtectedRoute roles={["muneem", "sipahi"]}><LoanForm /></ProtectedRoute>} />
-            <Route path="loans/:id" element={<LoanDetail />} />
-            <Route path="loans/:id/edit" element={<ProtectedRoute roles={["admin", "maalik", "muneem", "sipahi"]}><LoanForm /></ProtectedRoute>} />
-            <Route path="collections" element={<CollectionSheet />} />
-          </Route>
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </BrowserRouter>
-    </AuthProvider>
+            >
+              <Route index element={<Dashboard />} />
+              <Route path="kyc/new" element={<KYCForm />} />
+              <Route path="kyc/:id/edit" element={<KYCForm />} />
+              <Route path="clients" element={<ClientList />} />
+              <Route path="clients/:id" element={<ClientDetail />} />
+              <Route
+                path="illakas"
+                element={
+                  <ProtectedRoute roles={["admin", "maalik"]}>
+                    <IllakaManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="users"
+                element={
+                  <ProtectedRoute roles={["admin", "maalik"]}>
+                    <UserManagement />
+                  </ProtectedRoute>
+                }
+              />
+              <Route path="loans" element={<LoanList />} />
+              <Route path="loans/new" element={<ProtectedRoute roles={["muneem", "sipahi"]}><LoanForm /></ProtectedRoute>} />
+              <Route path="loans/:id" element={<LoanDetail />} />
+              <Route path="loans/:id/edit" element={<ProtectedRoute roles={["admin", "maalik", "muneem", "sipahi"]}><LoanForm /></ProtectedRoute>} />
+              <Route path="collections" element={<CollectionSheet />} />
+            </Route>
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </IllakaProvider>
+      </AuthProvider>
+    </BrowserRouter>
   );
 }
 

@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 @router.get("/collections/sheet")
-async def get_collection_sheet(request: Request, month: Optional[str] = None):
+async def get_collection_sheet(request: Request, month: Optional[str] = None, illaka_id: Optional[str] = None):
     current_user = await get_current_user(request)
     if not month:
         today = date_type.today()
@@ -18,6 +18,8 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None):
 
     query = await _loan_query_for_user(current_user)
     query["status"] = {"$ne": "closed"}
+    if illaka_id:
+        query["illaka_id"] = illaka_id
 
     loans = await db.loans.find(query).sort(
         [("illaka_id", 1), ("misal_id", 1), ("created_at", 1)]

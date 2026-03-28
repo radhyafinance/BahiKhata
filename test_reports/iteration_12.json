@@ -1,0 +1,79 @@
+{
+  "summary": "Tested Illaka selector feature end-to-end (backend + frontend). 20 backend tests all pass. Found and fixed 1 critical bug in IllakaContext.jsx: sessionStorage cleared on page reload due to auth loading race condition. All 15 feature requirements verified.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Illaka Selector list",
+        "issues": ["Multiple TEST_Illaka_Central entries appear in selector (leftover test data from previous iterations) - not a code bug, just test data pollution"]
+      }
+    ]
+  },
+  "bugs_fixed": [
+    {
+      "file": "/app/frontend/src/components/IllakaContext.jsx",
+      "issue": "sessionStorage (bk_illaka_sel) was being cleared on every page reload. Root cause: IllakaContext's useEffect ran with user=null during auth loading phase (before /auth/me responded), immediately removing sessionStorage item. Then when auth completed, sessionStorage was already gone so illaka selection was lost.",
+      "fix": "Added `const { user, loading } = useAuth()` (was only `user`) and added `if (loading) return;` guard at top of useEffect. Added `loading` to dependency array: `[user?.id, loading]`.",
+      "rca": "Race condition between AuthContext (async /auth/me check) and IllakaContext's sessionStorage cleanup. During initial render, user=null triggers `sessionStorage.removeItem()` before auth resolves. Fix: skip effect entirely while auth is loading."
+    }
+  ],
+  "feature_tests": {
+    "after_login_shows_illaka_selector": "PASS - Redirected to IllakaSelector (full-screen) not Dashboard after login",
+    "selector_shows_all_illakas_option": "PASS - data-testid=illaka-choice-all visible, 9 illakas shown for admin",
+    "continue_btn_disabled_before_selection": "PASS - disabled attribute present until illaka is chosen",
+    "selecting_all_illakas_and_continue": "PASS - Navigates to Dashboard with All Illakas filter",
+    "selecting_specific_illaka_and_continue": "PASS - Delhi selected, Dashboard shows 'Working Illaka: Delhi' in top-right bar",
+    "dashboard_working_illaka_display": "PASS - Desktop top-right bar shows 'Working Illaka: [name]', sidebar shows 'Working Illaka / कार्यक्षेत्र' label with switcher",
+    "illaka_switcher_btn_resets_selector": "PASS - Clicking switcher clears illakaReady, shows IllakaSelector again",
+    "dashboard_filters_by_illaka": "PASS - All Illakas: 38 KYCs, Delhi: 19 KYCs (confirmed different)",
+    "clients_list_filters_by_illaka": "PASS - 38 total (All) → 19 total (Delhi) confirmed in header count",
+    "loans_list_filters_by_illaka": "PASS - 20 loans (All) vs filtered count for Delhi",
+    "collections_filter_by_illaka": "PASS - Shows illakas/misals filtered when specific illaka selected",
+    "kyc_form_prepopulates_illaka": "PASS - Step 1 illaka-select pre-populated with sipahi's selected illaka (Delhi) from context",
+    "session_storage_persistence": "PASS (after fix) - Illaka selection survives page refresh, restores correctly",
+    "logout_clears_illaka": "PASS - sessionStorage cleared on logout, selector shows again after re-login",
+    "backend_collections_illaka_filter": "PASS - /api/collections/sheet?illaka_id= returns only matching illaka data",
+    "backend_dashboard_illaka_filter": "PASS - /api/dashboard/stats?illaka_id= returns filtered counts, nonexistent illaka returns 0"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_illaka_feature.py",
+    "/app/test_reports/pytest/illaka_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "FIXED: IllakaContext.jsx - sessionStorage cleared on page reload due to auth loading race condition. Fixed by checking `loading` state before removing sessionStorage.",
+    "MINOR: Dashboard.jsx line 54 builds URL as `?&illaka_id=xxx` (double punctuation) when illaka is selected. Should use URLSearchParams for cleaner URL construction. Functionally harmless but non-standard.",
+    "OK: All pages (Dashboard, ClientList, LoanList, CollectionSheet, KYCForm) correctly consume useIllaka() and pass illaka_id to API calls.",
+    "OK: Backend routes (dashboard.py, collections.py) correctly handle optional illaka_id filter param.",
+    "OK: ProtectedRoute correctly shows IllakaSelector (full-screen) when illakaReady=false, and shows spinner during auth loading."
+  ],
+  "updated_files": [
+    "/app/frontend/src/components/IllakaContext.jsx",
+    "/app/backend/tests/test_illaka_feature.py"
+  ],
+  "success_rate": {
+    "backend": "100% (20/20 tests)",
+    "frontend": "100% (all 15 feature requirements verified)"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "sipahi": "phone=8888888888 / Test@1234"
+  },
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Illaka selector feature fully tested (iteration_12). Critical bug fixed: IllakaContext.jsx now uses `loading` from AuthContext to avoid clearing sessionStorage before auth resolves on page reload. Backend: 20 tests in /app/backend/tests/test_illaka_feature.py all pass. Frontend: all 15 feature requirements verified including filter effects on Dashboard, Clients, Loans, Vasuli, and KYC form pre-population. Admin: 9999999999/Admin@123, Sipahi: 8888888888/Test@1234.",
+  "rca_of_issue": {
+    "bug": "Illaka selection (sessionStorage bk_illaka_sel) lost on every page refresh",
+    "root_cause": "IllakaContext.jsx useEffect depends on [user?.id]. On page load: 1) user=null → effect runs → `!user` is true → sessionStorage.removeItem() called. 2) AuthContext resolves /auth/me → user set → effect runs again → reads from sessionStorage → but it was already cleared in step 1.",
+    "reproduction": "1. Login, select an Illaka, verify switcher shows it. 2. Refresh page. 3. Illaka selector appears again instead of Dashboard.",
+    "fix": "In IllakaContext.jsx: add `loading` from useAuth(). At top of useEffect, add `if (loading) return;`. Add `loading` to dependency array. This ensures sessionStorage is only modified after auth state is fully resolved.",
+    "file": "/app/frontend/src/components/IllakaContext.jsx",
+    "lines_changed": "Line 11: `const { user } = useAuth()` → `const { user, loading } = useAuth()`. Line 16-17: added `if (loading) return;` guard. Line 47: `[user?.id]` → `[user?.id, loading]`."
+  }
+}

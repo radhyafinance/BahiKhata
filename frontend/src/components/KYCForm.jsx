@@ -11,12 +11,14 @@ import { API, STEPS, emptyPerson } from "./kyc/utils";
 import { PersonSection } from "./kyc/PersonSection";
 import { LivePhotoGPS } from "./kyc/LivePhotoGPS";
 import { ReviewSection } from "./kyc/ReviewSection";
+import { useIllaka } from "./IllakaContext";
 
 const STEP_ICONS = [MapPin, User, Users, Shield, Camera, CheckCircle];
 
 export default function KYCForm() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { selectedIllaka: contextIllaka } = useIllaka();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [illakas, setIllakas] = useState([]);
@@ -39,7 +41,13 @@ export default function KYCForm() {
   });
 
   useEffect(() => {
-    axios.get(`${API}/illakas`, { withCredentials: true }).then(r => setIllakas(r.data)).catch(() => {});
+    axios.get(`${API}/illakas`, { withCredentials: true }).then(r => {
+      setIllakas(r.data);
+      // Pre-populate from global context in create mode (only specific illaka, not "All")
+      if (!id && contextIllaka) {
+        setSelectedIllaka(contextIllaka);
+      }
+    }).catch(() => {});
   }, []);
 
   useEffect(() => {

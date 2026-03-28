@@ -1,6 +1,7 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
-import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin, TrendingUp, ClipboardList } from "lucide-react";
+import { useIllaka } from "./IllakaContext";
+import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin, TrendingUp, ClipboardList, Globe, ChevronDown } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -35,6 +36,7 @@ function getNavItems(role) {
 
 export default function Layout() {
   const { user, logout } = useAuth();
+  const { selectedIllaka, resetIllaka } = useIllaka();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -45,6 +47,22 @@ export default function Layout() {
   };
 
   const navItems = getNavItems(user?.role);
+  const illakaLabel = selectedIllaka ? selectedIllaka.name : "All Illakas";
+
+  const IllakaSwitcher = ({ compact = false }) => (
+    <button
+      onClick={resetIllaka}
+      data-testid="illaka-switcher-btn"
+      title="Change Illaka"
+      className={`flex items-center gap-2 rounded-lg border border-primary/30 bg-primary/10 text-primary hover:bg-primary/20 transition-colors ${
+        compact ? "px-2 py-1.5 text-xs" : "px-3 py-2 text-xs font-medium"
+      }`}
+    >
+      {selectedIllaka ? <MapPin size={13} /> : <Globe size={13} />}
+      <span className="truncate max-w-[120px] font-semibold">{illakaLabel}</span>
+      <ChevronDown size={11} className="flex-shrink-0 opacity-70" />
+    </button>
+  );
 
   const SidebarContent = () => (
     <div className="flex flex-col h-full">
@@ -88,6 +106,11 @@ export default function Layout() {
 
       {/* User + Logout */}
       <div className="p-4 border-t border-border">
+        {/* Illaka Switcher */}
+        <div className="mb-3 px-1">
+          <p className="text-xs text-muted-foreground mb-1.5 font-medium">Working Illaka / कार्यक्षेत्र</p>
+          <IllakaSwitcher />
+        </div>
         <div className="flex items-center gap-3 px-2 py-2 mb-2">
           <div className="w-9 h-9 bg-primary/15 rounded-full flex items-center justify-center flex-shrink-0">
             <span className="text-primary font-bold text-sm">
@@ -137,6 +160,7 @@ export default function Layout() {
 
       {/* Main */}
       <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Mobile Header */}
         <header className="lg:hidden flex items-center justify-between px-4 py-3 border-b border-border bg-card">
           <button onClick={() => setSidebarOpen(true)} className="p-2 rounded-lg hover:bg-muted" data-testid="mobile-menu-btn">
             <Menu size={22} />
@@ -147,10 +171,15 @@ export default function Layout() {
             </div>
             <span className="font-bold text-foreground font-['Outfit']">Bahi Khata</span>
           </div>
-          <span className={`text-xs px-2 py-1 rounded-full font-semibold ${ROLE_COLOR[user?.role] || ""}`}>
-            {ROLE_LABELS[user?.role] || user?.role}
-          </span>
+          <IllakaSwitcher compact />
         </header>
+        {/* Desktop Top-Right Bar */}
+        <div className="hidden lg:flex items-center justify-end px-6 py-2.5 border-b border-border bg-card/60 backdrop-blur-sm">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Working Illaka:</span>
+            <IllakaSwitcher />
+          </div>
+        </div>
         <main className="flex-1 overflow-auto">
           <Outlet />
         </main>

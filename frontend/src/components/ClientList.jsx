@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
+import { useIllaka } from "./IllakaContext";
 import { Search, UserPlus } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -23,6 +24,7 @@ const StatusBadge = ({ status }) => {
 export default function ClientList() {
   const navigate = useNavigate();
   const { user } = useAuth();
+  const { selectedIllaka } = useIllaka();
   const [kycs, setKycs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -40,6 +42,7 @@ export default function ClientList() {
       });
       if (search) params.append("search", search);
       if (statusFilter) params.append("status", statusFilter);
+      if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
       const res = await axios.get(`${API}/kycs?${params}`, { withCredentials: true });
       setKycs(res.data.kycs || []);
       setTotal(res.data.total || 0);
@@ -53,7 +56,7 @@ export default function ClientList() {
   useEffect(() => {
     const t = setTimeout(fetchKycs, 300);
     return () => clearTimeout(t);
-  }, [search, statusFilter, page]);
+  }, [search, statusFilter, page, selectedIllaka]);
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">

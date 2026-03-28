@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Request
+from typing import Optional
 from datetime import datetime, timezone
 from core.database import db
 from core.auth import get_current_user
@@ -8,10 +9,13 @@ router = APIRouter()
 
 
 @router.get("/dashboard/stats")
-async def dashboard_stats(request: Request):
+async def dashboard_stats(request: Request, illaka_id: Optional[str] = None):
     current_user = await get_current_user(request)
     kyc_query = await _kyc_query_for_user(current_user)
     loan_query = await _loan_query_for_user(current_user)
+    if illaka_id:
+        kyc_query["illaka_id"] = illaka_id
+        loan_query["illaka_id"] = illaka_id
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     return {
         "total": await db.kycs.count_documents(kyc_query),
