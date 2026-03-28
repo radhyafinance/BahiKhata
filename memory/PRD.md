@@ -51,14 +51,14 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 │   │   ├── database.py    # MongoDB connection (client, db)
 │   │   ├── storage.py     # Object storage helpers + EMERGENT_KEY + APP_NAME
 │   │   └── auth.py        # JWT, hash_password, get_current_user, _user_from_doc
-│   ├── models.py          # All Pydantic models
-│   ├── helpers.py         # _doc, generate_customer_id, generate_loan_number, EMI helpers, _kyc_query_for_user, _loan_query_for_user
+│   ├── models.py          # All Pydantic models (incl. ReLoanRequest)
+│   ├── helpers.py         # _doc, generate_customer_id, generate_loan_number, EMI helpers (_get_loan_status handles 'netoff')
 │   ├── routes/
 │   │   ├── auth.py        # /api/auth/login, logout, me
 │   │   ├── users.py       # /api/users CRUD
 │   │   ├── illakas.py     # /api/illakas, /api/misals CRUD
 │   │   ├── kycs.py        # /api/kycs CRUD + customer ID + auto-loan
-│   │   ├── loans.py       # /api/loans CRUD + payments + PATCH emi-note
+│   │   ├── loans.py       # /api/loans CRUD + payments + PATCH emi-note + POST reloan
 │   │   ├── ocr.py         # /api/upload, /api/files, /api/ocr/aadhaar*, /api/transliterate
 │   │   ├── collections.py # /api/collections/sheet
 │   │   └── dashboard.py   # /api/dashboard/stats
@@ -67,7 +67,8 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 │       ├── test_loans_emi.py
 │       ├── test_new_features.py
 │       ├── test_loan_passbook.py
-│       └── test_refactoring.py
+│       ├── test_refactoring.py
+│       └── test_reloan.py  # Re-Loan with Net-Off tests
 ├── frontend/
 │   └── src/
 │       ├── App.js
@@ -77,15 +78,16 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 │           ├── Dashboard.jsx
 │           ├── KYCForm.jsx          # Slim orchestrator (imports from kyc/)
 │           ├── kyc/
-│           │   ├── utils.js         # API, STEPS, emptyPerson, compressImage
-│           │   ├── DocUpload.jsx    # Photo upload with camera/gallery
-│           │   ├── PersonSection.jsx # Person KYC fields + OCR + transliteration
-│           │   ├── LivePhotoGPS.jsx  # Camera capture + GPS
-│           │   └── ReviewSection.jsx # Disbursement + review summary
+│           │   ├── utils.js
+│           │   ├── DocUpload.jsx
+│           │   ├── PersonSection.jsx
+│           │   ├── LivePhotoGPS.jsx
+│           │   └── ReviewSection.jsx
+│           ├── ReLoanModal.jsx      # Re-Loan with Net-Off modal
 │           ├── ClientList.jsx
-│           ├── ClientDetail.jsx     # KYC tab + Passbook tab
+│           ├── ClientDetail.jsx     # KYC tab + Passbook tab (Re-Loan button)
 │           ├── LoanList.jsx
-│           ├── LoanDetail.jsx       # EMI grid + Note modal + Collect modal
+│           ├── LoanDetail.jsx       # EMI grid + Re-Loan button + netoff display
 │           └── CollectionSheet.jsx  # Vasuli view grouped by Illaka → Misal
 ```
 
@@ -114,7 +116,7 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 | GET | /api/loans/{id} | Get loan with EMI schedule |
 | POST | /api/loans/{id}/payments | Record EMI payment |
 | DELETE | /api/loans/{id}/payments/{emi_month} | Undo payment |
-| PATCH | /api/loans/{id}/emi-note | Add/edit EMI note |
+| POST | /api/loans/{id}/reloan | Create re-loan (with optional net-off) |
 | GET | /api/collections/sheet | Vasuli collection sheet |
 | GET | /api/dashboard/stats | Dashboard statistics |
 | POST | /api/upload | Upload file to object storage |
@@ -142,6 +144,7 @@ See CHANGELOG.md for full history.
 - [x] Code Refactoring (backend server.py → core/ + routes/, frontend KYCForm.jsx → kyc/)
 - [x] Unique Aadhaar + mobile validation
 - [x] Live photo with back camera + auto-GPS
+- [x] Re-Loan with Net-Off (all roles, active + closed loans, optional phone/co-borrower/guarantor edit)
 
 ### P2 (Backlog)
 - [ ] Days Overdue badge on Collection Sheet EMI rows
