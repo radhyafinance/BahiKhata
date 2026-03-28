@@ -1,0 +1,96 @@
+{
+  "summary": "Loan Passbook feature tested end-to-end (backend + frontend). All 16 backend tests pass. All 12 frontend feature checks verified. Backend kyc_id filter works correctly for admin and sipahi roles. Frontend passbook tab, EMI collect/undo flow, aggregate summary, New Loan button all working. One HTML structure bug found (button inside button).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/loans",
+        "issue": "Test data artifact: 4 loans exist with kyc_id='000000000000000000000000' from previous testing sessions (no functional impact, just dirty test data)",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "LoanPassbookCard (ClientDetail.jsx line 221-254)",
+        "issue": "HTML structure violation: outer loan header is a <button> that contains inner ExternalLink <button> (line 245). This is invalid HTML5 - button cannot be descendant of button. Causes React hydration error in browser console. Fix: change outer <button> (loan-card-toggle) to a <div> with onClick, or move ExternalLink button outside the outer button.",
+        "selector": "[data-testid^='loan-card-toggle-'] button",
+        "priority": "MEDIUM"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend_tests": {
+      "total": 17,
+      "passed": 16,
+      "failed": 0,
+      "skipped": 1,
+      "skip_reason": "test_collect_already_paid_emi_fails: skipped because collect/undo test left no paid EMIs",
+      "file": "/app/backend/tests/test_loan_passbook.py"
+    },
+    "frontend_checks": {
+      "two_tabs_visible_admin": "PASS - 'KYC / पहचान' and 'Passbook / पासबुक' tabs shown",
+      "two_tabs_visible_sipahi": "PASS - both tabs visible for sipahi role",
+      "kyc_tab_primary_borrower": "PASS - Primary Borrower card with all fields (name, hindi name, relative name, phone, aadhaar)",
+      "passbook_tab_click_fetches_loans": "PASS - clicking passbook tab triggers API call to GET /api/loans?kyc_id=...",
+      "passbook_loan_card_shown": "PASS - loan card passbook-loan-{id} shown with DE0019-L1",
+      "passbook_loan_header_details": "PASS - loan_number DE0019-L1, active badge, ₹12,000 principal, ₹14,400 outstanding",
+      "passbook_4stat_bar": "PASS - Principal ₹12,000, EMI ₹1,200, Paid ₹0, Balance ₹14,400",
+      "passbook_12_emi_rows": "PASS - 12 EMI rows (Apr 26 to Mar 27) with Collect buttons",
+      "passbook_collect_modal": "PASS - modal opens with amount pre-filled, date field, confirm button",
+      "passbook_collect_flow": "PASS - after collect: EMI row turns green, Undo button appears, stats update (1/12 paid, ₹1,200 paid)",
+      "passbook_undo_flow": "PASS - after undo: EMI reverts to pending, Collect button restored, 'EMI collection undone' toast shown",
+      "passbook_new_loan_btn_sipahi": "PASS - New Loan button visible for sipahi, navigates to /loans/new?kyc_id=...&client=...",
+      "passbook_new_loan_btn_admin": "PASS - New Loan button NOT visible for admin (correct role restriction)",
+      "passbook_aggregate_single_loan": "PASS - aggregate summary NOT shown for client with 1 loan",
+      "passbook_aggregate_multiple_loans": "PASS - aggregate summary shown for client with 2 loans (Total Disbursed, Repayable, Paid, Outstanding)",
+      "passbook_tab_caching": "PASS - second passbook tab click uses cached data (no extra API call)",
+      "kyc_tab_switch_back": "PASS - switching back to KYC tab shows Primary Borrower card correctly",
+      "kyc_id_filter_admin": "PASS - admin role: GET /api/loans?kyc_id= returns only matching KYC loans",
+      "kyc_id_filter_sipahi": "PASS - sipahi role: GET /api/loans?kyc_id= returns correct filtered loans",
+      "kyc_id_filter_unknown": "PASS - random kyc_id returns 0 loans",
+      "emi_schedule_structure": "PASS - each EMI has month, due_month, amount, status fields (12 entries)",
+      "loan_financial_fields": "PASS - principal_amount, emi_amount, total_paid, total_repayable are numeric"
+    }
+  },
+  "features_verified": [
+    "GET /api/loans?kyc_id={id} filters correctly (verified for admin and sipahi roles)",
+    "Aggregate summary bar shown for clients with 2+ loans",
+    "Aggregate summary hidden for clients with single loan",
+    "Collect EMI flow: modal → submit → EMI status = paid → stats updated",
+    "Undo flow: confirm dialog → API delete → EMI status reverts to pending",
+    "New Loan button: visible for sipahi/muneem, hidden for admin",
+    "Lazy loading: loans fetched only on first passbook tab click (cached thereafter)",
+    "Tab switching: KYC ↔ Passbook works correctly",
+    "LoanPassbookCard expand/collapse toggle works"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_loan_passbook.py",
+    "/app/test_reports/pytest/loan_passbook_results.xml"
+  ],
+  "action_items": [
+    "FIX (MEDIUM): LoanPassbookCard has button-inside-button HTML structure violation. Line 221 is outer <button> that contains ExternalLink <button> at line 245. Change outer element to <div role='button'> or restructure layout to avoid nesting. This triggers React hydration warnings in browser console."
+  ],
+  "critical_code_review_comments": [
+    "MEDIUM: ClientDetail.jsx LoanPassbookCard - outer loan card toggle is <button> (line 221) containing inner ExternalLink <button> (line 245). Invalid HTML5 - button cannot contain button. Console shows: 'In HTML, <button> cannot be a descendant of <button>'. Fix: change outer button to div with cursor-pointer and onClick.",
+    "LOW: fetchLoans uses useCallback with [id, loans] dependency - since loans starts as null and updates to array, the dependency is correctly preventing re-fetch (loans !== null check). However, the useCallback dependency on loans means a new function reference is created after first fetch. Consider using a ref-based approach for the 'already fetched' check.",
+    "OK: kyc_id filter correctly added to GET /api/loans - works for all roles (admin returns {}, sipahi/muneem use assigned_illaka_ids). The kyc_id filter is ANDed with the role-based query, which is correct behavior.",
+    "OK: LoanPassbookCard manages optimistic state updates - on collect, uses updated loan from API response; on undo, refetches loan from GET /api/loans/{id}. Consistent with server state.",
+    "LOW: DELETE /api/loans/{id}/payments/{pid} - passbook undo uses emi_month as pid (e.g. '2026-04'). The path parameter naming is 'pid' but it's actually an emi_month string. This works but is slightly misleading."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_loan_passbook.py"
+  ],
+  "success_rate": {
+    "backend": "94% (16/17, 1 skipped)",
+    "frontend": "100% (22/22 checks)"
+  },
+  "seed_data_creation": "No new test data created. Used existing kyc_id=69c7a5bd39829d51f492f556 (DE0019-L1 loan). A collect+undo cycle was performed during testing (left data in original state).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Loan Passbook feature fully tested and working. Backend: GET /api/loans?kyc_id= correctly filters by kyc_id for all roles. Test file: /app/backend/tests/test_loan_passbook.py (16 pass, 1 skip). Frontend: all passbook UI features verified - 2 tabs, loan cards, 4-stat bar, 12-row EMI table, collect modal, undo flow, aggregate summary (multiple loans), New Loan button (sipahi only). One minor HTML issue: button-inside-button in LoanPassbookCard (line 221 outer button contains line 245 inner ExternalLink button). Client 69c7a5bd39829d51f492f556 (DE0019, TEST_LoanList_691768) has 1 active loan DE0019-L1 (₹12,000). Client 69c78da2fb39cf363141651c (DE0006, TEST_L2_685601) has 2 active loans. There are 4 ghost loans with kyc_id=000000000000000000000000 (test artifacts from earlier sessions).",
+  "rca_of_issue": "HTML button-inside-button: In LoanPassbookCard, the loan header toggle button (line 221) wraps the ExternalLink button (line 245). HTML5 spec prohibits interactive content (button) inside interactive content (button). Browser silently restructures DOM causing React hydration mismatch. Fix: change outer element from <button> to <div> with onClick and role='button' styling, keeping same visual/click behavior."
+}

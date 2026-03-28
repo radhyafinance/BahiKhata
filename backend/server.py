@@ -857,6 +857,7 @@ async def list_loans(
     request: Request,
     illaka_id: Optional[str] = None,
     misal_id: Optional[str] = None,
+    kyc_id: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
     limit: int = 50,
@@ -868,6 +869,8 @@ async def list_loans(
         query["illaka_id"] = illaka_id
     if misal_id:
         query["misal_id"] = misal_id
+    if kyc_id:
+        query["kyc_id"] = kyc_id
     if status:
         query["status"] = status
     if search:
@@ -876,7 +879,7 @@ async def list_loans(
             {"client_phone": {"$regex": search, "$options": "i"}},
         ]
     total = await db.loans.count_documents(query)
-    docs = await db.loans.find(query).sort("loan_date", -1).skip(skip).limit(limit).to_list(limit)
+    docs = await db.loans.find(query).sort("loan_date", 1).skip(skip).limit(limit).to_list(limit)
     return {"total": total, "loans": [_doc(d) for d in docs]}
 
 @api_router.post("/loans")
