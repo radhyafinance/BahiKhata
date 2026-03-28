@@ -119,7 +119,7 @@ Business Model: Sahukar Illaka model
 - Loan Tracking Module: LoanList, LoanForm, LoanDetail, payments, dashboard loan stats
 
 ### P0 (Next Sprint)
-- [ ] Loan Passbook Feature: add a per-client loan passbook view on ClientDetail (all loans + EMI history in one place)
+- [x] Loan Passbook Feature: two tabs on ClientDetail (KYC + Passbook), full 12-EMI schedule, collect/undo inline
 - [ ] Dashboard: show collection efficiency for current month (% EMIs collected vs due)
 
 ### P1

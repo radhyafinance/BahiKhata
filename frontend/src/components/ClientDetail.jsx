@@ -218,10 +218,12 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
   return (
     <div className="border border-border rounded-xl overflow-hidden" data-testid={`passbook-loan-${loan.id}`}>
       {/* Loan header — always visible */}
-      <button
+      <div
         onClick={() => setExpanded(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-3.5 bg-muted/30 hover:bg-muted/50 transition-colors text-left"
+        className="w-full flex items-center justify-between px-4 py-3.5 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer select-none"
         data-testid={`loan-card-toggle-${loan.id}`}
+        role="button"
+        aria-expanded={expanded}
       >
         <div className="flex items-center gap-3">
           <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
@@ -251,7 +253,7 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
             <ExternalLink size={14} />
           </button>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="divide-y divide-border/60">
