@@ -751,24 +751,29 @@ export default function ClientDetail() {
                 </div>
               )}
 
-              {[...loans].reverse().map((loan) => (
-                <LoanPassbookCard key={loan.id} loan={loan} navigate={navigate} onLoanUpdated={handleLoanUpdated} />
-              ))}
+              {[...loans]
+                .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))
+                .map((loan) => (
+                  <LoanPassbookCard key={loan.id} loan={loan} navigate={navigate} onLoanUpdated={handleLoanUpdated} />
+                ))}
             </>
           )}
         </div>
       )}
 
-      {showReloan && loans && loans.length > 0 && (
-        <ReLoanModal
-          loanId={loans[loans.length - 1].id}
-          kycId={id}
-          clientName={kyc?.primary_borrower?.name}
-          currentLoan={loans[loans.length - 1]}
-          onClose={() => setShowReloan(false)}
-          onSuccess={(newLoan) => navigate(`/loans/${newLoan.id}`)}
-        />
-      )}
+      {showReloan && loans && loans.length > 0 && (() => {
+        const latestLoan = [...loans].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0))[0];
+        return (
+          <ReLoanModal
+            loanId={latestLoan.id}
+            kycId={id}
+            clientName={kyc?.primary_borrower?.name}
+            currentLoan={latestLoan}
+            onClose={() => setShowReloan(false)}
+            onSuccess={(newLoan) => navigate(`/loans/${newLoan.id}`)}
+          />
+        );
+      })()}
     </div>
   );
 }
