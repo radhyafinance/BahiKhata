@@ -1,0 +1,126 @@
+from pydantic import BaseModel
+from typing import Optional, List
+
+
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class UserCreate(BaseModel):
+    name: str
+    email: str
+    password: str
+    role: str  # admin | maalik | muneem | sipahi
+    phone: Optional[str] = None
+    assigned_illaka_ids: Optional[List[str]] = []
+    maalik_id: Optional[str] = None
+
+
+class UserUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
+    role: Optional[str] = None
+    phone: Optional[str] = None
+    assigned_illaka_ids: Optional[List[str]] = None
+    maalik_id: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class IllakaCreate(BaseModel):
+    name: str
+    description: Optional[str] = None
+    maalik_id: Optional[str] = None
+
+
+class MisalCreate(BaseModel):
+    name: str
+    illaka_id: str
+    description: Optional[str] = None
+
+
+class PersonKYCData(BaseModel):
+    name: Optional[str] = None
+    name_hindi: Optional[str] = None
+    dob: Optional[str] = None
+    address: Optional[str] = None
+    relative_name: Optional[str] = None
+    relative_name_hindi: Optional[str] = None
+    gender: Optional[str] = None
+    phone: Optional[str] = None
+    aadhaar_number: Optional[str] = None
+    aadhaar_front_path: Optional[str] = None
+    aadhaar_back_path: Optional[str] = None
+    document_type: Optional[str] = None
+    document_front_path: Optional[str] = None
+    document_back_path: Optional[str] = None
+
+
+class GPSLocation(BaseModel):
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    accuracy: Optional[float] = None
+    address: Optional[str] = None
+    timestamp: Optional[str] = None
+
+
+class KYCCreate(BaseModel):
+    illaka_id: str
+    illaka_name: str
+    misal_id: str
+    misal_name: str
+    primary_borrower: PersonKYCData
+    co_borrower: Optional[PersonKYCData] = None
+    guarantor: Optional[PersonKYCData] = None
+    live_photo_path: Optional[str] = None
+    gps_location: Optional[GPSLocation] = None
+    notes: Optional[str] = None
+    disbursement_amount: Optional[float] = None
+
+
+class KYCStatusUpdate(BaseModel):
+    status: str
+    notes: Optional[str] = None
+
+
+class OCRRequest(BaseModel):
+    path: str
+
+
+class AssignIllakas(BaseModel):
+    illaka_ids: List[str]
+
+
+class LoanCreate(BaseModel):
+    kyc_id: str
+    client_name: str
+    client_phone: Optional[str] = None
+    illaka_id: str
+    illaka_name: str
+    misal_id: str
+    misal_name: str
+    principal_amount: float
+    loan_date: str
+    notes: Optional[str] = None
+
+
+class LoanStatusUpdate(BaseModel):
+    status: str
+    notes: Optional[str] = None
+
+
+class PaymentCreate(BaseModel):
+    emi_month: str
+    amount: Optional[float] = None
+    payment_date: str
+    notes: Optional[str] = None
+
+
+class EmiNoteUpdate(BaseModel):
+    emi_month: str
+    note: str
+
+
+class TransliterateRequest(BaseModel):
+    text: str

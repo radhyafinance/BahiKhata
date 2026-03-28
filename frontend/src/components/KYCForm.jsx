@@ -1,654 +1,19 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import {
-  Camera, MapPin, Loader2, CheckCircle, ChevronRight, ChevronLeft,
-  X, RefreshCw, User, Users, Shield, ImageIcon, Sparkles, ToggleLeft, ToggleRight
+  Loader2, CheckCircle, ChevronRight, ChevronLeft,
+  MapPin, User, Users, Shield, Camera,
+  ToggleLeft, ToggleRight
 } from "lucide-react";
+import { API, STEPS, emptyPerson } from "./kyc/utils";
+import { PersonSection } from "./kyc/PersonSection";
+import { LivePhotoGPS } from "./kyc/LivePhotoGPS";
+import { ReviewSection } from "./kyc/ReviewSection";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+const STEP_ICONS = [MapPin, User, Users, Shield, Camera, CheckCircle];
 
-const STEPS = [
-  { id: 1, title: "Illaka & Misal", titleHi: "इलाका और मिसाल", icon: MapPin },
-  { id: 2, title: "Primary Borrower", titleHi: "प्राथमिक उधारकर्ता", icon: User },
-  { id: 3, title: "Co-borrower", titleHi: "सह-उधारकर्ता", icon: Users },
-  { id: 4, title: "Guarantor", titleHi: "गारंटर", icon: Shield },
-  { id: 5, title: "Live Photo & GPS", titleHi: "लाइव फोटो और GPS", icon: Camera },
-  { id: 6, title: "Review & Submit", titleHi: "समीक्षा और जमा करें", icon: CheckCircle },
-];
-
-const emptyPerson = {
-  phone: "", name: "", name_hindi: "", dob: "", address: "",
-  relative_name: "", relative_name_hindi: "", gender: "",
-  aadhaar_number: "", aadhaar_front_path: null, aadhaar_back_path: null,
-  document_type: "voter_id", document_front_path: null, document_back_path: null,
-};
-
-// ─── Image Compression ────────────────────────────────────────────────────────
-async function compressImage(file, maxWidth = 1200, quality = 0.72) {
-  return new Promise((resolve) => {
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.onload = () => {
-      URL.revokeObjectURL(url);
-      let w = img.naturalWidth, h = img.naturalHeight;
-      if (w > maxWidth) { h = Math.round((h * maxWidth) / w); w = maxWidth; }
-      const canvas = document.createElement("canvas");
-      canvas.width = w; canvas.height = h;
-      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
-      canvas.toBlob(
-        (blob) => resolve(blob ? new File([blob], "img.jpg", { type: "image/jpeg" }) : file),
-        "image/jpeg", quality
-      );
-    };
-    img.onerror = () => resolve(file);
-    img.src = url;
-  });
-}
-
-// ─── Document Upload ──────────────────────────────────────────────────────────
-function DocUpload({ label, labelHi, value, onChange, required, testId }) {
-  const [uploading, setUploading] = useState(false);
-  const [preview, setPreview] = useState(null);
-  const galleryRef = useRef();
-  const cameraRef = useRef();
-
-  const handleFile = async (e) => {
-    const raw = e.target.files[0];
-    if (!raw) return;
-    e.target.value = "";
-    const file = await compressImage(raw);
-    setPreview(URL.createObjectURL(file));
-    setUploading(true);
-    try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await axios.post(`${API}/upload`, fd, { withCredentials: true });
-      onChange(res.data.path);
-    } catch {
-      toast.error(`Failed to upload ${label}`);
-      setPreview(null);
-    } finally {
-      setUploading(false);
-    }
-  };
-
-  const imgSrc = preview || (value ? `${API}/files/${value}` : null);
-
-  return (
-    <div>
-      <label className="bk-label">
-        <span className="bk-label-en">{label}{required && <span className="text-destructive ml-0.5">*</span>}</span>
-        {labelHi && <span className="bk-label-hi">{labelHi}</span>}
-      </label>
-      {imgSrc && (
-        <div className="relative border border-border rounded-xl overflow-hidden mb-2 bg-muted/10">
-          <img src={imgSrc} alt={label} className="w-full max-h-44 object-contain p-2" />
-          {uploading && <div className="absolute inset-0 bg-white/80 flex items-center justify-center"><Loader2 className="animate-spin text-primary" size={28} /></div>}
-          <button type="button" onClick={() => { setPreview(null); onChange(null); }} className="absolute top-2 right-2 bg-destructive text-white rounded-full w-7 h-7 flex items-center justify-center shadow"><X size={14} /></button>
-        </div>
-      )}
-      {!imgSrc && (
-        <div className="border-2 border-dashed border-border rounded-xl bg-muted/10 p-3 text-center mb-2" data-testid={testId}>
-          {uploading ? (
-            <div className="flex items-center justify-center gap-2 py-2 text-muted-foreground">
-              <Loader2 className="animate-spin text-primary" size={22} />
-              <span className="text-sm">Uploading & compressing...</span>
-            </div>
-          ) : (
-            <p className="text-xs text-muted-foreground">No photo selected</p>
-          )}
-        </div>
-      )}
-      {!uploading && (
-        <div className="flex gap-2">
-          <button type="button" onClick={() => galleryRef.current?.click()} className="flex-1 flex items-center justify-center gap-2 h-11 border border-border rounded-lg text-sm font-medium bg-white hover:bg-muted/50 transition-all" data-testid={`${testId}-gallery`}>
-            <ImageIcon size={15} className="text-muted-foreground" /> Gallery
-          </button>
-          <button type="button" onClick={() => cameraRef.current?.click()} className="flex-1 flex items-center justify-center gap-2 h-11 border border-primary/40 rounded-lg text-sm font-medium text-primary bg-primary/5 hover:bg-primary/10 transition-all" data-testid={`${testId}-camera`}>
-            <Camera size={15} /> Camera / कैमरा
-          </button>
-        </div>
-      )}
-      <input ref={galleryRef} type="file" accept="image/*" onChange={handleFile} className="hidden" />
-      <input ref={cameraRef} type="file" accept="image/*" capture="environment" onChange={handleFile} className="hidden" />
-    </div>
-  );
-}
-
-// ─── Person Section ───────────────────────────────────────────────────────────
-function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandatory }) {
-  const [ocrLoading, setOcrLoading] = useState(false);
-  const [ocrDone, setOcrDone] = useState(false);
-  const [backOcrLoading, setBackOcrLoading] = useState(false);
-  const [backOcrDone, setBackOcrDone] = useState(false);
-  const [frontAadhaarNum, setFrontAadhaarNum] = useState("");
-  const [wrongSideWarning, setWrongSideWarning] = useState(false);
-  const [aadhaarMismatch, setAadhaarMismatch] = useState(false);
-  const [transField, setTransField] = useState(""); // which field is being transliterated
-
-  const normalizeAadhaar = (s) => s ? s.replace(/\D/g, "") : "";
-
-  const autoTransliterate = async (text, hindiField) => {
-    if (!text || !text.trim()) return;
-    setTransField(hindiField);
-    try {
-      const res = await axios.post(`${API}/transliterate`, { text: text.trim() }, { withCredentials: true });
-      if (res.data.hindi) onChange(hindiField, res.data.hindi);
-    } catch {}
-    finally { setTransField(""); }
-  };
-
-  const handleAadhaarFront = async (path) => {
-    onChange("aadhaar_front_path", path);
-    setOcrDone(false); setWrongSideWarning(false);
-    if (!path) return;
-    setOcrLoading(true);
-    try {
-      const res = await axios.post(`${API}/ocr/aadhaar`, { path }, { withCredentials: true });
-      const d = res.data;
-      // Detect if user uploaded back by mistake (has address, no name)
-      if (!d.name && d.address) {
-        setWrongSideWarning(true);
-        onChange("aadhaar_front_path", null);
-        toast.error("This appears to be the BACK of the Aadhaar card. Please upload the FRONT side. / यह आधार का पिछला भाग है, कृपया सामने का भाग अपलोड करें।");
-        setOcrLoading(false);
-        return;
-      }
-      const updates = {};
-      if (d.name) updates.name = d.name;
-      if (d.dob) updates.dob = d.dob;
-      if (d.aadhaar_number) { updates.aadhaar_number = d.aadhaar_number; setFrontAadhaarNum(normalizeAadhaar(d.aadhaar_number)); }
-      if (d.gender) updates.gender = d.gender;
-      if (d.address && !data.address) updates.address = d.address;
-      if (Object.keys(updates).length > 0) {
-        onBatchChange(updates);
-        setOcrDone(true);
-        toast.success("Aadhaar front details auto-filled! / आधार (सामने) भरा गया");
-        // Auto-transliterate name to Hindi
-        if (updates.name) autoTransliterate(updates.name, "name_hindi");
-      } else {
-        toast.info("OCR could not read all fields — please fill manually");
-      }
-    } catch {
-      toast.info("OCR failed — fill details manually");
-    } finally {
-      setOcrLoading(false);
-    }
-  };
-
-  const handleAadhaarBack = async (path) => {
-    onChange("aadhaar_back_path", path);
-    setBackOcrDone(false); setAadhaarMismatch(false);
-    if (!path) return;
-    setBackOcrLoading(true);
-    try {
-      const res = await axios.post(`${API}/ocr/aadhaar-back`, { path }, { withCredentials: true });
-      const d = res.data;
-      const updates = {};
-      if (d.address) updates.address = d.address;
-      if (d.relative_name) updates.relative_name = d.relative_name;
-      // Cross-validate Aadhaar numbers
-      if (d.aadhaar_number && frontAadhaarNum) {
-        const backNum = normalizeAadhaar(d.aadhaar_number);
-        if (backNum && backNum !== frontAadhaarNum) {
-          setAadhaarMismatch(true);
-          toast.error("Aadhaar numbers don't match on front & back! Please verify both cards belong to the same person. / आधार नंबर मेल नहीं खाते।");
-        }
-      }
-      if (Object.keys(updates).length > 0) {
-        onBatchChange(updates);
-        setBackOcrDone(true);
-        toast.success("Address & Guardian name auto-filled! / पता और अभिभावक का नाम भरा गया");
-        // Auto-transliterate relative name to Hindi
-        if (updates.relative_name) autoTransliterate(updates.relative_name, "relative_name_hindi");
-      } else {
-        toast.info("Back OCR could not read address — please fill manually");
-      }
-    } catch {
-      toast.info("Back OCR failed — fill address manually");
-    } finally {
-      setBackOcrLoading(false);
-    }
-  };
-
-  const hi = (f) => ocrDone && data[f] ? "border-green-400 bg-green-50/60" : backOcrDone && data[f] ? "border-blue-400 bg-blue-50/60" : "";
-
-  return (
-    <div className="space-y-5">
-      <div className="flex items-center gap-2 pb-2 border-b border-border">
-        <h3 className="text-lg font-bold font-['Outfit']">{title}</h3>
-        <span className="text-sm text-muted-foreground">{titleHi}</span>
-        {(ocrLoading || backOcrLoading) && <span className="flex items-center gap-1 text-primary text-xs ml-2 animate-pulse"><Loader2 size={12} className="animate-spin" />{backOcrLoading ? "Reading back..." : "Reading Aadhaar..."}</span>}
-      </div>
-
-      <div>
-        <label className="bk-label"><span className="bk-label-en">Phone Number<span className="text-destructive">*</span></span><span className="bk-label-hi">फ़ोन नंबर</span></label>
-        <input type="tel" value={data.phone} onChange={e => onChange("phone", e.target.value)} className="bk-input" placeholder="9876543210" maxLength={10} data-testid={`phone-${title.toLowerCase().replace(/\s+/g, "-")}`} />
-      </div>
-
-      <DocUpload
-        label="Aadhaar Card (Front)" labelHi="आधार कार्ड (सामने) — OCR: Name, DOB, Gender"
-        value={data.aadhaar_front_path} onChange={handleAadhaarFront}
-        required={isMandatory} testId={`aadhaar-front-${title.toLowerCase().replace(/\s+/g, "-")}`}
-      />
-
-      {wrongSideWarning && (
-        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2" data-testid="wrong-side-warning">
-          <span className="font-bold shrink-0">!</span>
-          <div>
-            <p className="font-semibold">Wrong side uploaded / गलत तरफ अपलोड की</p>
-            <p className="text-xs mt-0.5">You uploaded the BACK of the Aadhaar card in the front slot. Please upload the correct side (the side with the photo, name and date of birth).</p>
-            <button type="button" onClick={() => setWrongSideWarning(false)} className="mt-1 text-xs underline">Try again / फिर से</button>
-          </div>
-        </div>
-      )}
-
-      {ocrLoading && (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 text-primary text-sm animate-pulse">
-          <Loader2 size={16} className="animate-spin flex-shrink-0" />
-          Extracting details from Aadhaar front... / आधार से विवरण निकाला जा रहा है...
-        </div>
-      )}
-      {ocrDone && !ocrLoading && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm">
-          <Sparkles size={15} className="flex-shrink-0" />
-          Name, DOB & Gender auto-filled from front — upload back for Address &amp; Guardian name
-        </div>
-      )}
-
-      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity duration-200 ${ocrLoading ? "opacity-40 pointer-events-none" : ""}`}>
-        <div>
-          <label className="bk-label"><span className="bk-label-en">Full Name<span className="text-destructive">*</span></span><span className="bk-label-hi">पूरा नाम</span></label>
-          <input
-            type="text" value={data.name}
-            onChange={e => onChange("name", e.target.value)}
-            onBlur={e => { if (e.target.value && !data.name_hindi) autoTransliterate(e.target.value, "name_hindi"); }}
-            className={`bk-input ${hi("name")}`} placeholder="Auto-filled from Aadhaar"
-            data-testid={`name-${title.toLowerCase().replace(/\s+/g, "-")}`}
-          />
-        </div>
-        <div>
-          <label className="bk-label">
-            <span className="bk-label-en">Name in Hindi {transField === "name_hindi" && <span className="text-xs text-primary animate-pulse ml-1">(transliterating...)</span>}</span>
-            <span className="bk-label-hi">हिंदी नाम</span>
-          </label>
-          <input
-            type="text" value={data.name_hindi || ""}
-            onChange={e => onChange("name_hindi", e.target.value)}
-            className="bk-input border-amber-300 bg-amber-50/40 focus:border-amber-500"
-            placeholder="Auto-filled · हिंदी में नाम"
-            data-testid={`name-hindi-${title.toLowerCase().replace(/\s+/g, "-")}`}
-          />
-        </div>
-        <div>
-          <label className="bk-label"><span className="bk-label-en">Date of Birth<span className="text-destructive">*</span></span><span className="bk-label-hi">जन्म तिथि</span></label>
-          <input type="text" value={data.dob} onChange={e => onChange("dob", e.target.value)} className={`bk-input ${hi("dob")}`} placeholder="DD/MM/YYYY" data-testid={`dob-${title.toLowerCase().replace(/\s+/g, "-")}`} />
-        </div>
-      </div>
-
-      <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 transition-opacity duration-200 ${ocrLoading ? "opacity-40 pointer-events-none" : ""}`}>
-        <div>
-          <label className="bk-label"><span className="bk-label-en">Aadhaar Number<span className="text-destructive">*</span></span><span className="bk-label-hi">आधार संख्या</span></label>
-          <input type="text" value={data.aadhaar_number} onChange={e => onChange("aadhaar_number", e.target.value)} className={`bk-input ${hi("aadhaar_number")}`} placeholder="XXXX XXXX XXXX" data-testid={`aadhaar-num-${title.toLowerCase().replace(/\s+/g, "-")}`} />
-        </div>
-        <div>
-          <label className="bk-label"><span className="bk-label-en">Gender<span className="text-destructive">*</span></span><span className="bk-label-hi">लिंग</span></label>
-          <select value={data.gender} onChange={e => onChange("gender", e.target.value)} className={`bk-input ${hi("gender")}`} data-testid={`gender-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-            <option value="">Select / चुनें</option>
-            <option value="Male">Male / पुरुष</option>
-            <option value="Female">Female / महिला</option>
-            <option value="Other">Other / अन्य</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Aadhaar Back — OCR for Address + Relative Name */}
-      <DocUpload
-        label="Aadhaar Card (Back)" labelHi="आधार कार्ड (पीछे) — OCR: पता और अभिभावक नाम"
-        value={data.aadhaar_back_path} onChange={handleAadhaarBack}
-        required={isMandatory} testId={`aadhaar-back-${title.toLowerCase().replace(/\s+/g, "-")}`}
-      />
-
-      {aadhaarMismatch && (
-        <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2" data-testid="aadhaar-mismatch-warning">
-          <span className="font-bold shrink-0">!</span>
-          <div>
-            <p className="font-semibold">Aadhaar number mismatch / आधार नंबर मेल नहीं खाते</p>
-            <p className="text-xs mt-0.5">The Aadhaar numbers on the front and back cards don't match. Please verify both cards belong to the same person.</p>
-            <button type="button" onClick={() => { onChange("aadhaar_back_path", null); setAadhaarMismatch(false); }} className="mt-1 text-xs underline">Retake back photo</button>
-          </div>
-        </div>
-      )}
-
-      {backOcrLoading && (
-        <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm animate-pulse">
-          <Loader2 size={16} className="animate-spin flex-shrink-0" />
-          Reading address & guardian name from Aadhaar back... / पीछे से पता निकाला जा रहा है...
-        </div>
-      )}
-      {backOcrDone && !backOcrLoading && (
-        <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-sm">
-          <Sparkles size={15} className="flex-shrink-0" />
-          Address &amp; Guardian name auto-filled from Aadhaar back — please verify below
-        </div>
-      )}
-
-      <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
-        <label className="bk-label"><span className="bk-label-en">Address<span className="text-destructive">*</span></span><span className="bk-label-hi">पता</span></label>
-        <textarea value={data.address} onChange={e => onChange("address", e.target.value)} className={`bk-input h-auto py-3 resize-none ${hi("address")}`} rows={3} placeholder="Auto-filled from Aadhaar back" data-testid={`address-${title.toLowerCase().replace(/\s+/g, "-")}`} />
-      </div>
-
-      <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
-        <label className="bk-label"><span className="bk-label-en">Husband's / Father's Name<span className="text-destructive">*</span></span><span className="bk-label-hi">पति / पिता का नाम</span></label>
-        <input
-          type="text" value={data.relative_name}
-          onChange={e => onChange("relative_name", e.target.value)}
-          onBlur={e => { if (e.target.value && !data.relative_name_hindi) autoTransliterate(e.target.value, "relative_name_hindi"); }}
-          className={`bk-input ${hi("relative_name")}`} placeholder="Auto-filled from Aadhaar back"
-          data-testid={`relative-name-${title.toLowerCase().replace(/\s+/g, "-")}`}
-        />
-      </div>
-
-      <div className={`transition-opacity duration-200 ${(ocrLoading || backOcrLoading) ? "opacity-40 pointer-events-none" : ""}`}>
-        <label className="bk-label">
-          <span className="bk-label-en">Husband's / Father's Name in Hindi {transField === "relative_name_hindi" && <span className="text-xs text-primary animate-pulse ml-1">(transliterating...)</span>}</span>
-          <span className="bk-label-hi">पति / पिता का हिंदी नाम</span>
-        </label>
-        <input
-          type="text" value={data.relative_name_hindi || ""}
-          onChange={e => onChange("relative_name_hindi", e.target.value)}
-          className="bk-input border-amber-300 bg-amber-50/40 focus:border-amber-500"
-          placeholder="Auto-filled · हिंदी में पति/पिता का नाम"
-          data-testid={`relative-name-hindi-${title.toLowerCase().replace(/\s+/g, "-")}`}
-        />
-      </div>
-
-      {/* Additional Doc — OPTIONAL */}
-      <div className="pt-3 border-t border-dashed border-border">
-        <p className="text-sm font-semibold text-muted-foreground mb-3">Additional Document <span className="font-normal">(Optional / वैकल्पिक)</span></p>
-        <div>
-          <label className="bk-label"><span className="bk-label-en">Document Type</span><span className="bk-label-hi">दस्तावेज़ प्रकार</span></label>
-          <select value={data.document_type} onChange={e => { onChange("document_type", e.target.value); onChange("document_back_path", null); }} className="bk-input" data-testid={`doc-type-${title.toLowerCase().replace(/\s+/g, "-")}`}>
-            <option value="voter_id">Voter ID / मतदाता पहचान पत्र</option>
-            <option value="pan">PAN Card / पैन कार्ड</option>
-            <option value="ration_card">Ration Card / राशन कार्ड</option>
-          </select>
-        </div>
-        <div className="mt-3">
-          <DocUpload
-            label={`${data.document_type === "pan" ? "PAN" : data.document_type === "ration_card" ? "Ration Card" : "Voter ID"} (Front)`}
-            labelHi="सामने की तस्वीर"
-            value={data.document_front_path} onChange={v => onChange("document_front_path", v)}
-            testId={`doc-front-${title.toLowerCase().replace(/\s+/g, "-")}`}
-          />
-        </div>
-        {data.document_type !== "pan" && (
-          <div className="mt-3">
-            <DocUpload
-              label={`${data.document_type === "ration_card" ? "Ration Card" : "Voter ID"} (Back)`}
-              labelHi="पीछे की तस्वीर"
-              value={data.document_back_path} onChange={v => onChange("document_back_path", v)}
-              testId={`doc-back-${title.toLowerCase().replace(/\s+/g, "-")}`}
-            />
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── Live Photo + GPS ──────────────────────────────────────────────────────────
-function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSChange }) {
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
-  const [stream, setStream] = useState(null);
-  const [cameraActive, setCameraActive] = useState(false);
-  const [photoUploading, setPhotoUploading] = useState(false);
-  const [gpsLoading, setGpsLoading] = useState(false);
-  const galleryRef = useRef();
-
-  // Set srcObject after render when camera goes active
-  useEffect(() => {
-    if (stream && videoRef.current && cameraActive) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
-    }
-  }, [stream, cameraActive]);
-
-  useEffect(() => {
-    return () => { if (stream) stream.getTracks().forEach(t => t.stop()); };
-  }, [stream]);
-
-  const startCamera = async () => {
-    try {
-      const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
-      });
-      setStream(s);
-      setCameraActive(true);
-    } catch (err) {
-      // Fallback: try without facingMode constraint
-      try {
-        const s = await navigator.mediaDevices.getUserMedia({ video: true });
-        setStream(s);
-        setCameraActive(true);
-      } catch {
-        toast.error("Camera not available. Use gallery upload instead.");
-      }
-    }
-  };
-
-  const stopCamera = () => {
-    stream?.getTracks().forEach(t => t.stop());
-    setStream(null);
-    setCameraActive(false);
-  };
-
-  const captureGpsBackground = () => {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      pos => {
-        onGPSChange({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: Math.round(pos.coords.accuracy), timestamp: new Date().toISOString() });
-      },
-      () => {}, // silent — agent notified via toast after photo upload
-      { enableHighAccuracy: true, timeout: 15000 }
-    );
-  };
-
-  const capturePhoto = async () => {
-    const canvas = canvasRef.current;
-    const video = videoRef.current;
-    if (!video || !canvas) return;
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    canvas.getContext("2d").drawImage(video, 0, 0);
-    stopCamera();
-    setPhotoUploading(true);
-    captureGpsBackground();
-    canvas.toBlob(async (blob) => {
-      try {
-        const compressed = await compressImage(new File([blob], "live.jpg", { type: "image/jpeg" }), 900, 0.8);
-        const fd = new FormData();
-        fd.append("file", compressed);
-        const res = await axios.post(`${API}/upload`, fd, { withCredentials: true });
-        onPhotoChange(res.data.path);
-        toast.success("Live photo saved! GPS location will be captured.");
-      } catch { toast.error("Photo upload failed"); }
-      finally { setPhotoUploading(false); }
-    }, "image/jpeg", 0.85);
-  };
-
-  const handleGalleryPhoto = async (e) => {
-    const raw = e.target.files[0];
-    if (!raw) return;
-    e.target.value = "";
-    setPhotoUploading(true);
-    captureGpsBackground();
-    try {
-      const file = await compressImage(raw, 900, 0.8);
-      const fd = new FormData();
-      fd.append("file", file);
-      const res = await axios.post(`${API}/upload`, fd, { withCredentials: true });
-      onPhotoChange(res.data.path);
-      toast.success("Photo saved!");
-    } catch { toast.error("Upload failed"); }
-    finally { setPhotoUploading(false); }
-  };
-
-  return (
-    <div className="space-y-8">
-      <div className="flex items-center gap-2 pb-2 border-b border-border">
-        <h3 className="text-lg font-bold font-['Outfit']">Live Photo</h3>
-        <span className="text-sm text-muted-foreground">लाइव फोटो — GPS auto-captured</span>
-      </div>
-
-      {/* Live Photo */}
-      <div className="space-y-3">
-        <div>
-          <p className="text-sm font-semibold">Live Client Photo<span className="text-destructive">*</span></p>
-          <p className="text-xs text-muted-foreground">Back camera — GPS location captured automatically</p>
-        </div>
-
-        {cameraActive ? (
-          <div className="space-y-3">
-            <video ref={videoRef} autoPlay playsInline muted className="w-full max-w-sm mx-auto rounded-xl border-4 border-primary block" data-testid="camera-preview" />
-            <div className="flex gap-3 max-w-sm mx-auto">
-              <button type="button" onClick={capturePhoto} className="flex-1 bk-btn-primary flex items-center justify-center gap-2" data-testid="capture-photo-btn">
-                <Camera size={18} /> Capture Photo
-              </button>
-              <button type="button" onClick={stopCamera} className="bk-btn-secondary px-4 w-14 flex items-center justify-center" data-testid="cancel-camera-btn">
-                <X size={18} />
-              </button>
-            </div>
-          </div>
-        ) : livePhotoPath ? (
-          <div className="flex flex-col items-center gap-3">
-            <img src={`${API}/files/${livePhotoPath}`} alt="Live Photo" className="w-32 h-32 object-cover rounded-full border-4 border-primary shadow-md" data-testid="live-photo-preview" />
-            {gpsLocation ? (
-              <div className="flex items-center gap-2 text-green-700 text-sm">
-                <MapPin size={14} /> GPS Captured
-              </div>
-            ) : (
-              <div className="flex items-center gap-2 text-amber-600 text-xs">
-                <MapPin size={13} /> GPS capturing...
-              </div>
-            )}
-            <button type="button" onClick={() => { onPhotoChange(null); onGPSChange(null); }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground" data-testid="retake-photo-btn">
-              <RefreshCw size={13} /> Retake / फिर से
-            </button>
-          </div>
-        ) : (
-          <div className="border-2 border-dashed border-border rounded-xl py-8 px-4 flex flex-col items-center gap-4">
-            {photoUploading ? (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Loader2 size={24} className="animate-spin text-primary" />
-                <span className="text-sm">Uploading & capturing GPS...</span>
-              </div>
-            ) : (
-              <>
-                <Camera size={36} className="text-muted-foreground opacity-30" />
-                <div className="flex gap-3">
-                  <button type="button" onClick={startCamera} className="bk-btn-primary max-w-[200px] flex items-center justify-center gap-2 text-sm h-11" data-testid="start-camera-btn">
-                    <Camera size={16} /> Open Camera (Back)
-                  </button>
-                </div>
-                <p className="text-xs text-muted-foreground text-center">GPS location will be captured automatically when you take the photo</p>
-              </>
-            )}
-          </div>
-        )}
-        <canvas ref={canvasRef} className="hidden" />
-        <input ref={galleryRef} type="file" accept="image/*" onChange={handleGalleryPhoto} className="hidden" />
-      </div>
-    </div>
-  );
-}
-
-// ─── Review ───────────────────────────────────────────────────────────────────
-function ReviewSection({ formData, illaka, misal, includeCoBorrower, includeGuarantor, disbursementAmount, setDisbursementAmount }) {
-  const PersonSummary = ({ title, data }) => {
-    if (!data) return null;
-    return (
-      <div className="rounded-xl border border-border p-4 space-y-2">
-        <h4 className="font-semibold text-foreground text-sm">{title}</h4>
-        <div className="grid grid-cols-2 gap-2 text-xs">
-          <div><span className="text-muted-foreground">Name:</span> <span className="font-medium">{data.name || "—"}</span></div>
-          <div><span className="text-muted-foreground">Phone:</span> <span className="font-medium">{data.phone || "—"}</span></div>
-          <div><span className="text-muted-foreground">DOB:</span> <span className="font-medium">{data.dob || "—"}</span></div>
-          <div><span className="text-muted-foreground">Aadhaar:</span> <span className="font-medium">{data.aadhaar_number || "—"}</span></div>
-          <div><span className="text-muted-foreground">Husband/Father:</span> <span className="font-medium">{data.relative_name || "—"}</span></div>
-          <div className="col-span-2"><span className="text-muted-foreground">Address:</span> <span className="font-medium">{data.address || "—"}</span></div>
-        </div>
-      </div>
-    );
-  };
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center gap-2 pb-2 border-b border-border">
-        <h3 className="text-lg font-bold font-['Outfit']">Disbursement & Review</h3>
-        <span className="text-sm text-muted-foreground">वितरण और समीक्षा</span>
-      </div>
-      <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 text-primary text-sm">
-        <strong>Illaka:</strong> {illaka?.name || "—"} &nbsp;|&nbsp; <strong>Misal:</strong> {misal?.name || "—"}
-      </div>
-
-      {/* Disbursement Amount */}
-      <div className="bk-card bg-primary/5 border-primary/30 space-y-3">
-        <div>
-          <label className="bk-label"><span className="bk-label-en text-primary font-bold">Loan Disbursement Amount (₹)<span className="text-destructive">*</span></span><span className="bk-label-hi">वितरण राशि दर्ज करें</span></label>
-          <input
-            type="number"
-            value={disbursementAmount}
-            onChange={e => setDisbursementAmount(e.target.value)}
-            className="bk-input text-xl font-bold"
-            placeholder="e.g. 10300"
-            min="1"
-            data-testid="disbursement-amount-input"
-          />
-        </div>
-        {disbursementAmount && !isNaN(parseFloat(disbursementAmount)) && parseFloat(disbursementAmount) > 0 && (() => {
-          const p = parseFloat(disbursementAmount);
-          const emi = Math.round(p * 1.17 / 12 / 100) * 100;
-          const total = emi * 12;
-          const interest = total - p;
-          return (
-            <div className="grid grid-cols-3 gap-3 pt-2 border-t border-primary/20">
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">Monthly EMI</p>
-                <p className="text-lg font-bold text-primary font-['Outfit']">₹{emi.toLocaleString("en-IN")}</p>
-                <p className="text-xs text-muted-foreground">× 12 months</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">Interest (17%)</p>
-                <p className="text-lg font-bold font-['Outfit']">₹{interest.toLocaleString("en-IN")}</p>
-              </div>
-              <div className="text-center">
-                <p className="text-xs text-muted-foreground">Total Repayable</p>
-                <p className="text-lg font-bold text-green-700 font-['Outfit']">₹{total.toLocaleString("en-IN")}</p>
-              </div>
-            </div>
-          );
-        })()}
-      </div>
-
-      <PersonSummary title="Primary Borrower / प्राथमिक उधारकर्ता" data={formData.primaryBorrower} />
-      {includeCoBorrower && <PersonSummary title="Co-borrower / सह-उधारकर्ता" data={formData.coBorrower} />}
-      {includeGuarantor && <PersonSummary title="Guarantor / गारंटर" data={formData.guarantor} />}
-      <div className="flex gap-4 text-sm">
-        <span className={formData.livePhotoPath ? "text-green-700" : "text-muted-foreground"}>
-          {formData.livePhotoPath ? "✓" : "✗"} Live Photo
-        </span>
-        <span className={formData.gpsLocation ? "text-green-700" : "text-amber-600"}>
-          {formData.gpsLocation ? "✓ GPS Captured" : "⏳ GPS pending..."}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// ─── KYC Form ─────────────────────────────────────────────────────────────────
 export default function KYCForm() {
   const navigate = useNavigate();
   const { id } = useParams();
@@ -692,6 +57,7 @@ export default function KYCForm() {
         livePhotoPath: k.live_photo_path || null,
         gpsLocation: k.gps_location || null,
         notes: k.notes || "",
+        disbursementAmount: "",
       });
       if (k.co_borrower) setIncludeCoBorrower(true);
       if (k.guarantor) setIncludeGuarantor(true);
@@ -729,7 +95,6 @@ export default function KYCForm() {
     }
     if (step === 5) {
       if (!formData.livePhotoPath) { toast.error("Live photo is required / लाइव फोटो अनिवार्य है"); return false; }
-      // GPS is auto-captured on photo — soft warning only
       return true;
     }
     if (step === 6) {
@@ -743,20 +108,15 @@ export default function KYCForm() {
     return true;
   };
 
-  const nextStep = () => {
-    if (!validateStep()) return;
-    setStep(s => s + 1);
-  };
+  const nextStep = () => { if (!validateStep()) return; setStep(s => s + 1); };
 
   const handleSubmit = async () => {
     if (!validateStep()) return;
     setSubmitting(true);
     try {
       const payload = {
-        illaka_id: selectedIllaka.id,
-        illaka_name: selectedIllaka.name,
-        misal_id: selectedMisal.id,
-        misal_name: selectedMisal.name,
+        illaka_id: selectedIllaka.id, illaka_name: selectedIllaka.name,
+        misal_id: selectedMisal.id, misal_name: selectedMisal.name,
         primary_borrower: formData.primaryBorrower,
         co_borrower: includeCoBorrower && formData.coBorrower.phone ? formData.coBorrower : null,
         guarantor: includeGuarantor && formData.guarantor.phone ? formData.guarantor : null,
@@ -786,23 +146,26 @@ export default function KYCForm() {
 
       {/* Step Indicator */}
       <div className="flex items-center gap-1 mb-7 overflow-x-auto pb-1" data-testid="step-indicator">
-        {STEPS.map((s, i) => (
-          <div key={s.id} className="flex items-center flex-shrink-0">
-            <button
-              type="button"
-              onClick={() => s.id < step && setStep(s.id)}
-              className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
-                step === s.id ? "bg-primary text-white" : s.id < step ? "bg-primary/20 text-primary cursor-pointer" : "bg-muted text-muted-foreground"
-              }`}
-              data-testid={`step-btn-${s.id}`}
-            >
-              <s.icon size={13} />
-              <span className="hidden sm:inline">{s.title}</span>
-              <span className="sm:hidden">{s.id}</span>
-            </button>
-            {i < STEPS.length - 1 && <ChevronRight size={13} className="text-muted-foreground mx-0.5" />}
-          </div>
-        ))}
+        {STEPS.map((s, i) => {
+          const Icon = STEP_ICONS[i];
+          return (
+            <div key={s.id} className="flex items-center flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => s.id < step && setStep(s.id)}
+                className={`flex items-center gap-1.5 px-2.5 py-2 rounded-lg text-xs font-semibold transition-all ${
+                  step === s.id ? "bg-primary text-white" : s.id < step ? "bg-primary/20 text-primary cursor-pointer" : "bg-muted text-muted-foreground"
+                }`}
+                data-testid={`step-btn-${s.id}`}
+              >
+                <Icon size={13} />
+                <span className="hidden sm:inline">{s.title}</span>
+                <span className="sm:hidden">{s.id}</span>
+              </button>
+              {i < STEPS.length - 1 && <ChevronRight size={13} className="text-muted-foreground mx-0.5" />}
+            </div>
+          );
+        })}
       </div>
 
       <div className="bk-card mb-5">

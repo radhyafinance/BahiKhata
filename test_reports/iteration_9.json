@@ -1,0 +1,99 @@
+{
+  "summary": "Post-refactoring regression test for Bahi Khata NBFC-MFI. Backend split (server.py → core/ + routes/) and frontend split (KYCForm.jsx → kyc/ sub-components) tested. All 36 backend tests pass (100%). All required frontend features verified. Previous button-inside-button HTML issue from iteration_8 is now FIXED.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/loans",
+        "issue": "Test data artifact: some loans have no loan_number field (created by earlier testing sessions before loan_number was added). No functional impact on live users.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend_tests": {
+      "total": 36,
+      "passed": 36,
+      "failed": 0,
+      "skipped": 0,
+      "file": "/app/backend/tests/test_refactoring.py",
+      "xml": "/app/test_reports/pytest/refactoring_results.xml",
+      "classes_tested": [
+        "TestAuthRoutes (6 tests) — POST /api/auth/login, GET /api/auth/me, POST /api/auth/logout",
+        "TestDashboardRoutes (3 tests) — GET /api/dashboard/stats (admin + sipahi + unauth)",
+        "TestIllakaRoutes (4 tests) — GET /api/illakas, GET /api/misals (admin + sipahi)",
+        "TestKYCRoutes (5 tests) — GET /api/kycs pagination, _id exclusion, unauth",
+        "TestLoanRoutes (7 tests) — GET /api/loans, kyc_id filter, single loan, 404, unauth",
+        "TestEmiNoteEndpoint (3 tests) — PATCH /api/loans/{id}/emi-note, invalid ID, invalid month",
+        "TestCollectionRoutes (5 tests) — GET /api/collections/sheet structure, month filter, sipahi, unauth",
+        "TestUsersRoutes (3 tests) — GET /api/users, password_hash not exposed, unauth"
+      ]
+    },
+    "frontend_checks": {
+      "login_page_renders": "PASS — Email input, password input, Sign In button all present",
+      "admin_login": "PASS — Redirected from login, dashboard loads",
+      "sipahi_login": "PASS — Sipahi dashboard shows correct filtered stats (25 KYCs, 12 active loans)",
+      "dashboard_stats_cards": "PASS — All 8 stat cards visible: Total KYCs, Pending, Approved, Today, Rejected, Sipahi Count, Active Loans, Total Loans",
+      "client_list_page": "PASS — 38 total KYC records displayed with name, phone, customer_id, status, date columns",
+      "kyc_form_multi_step": "PASS — 6 step buttons visible (Illaka & Misal → Primary Borrower → Co-borrower → Guarantor → Live Photo & GPS → Review & Submit)",
+      "kyc_form_step1_illaka_misal": "PASS — Illaka dropdown and Misal placeholder shown in Step 1",
+      "collection_sheet_vasuli": "PASS — Shows 2 EMI rows grouped by illaka → misal, with 50% progress bar",
+      "collection_sheet_collect_btn": "PASS — Collect button present for unpaid EMIs",
+      "collection_sheet_note_btn": "PASS — Note button present, Vasuli note modal opens correctly",
+      "collection_sheet_note_modal": "PASS — vasuli-note-modal with textarea and save button",
+      "loan_detail_emi_grid": "PASS — 12 EMI cards shown in 4-column grid",
+      "loan_detail_note_btn": "PASS — 12 note buttons present on unpaid EMIs",
+      "loan_detail_note_modal": "PASS — Note modal opens with textarea and Save Note button",
+      "client_detail_two_tabs": "PASS — KYC / पहचान and Passbook / पासबुक tabs visible",
+      "client_detail_passbook": "PASS — Loan card TE0003-L1 with 12-row EMI grid, Collect + Note buttons per row",
+      "passbook_stat_bar": "PASS — Principal, EMI, Paid, Balance stats shown in passbook loan card",
+      "button_inside_button_fixed": "PASS — No button-inside-button HTML issue found (issue from iteration_8 is FIXED)"
+    }
+  },
+  "refactoring_verification": {
+    "backend_routes_prefix": "PASS — All /api/* endpoints work correctly through modular routes/ dir",
+    "auth_py": "PASS — /api/auth/login, /api/auth/me, /api/auth/logout all working",
+    "users_py": "PASS — /api/users returns list, no password_hash exposed",
+    "illakas_py": "PASS — /api/illakas and /api/misals working for admin and sipahi",
+    "kycs_py": "PASS — /api/kycs with pagination and _id exclusion working",
+    "loans_py": "PASS — /api/loans with kyc_id filter, single loan, PATCH emi-note all working",
+    "collections_py": "PASS — /api/collections/sheet returns correct illaka→misal→rows structure",
+    "dashboard_py": "PASS — /api/dashboard/stats returns 9 stat fields",
+    "kyc_sub_components": "PASS — KYCForm.jsx renders correctly using PersonSection, LivePhotoGPS, ReviewSection from kyc/ dir",
+    "kyc_utils_js": "PASS — API, STEPS, emptyPerson correctly imported and used"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_refactoring.py",
+    "/app/test_reports/pytest/refactoring_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "LOW: 4 ghost loans in DB with kyc_id='000000000000000000000000' from old test sessions — no functional impact but dirty test data",
+    "OK: server.py correctly registers all 8 routers under /api prefix via include_router",
+    "OK: helpers.py correctly placed as shared module imported by both routes/ and other modules",
+    "OK: core/auth.py get_current_user reads cookie correctly for all routes",
+    "OK: KYCForm.jsx correctly imports from kyc/utils.js (API, STEPS, emptyPerson)",
+    "OK: button-inside-button issue from iteration_8 has been fixed in ClientDetail.jsx"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_refactoring.py"
+  ],
+  "success_rate": {
+    "backend": "100% (36/36)",
+    "frontend": "100% (18/18 checks)"
+  },
+  "test_credentials": {
+    "admin": "admin@bahikhata.com / Admin@123",
+    "sipahi": "TEST_sipahi_loans@bahikhata.com / Test@1234"
+  },
+  "seed_data_creation": "No new test data created. EMI note test adds/clears note on existing loan (cleaned up).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend fully refactored from 1 file to core/ + routes/ modules. All 36 backend tests pass at 100%. Frontend KYCForm.jsx split into kyc/ sub-components all working. Key verified items: (1) PATCH /api/loans/{id}/emi-note endpoint works correctly with note persistence, (2) GET /api/collections/sheet returns illaka→misal→rows structure, (3) ClientDetail Passbook tab shows EMI grid with Collect+Note buttons, (4) button-inside-button HTML issue from iteration_8 is FIXED. Test file: /app/backend/tests/test_refactoring.py. Client with loan for passbook testing: 69c7a76a39829d51f492f558 (Mamta Kumari, TE0003, with loan TE0003-L1). Sipahi account: TEST_sipahi_loans@bahikhata.com / Test@1234 (role: sipahi, works correctly).",
+  "rca_of_issue": null
+}
