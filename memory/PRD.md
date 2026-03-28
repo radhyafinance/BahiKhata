@@ -91,6 +91,13 @@ Business Model: Sahukar Illaka model
 
 ## Prioritized Backlog
 
+## Recently Completed (Mar 2026 — Sprint 4)
+- Hindi name fields added: `name_hindi` + `relative_name_hindi` on all persons in KYC
+- `POST /api/transliterate` — Gemini LLM transliterates English Indian names to Devanagari (e.g. "Ram Kumar" → "राम कुमार")
+- KYCForm: auto-transliterates on OCR fill and on field blur; editable amber-tinted Hindi fields
+- Muneem/Sipahi see Hindi names as primary in Collection Sheet, Client List, Loan List, Loan Detail
+- ClientDetail shows both English + Hindi name rows
+
 ## Recently Completed (Mar 2026 — Sprint 3)
 - Customer ID generation: 2 uppercase letters from Illaka name + 4-digit sequential (e.g., `DE0001`)
 - Loan ID generation: `{customer_id}-L{n}` sequential per customer (e.g., `DE0001-L1`, `DE0001-L2`)
