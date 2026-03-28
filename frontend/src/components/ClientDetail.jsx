@@ -6,7 +6,7 @@ import { useAuth } from "./AuthContext";
 import {
   ArrowLeft, Edit, CheckCircle, XCircle, Clock, MapPin, Camera,
   Phone, User, Shield, Users, FileText, TrendingUp, AlertCircle,
-  X, Loader2, PlusCircle, BookOpen, Undo2, ExternalLink
+  X, Loader2, PlusCircle, BookOpen, Undo2, ExternalLink, Pencil
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -185,12 +185,66 @@ const EMI_S = {
   pending: { row: "",                 badge: "bg-gray-100 text-gray-600",    icon: Clock,        iconCls: "text-gray-400"  },
 };
 
+// ─── Passbook: Note Modal ─────────────────────────────────────────────────────
+function PassbookNoteModal({ emi, loanId, onClose, onSaved }) {
+  const [text, setText] = useState(emi.note || "");
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await axios.patch(
+        `${API}/loans/${loanId}/emi-note`,
+        { emi_month: emi.due_month, note: text },
+        { withCredentials: true }
+      );
+      toast.success("Note saved / टिप्पणी सहेजी गई");
+      onSaved(res.data);
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to save note");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="passbook-note-modal">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card rounded-xl shadow-2xl w-full max-w-sm border border-border">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div>
+            <h2 className="font-bold text-lg font-['Outfit']">EMI {emi.month} — Note</h2>
+            <p className="text-xs text-muted-foreground">{fmtMonth(emi.due_month)} · टिप्पणी</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X size={18} /></button>
+        </div>
+        <form onSubmit={handleSave} className="p-5 space-y-4">
+          <textarea
+            value={text}
+            onChange={e => setText(e.target.value)}
+            className="bk-input h-24 resize-none w-full"
+            placeholder="e.g. Client not home, will pay next week / ग्राहक घर पर नहीं था..."
+            data-testid="passbook-note-textarea"
+          />
+          <button type="submit" disabled={loading} className="bk-btn-primary flex items-center justify-center gap-2 w-full" data-testid="passbook-save-note-btn">
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Pencil size={16} />}
+            Save Note / सहेजें
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Passbook: Loan Card ──────────────────────────────────────────────────────
 function LoanPassbookCard({ loan: initialLoan, navigate }) {
   const [loan, setLoan] = useState(initialLoan);
   const [expanded, setExpanded] = useState(true);
   const [collectingEmi, setCollectingEmi] = useState(null);
   const [undoLoading, setUndoLoading] = useState(null);
+  const [notingEmi, setNotingEmi] = useState(null);
 
   const schedule = loan.emi_schedule || [];
   const paidCount = schedule.filter(e => e.status === "paid").length;
@@ -199,6 +253,7 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
   const today = new Date().toISOString().slice(0, 7);
 
   const handleCollected = (updatedLoan) => setLoan(updatedLoan);
+  const handleNoteSaved = (updatedLoan) => setLoan(updatedLoan);
 
   const handleUndo = async (emiMonth) => {
     if (!window.confirm("Undo this EMI collection? / यह किस्त वापस करें?")) return;
@@ -299,11 +354,11 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
             const isCurrentMonth = emi.due_month === today;
 
             return (
-              <div
-                key={emi.month}
-                className={`grid grid-cols-[32px_1fr_80px_80px] gap-2 items-center px-4 py-2 text-sm ${s.row} ${isCurrentMonth && !isPaid ? "ring-1 ring-inset ring-primary/30" : ""}`}
-                data-testid={`emi-row-${loan.id}-${emi.month}`}
-              >
+              <div key={emi.month}>
+                <div
+                  className={`grid grid-cols-[32px_1fr_80px_80px] gap-2 items-center px-4 py-2 text-sm ${s.row} ${isCurrentMonth && !isPaid ? "ring-1 ring-inset ring-primary/30" : ""}`}
+                  data-testid={`emi-row-${loan.id}-${emi.month}`}
+                >
                 {/* Month # */}
                 <span className="text-xs text-muted-foreground font-mono font-semibold">{emi.month}</span>
 
@@ -324,7 +379,7 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
                 </span>
 
                 {/* Action */}
-                <div className="flex items-center justify-center gap-1">
+                <div className="flex flex-col items-center justify-center gap-1">
                   {isPaid ? (
                     <button
                       onClick={() => handleUndo(emi.due_month)}
@@ -333,26 +388,39 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
                       title="Undo collection"
                       data-testid={`passbook-undo-${loan.id}-${emi.month}`}
                     >
-                      {undoLoading === emi.due_month
-                        ? <Loader2 size={10} className="animate-spin" />
-                        : <Undo2 size={10} />}
+                      {undoLoading === emi.due_month ? <Loader2 size={10} className="animate-spin" /> : <Undo2 size={10} />}
                       Undo
                     </button>
                   ) : (
-                    <button
-                      onClick={() => setCollectingEmi(emi)}
-                      className={`text-[11px] px-2.5 py-1 rounded-lg font-bold transition-colors whitespace-nowrap ${
-                        emi.status === "overdue"
-                          ? "bg-red-600 text-white hover:bg-red-700"
-                          : "bg-primary text-white hover:bg-primary/90"
-                      }`}
-                      data-testid={`passbook-collect-${loan.id}-${emi.month}`}
-                    >
-                      Collect
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setCollectingEmi(emi)}
+                        className={`text-[11px] px-2.5 py-1 rounded-lg font-bold transition-colors whitespace-nowrap ${
+                          emi.status === "overdue" ? "bg-red-600 text-white hover:bg-red-700" : "bg-primary text-white hover:bg-primary/90"
+                        }`}
+                        data-testid={`passbook-collect-${loan.id}-${emi.month}`}
+                      >
+                        Collect
+                      </button>
+                      <button
+                        onClick={() => setNotingEmi(emi)}
+                        className="flex items-center gap-0.5 text-[10px] px-2 py-0.5 rounded border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-amber-400 hover:text-amber-700 transition-colors"
+                        data-testid={`passbook-note-${loan.id}-${emi.month}`}
+                      >
+                        <Pencil size={9} /> Note
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
+
+              {/* Inline note display */}
+              {emi.note && (
+                <div className="col-span-4 px-4 pb-1.5" data-testid={`passbook-note-display-${loan.id}-${emi.month}`}>
+                  <div className="p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 break-words">{emi.note}</div>
+                </div>
+              )}
+            </div>
             );
           })}
         </div>
@@ -364,6 +432,15 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
           loanId={loan.id}
           onClose={() => setCollectingEmi(null)}
           onCollected={handleCollected}
+        />
+      )}
+
+      {notingEmi && (
+        <PassbookNoteModal
+          emi={notingEmi}
+          loanId={loan.id}
+          onClose={() => setNotingEmi(null)}
+          onSaved={handleNoteSaved}
         />
       )}
     </div>

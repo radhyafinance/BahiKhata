@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, Edit, CheckCircle, AlertCircle, Clock, X, Loader2 } from "lucide-react";
+import { ArrowLeft, Edit, CheckCircle, AlertCircle, Clock, X, Loader2, Pencil, User } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -77,6 +77,80 @@ function CollectModal({ emi, loanId, onClose, onCollected }) {
   );
 }
 
+function NoteModal({ emi, loanId, onClose, onSaved }) {
+  const [text, setText] = useState(emi.note || "");
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      const res = await axios.patch(
+        `${API}/loans/${loanId}/emi-note`,
+        { emi_month: emi.due_month, note: text },
+        { withCredentials: true }
+      );
+      toast.success("Note saved / टिप्पणी सहेजी गई");
+      onSaved(res.data);
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to save note");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="note-modal">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="relative bg-card rounded-xl shadow-2xl w-full max-w-sm border border-border">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div>
+            <h2 className="font-bold text-lg font-['Outfit']">EMI {emi.month} — Note</h2>
+            <p className="text-xs text-muted-foreground">{fmtMonth(emi.due_month)} · Reason not collected / टिप्पणी</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X size={18} /></button>
+        </div>
+        <form onSubmit={handleSave} className="p-5 space-y-4">
+          <div>
+            <label className="bk-label">
+              <span className="bk-label-en">Note / Reason</span>
+              <span className="bk-label-hi">कारण / टिप्पणी</span>
+            </label>
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              className="bk-input h-24 resize-none"
+              placeholder="e.g. Client was not home, will pay next week... / ग्राहक घर पर नहीं था..."
+              data-testid="note-textarea"
+            />
+          </div>
+          <div className="flex gap-3">
+            {text && (
+              <button
+                type="button"
+                onClick={() => setText("")}
+                className="flex-1 py-2.5 rounded-lg border border-border text-sm font-semibold text-muted-foreground hover:bg-muted"
+              >
+                Clear
+              </button>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 bk-btn-primary flex items-center justify-center gap-2"
+              data-testid="save-note-btn"
+            >
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Pencil size={16} />}
+              Save Note / सहेजें
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function LoanDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -85,6 +159,7 @@ export default function LoanDetail() {
   const [loading, setLoading] = useState(true);
   const [collectingEmi, setCollectingEmi] = useState(null);
   const [undoLoading, setUndoLoading] = useState(null);
+  const [notingEmi, setNotingEmi] = useState(null);
 
   useEffect(() => {
     axios.get(`${API}/loans/${id}`, { withCredentials: true })
@@ -94,6 +169,7 @@ export default function LoanDetail() {
   }, [id]);
 
   const handleCollected = (updatedLoan) => setLoan(updatedLoan);
+  const handleNoteSaved = (updatedLoan) => setLoan(updatedLoan);
 
   const handleUndo = async (emiMonth) => {
     if (!window.confirm("Undo this EMI collection?")) return;
@@ -165,9 +241,21 @@ export default function LoanDetail() {
           </div>
         </div>
         {canEdit && loan.status !== "closed" && (
-          <button onClick={() => navigate(`/loans/${id}/edit`)} className="flex items-center gap-2 bg-muted text-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border" data-testid="edit-loan-btn">
-            <Edit size={16} /> Edit
-          </button>
+          <div className="flex items-center gap-2">
+            {loan.kyc_id && (
+              <button
+                onClick={() => navigate(`/clients/${loan.kyc_id}`)}
+                className="flex items-center gap-2 bg-muted text-foreground px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border"
+                data-testid="view-kyc-btn"
+                title="View Client KYC"
+              >
+                <User size={15} /> Client KYC
+              </button>
+            )}
+            <button onClick={() => navigate(`/loans/${id}/edit`)} className="flex items-center gap-2 bg-muted text-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border" data-testid="edit-loan-btn">
+              <Edit size={16} /> Edit
+            </button>
+          </div>
         )}
       </div>
 
@@ -286,6 +374,25 @@ export default function LoanDetail() {
                       Collect / जमा करें
                     </button>
                   ) : null}
+
+                  {/* Existing note */}
+                  {emi.note && (
+                    <div className="mt-1 p-1.5 bg-amber-50 border border-amber-200 rounded-lg" data-testid={`emi-note-display-${emi.month}`}>
+                      <p className="text-[11px] text-amber-800 leading-snug break-words">{emi.note}</p>
+                    </div>
+                  )}
+
+                  {/* Note button (always shown on unpaid) */}
+                  {emi.status !== "paid" && (
+                    <button
+                      onClick={() => setNotingEmi(emi)}
+                      className="w-full flex items-center justify-center gap-1 text-xs py-1 rounded border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50 transition-colors mt-1"
+                      data-testid={`note-emi-${emi.month}`}
+                    >
+                      <Pencil size={10} />
+                      {emi.note ? "Edit Note" : "Add Note"} / टिप्पणी
+                    </button>
+                  )}
                 </div>
               );
             })}
@@ -306,6 +413,15 @@ export default function LoanDetail() {
           loanId={id}
           onClose={() => setCollectingEmi(null)}
           onCollected={handleCollected}
+        />
+      )}
+
+      {notingEmi && (
+        <NoteModal
+          emi={notingEmi}
+          loanId={id}
+          onClose={() => setNotingEmi(null)}
+          onSaved={handleNoteSaved}
         />
       )}
     </div>

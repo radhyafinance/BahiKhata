@@ -1072,6 +1072,34 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     await db.payments.delete_one({"loan_id": loan_id, "emi_month": emi_month})
     return {"message": f"EMI for {emi_month} uncollected"}
 
+# ─── EMI Note ─────────────────────────────────────────────────────────────────
+class EmiNoteUpdate(BaseModel):
+    emi_month: str   # YYYY-MM
+    note: str
+
+@api_router.patch("/loans/{loan_id}/emi-note")
+async def update_emi_note(loan_id: str, data: EmiNoteUpdate, request: Request):
+    """Add or update a note on a specific EMI (e.g. reason not collected)."""
+    await get_current_user(request)
+    try:
+        oid = ObjectId(loan_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid loan ID")
+    doc = await db.loans.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loan not found")
+    schedule = doc.get("emi_schedule", [])
+    emi_item = next((e for e in schedule if e["due_month"] == data.emi_month), None)
+    if not emi_item:
+        raise HTTPException(status_code=404, detail=f"EMI {data.emi_month} not found in schedule")
+    emi_item["note"] = data.note.strip()
+    now = datetime.now(timezone.utc).isoformat()
+    await db.loans.update_one(
+        {"_id": oid},
+        {"$set": {"emi_schedule": schedule, "updated_at": now}}
+    )
+    return _doc(await db.loans.find_one({"_id": oid}))
+
 # ─── Collection Sheet ─────────────────────────────────────────────────────────
 @api_router.get("/collections/sheet")
 async def get_collection_sheet(
