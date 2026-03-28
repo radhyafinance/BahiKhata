@@ -1175,6 +1175,7 @@ async def get_collection_sheet(
             "emi_amount": emi.get("amount", 0),
             "emi_month": emi.get("due_month", month),
             "emi_status": emi.get("status", "pending"),
+            "emi_note": emi.get("note") or "",
             "outstanding_balance": outstanding,
         }
 

@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
-  X, Loader2, ExternalLink, IndianRupee
+  X, Loader2, ExternalLink, IndianRupee, Pencil
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -113,7 +113,76 @@ function CollectModal({ row, onClose, onCollected }) {
   );
 }
 
-function MisalSection({ misal, month, onCollect }) {
+function NoteModal({ row, onClose, onSaved }) {
+  const [text, setText] = useState(row.emi_note || "");
+  const [loading, setLoading] = useState(false);
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    try {
+      await axios.patch(
+        `${API}/loans/${row.loan_db_id}/emi-note`,
+        { emi_month: row.emi_month, note: text },
+        { withCredentials: true }
+      );
+      toast.success("Note saved / टिप्पणी सहेजी गई");
+      onSaved(row.loan_db_id, row.emi_month, text);
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to save note");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="vasuli-note-modal">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-card rounded-xl shadow-2xl w-full max-w-sm border border-border">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <div>
+            <p className="font-bold text-base font-['Outfit']">{row.client_name_hindi || row.client_name}</p>
+            <p className="text-xs text-muted-foreground">{row.loan_number} · {fmtMonth(row.emi_month)}</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X size={18} /></button>
+        </div>
+        <form onSubmit={handleSave} className="p-4 space-y-4">
+          <div>
+            <label className="bk-label">
+              <span className="bk-label-en">Note / Reason EMI not collected</span>
+              <span className="bk-label-hi">कारण / टिप्पणी</span>
+            </label>
+            <textarea
+              value={text}
+              onChange={e => setText(e.target.value)}
+              className="bk-input h-24 resize-none"
+              placeholder="e.g. Client not home, will pay next week / ग्राहक घर पर नहीं था..."
+              data-testid="vasuli-note-textarea"
+              autoFocus
+            />
+          </div>
+          <div className="flex gap-3">
+            {text && (
+              <button type="button" onClick={() => setText("")}
+                className="flex-1 py-2.5 rounded-lg border border-border text-sm font-semibold text-muted-foreground hover:bg-muted">
+                Clear
+              </button>
+            )}
+            <button type="submit" disabled={loading}
+              className="flex-1 bk-btn-primary flex items-center justify-center gap-2"
+              data-testid="vasuli-save-note-btn">
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Pencil size={16} />}
+              Save / सहेजें
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function MisalSection({ misal, month, onCollect, onNote }) {
   const [expanded, setExpanded] = useState(true);
   const navigate = useNavigate();
   const total = misal.rows.length;
@@ -158,9 +227,10 @@ function MisalSection({ misal, month, onCollect }) {
             return (
               <div
                 key={row.loan_db_id}
-                className={`grid grid-cols-[52px_1fr_72px_68px] gap-0 items-start px-3 py-2.5 text-sm transition-colors ${isPaid ? "bg-green-50/50" : row.emi_status === "overdue" ? "bg-red-50/40" : ""}`}
+                className={`transition-colors ${isPaid ? "bg-green-50/50" : row.emi_status === "overdue" ? "bg-red-50/40" : ""}`}
                 data-testid={`collection-row-${row.loan_db_id}`}
               >
+                <div className="grid grid-cols-[52px_1fr_72px_68px] gap-0 items-start px-3 py-2.5 text-sm">
                 {/* EMI Amount */}
                 <div className="text-right pr-2 pt-0.5 flex-shrink-0">
                   <p className="font-bold text-foreground text-sm leading-tight">
@@ -198,7 +268,7 @@ function MisalSection({ misal, month, onCollect }) {
                   </p>
                 </div>
 
-                {/* Collect / Done */}
+                {/* Action */}
                 <div className="flex flex-col items-center gap-1 pt-0.5">
                   {isPaid ? (
                     <CheckCircle size={20} className="text-green-500" />
@@ -216,6 +286,14 @@ function MisalSection({ misal, month, onCollect }) {
                         Collect
                       </button>
                       <button
+                        onClick={() => onNote(row)}
+                        className="flex items-center justify-center gap-0.5 text-[10px] w-full py-1 rounded border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                        data-testid={`note-btn-${row.loan_db_id}`}
+                      >
+                        <Pencil size={9} />
+                        {row.emi_note ? "Edit" : "Note"}
+                      </button>
+                      <button
                         onClick={() => navigate(`/loans/${row.loan_db_id}`)}
                         className="p-1 rounded hover:bg-muted text-muted-foreground"
                         title="View"
@@ -227,6 +305,16 @@ function MisalSection({ misal, month, onCollect }) {
                   )}
                 </div>
               </div>
+
+              {/* Note display below row */}
+              {row.emi_note && (
+                <div className="px-3 pb-2" data-testid={`vasuli-note-display-${row.loan_db_id}`}>
+                  <div className="p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 break-words leading-snug">
+                    {row.emi_note}
+                  </div>
+                </div>
+              )}
+            </div>
             );
           })}
         </div>
@@ -243,6 +331,7 @@ export default function CollectionSheet() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [collectingRow, setCollectingRow] = useState(null);
+  const [notingRow, setNotingRow] = useState(null);
 
   const fetchSheet = useCallback(async () => {
     setLoading(true);
@@ -279,6 +368,23 @@ export default function CollectionSheet() {
         (acc, il) => acc + il.misals.reduce((a, m) => a + m.rows.filter((r) => r.emi_status === "paid").length, 0), 0
       );
       return { ...updated };
+    });
+  };
+
+  const handleNoteSaved = (loanDbId, emiMonth, note) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const updated = JSON.parse(JSON.stringify(prev));
+      for (const il of updated.illakas) {
+        for (const m of il.misals) {
+          for (const row of m.rows) {
+            if (row.loan_db_id === loanDbId && row.emi_month === emiMonth) {
+              row.emi_note = note;
+            }
+          }
+        }
+      }
+      return updated;
     });
   };
 
@@ -359,6 +465,7 @@ export default function CollectionSheet() {
                     misal={misal}
                     month={month}
                     onCollect={setCollectingRow}
+                    onNote={setNotingRow}
                   />
                 ))}
               </div>
@@ -372,6 +479,14 @@ export default function CollectionSheet() {
           row={collectingRow}
           onClose={() => setCollectingRow(null)}
           onCollected={handleCollected}
+        />
+      )}
+
+      {notingRow && (
+        <NoteModal
+          row={notingRow}
+          onClose={() => setNotingRow(null)}
+          onSaved={handleNoteSaved}
         />
       )}
     </div>
