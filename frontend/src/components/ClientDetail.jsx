@@ -6,8 +6,10 @@ import { useAuth } from "./AuthContext";
 import {
   ArrowLeft, Edit, CheckCircle, XCircle, Clock, MapPin, Camera,
   Phone, User, Shield, Users, FileText, TrendingUp, AlertCircle,
-  X, Loader2, PlusCircle, BookOpen, Undo2, ExternalLink, Pencil
+  X, Loader2, PlusCircle, BookOpen, Undo2, ExternalLink, Pencil,
+  RefreshCw, MinusCircle
 } from "lucide-react";
+import ReLoanModal from "./ReLoanModal";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -180,9 +182,10 @@ function PassbookCollectModal({ emi, loanId, onClose, onCollected }) {
 
 // ─── EMI Style map ────────────────────────────────────────────────────────────
 const EMI_S = {
-  paid:    { row: "bg-green-50/60",   badge: "bg-green-100 text-green-800",  icon: CheckCircle,  iconCls: "text-green-600" },
-  overdue: { row: "bg-red-50/50",     badge: "bg-red-100 text-red-700",      icon: AlertCircle,  iconCls: "text-red-600"   },
-  pending: { row: "",                 badge: "bg-gray-100 text-gray-600",    icon: Clock,        iconCls: "text-gray-400"  },
+  paid:    { row: "bg-green-50/60",    badge: "bg-green-100 text-green-800",   icon: CheckCircle,  iconCls: "text-green-600"  },
+  overdue: { row: "bg-red-50/50",      badge: "bg-red-100 text-red-700",       icon: AlertCircle,  iconCls: "text-red-600"    },
+  pending: { row: "",                  badge: "bg-gray-100 text-gray-600",     icon: Clock,        iconCls: "text-gray-400"   },
+  netoff:  { row: "bg-purple-50/40",   badge: "bg-purple-100 text-purple-700", icon: MinusCircle,  iconCls: "text-purple-500" },
 };
 
 // ─── Passbook: Note Modal ─────────────────────────────────────────────────────
@@ -285,8 +288,14 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
             <TrendingUp size={16} className="text-primary" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="font-mono text-sm font-bold text-foreground">{loan.loan_number || "—"}</span>
+              {loan.is_reloan && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold">Re-Loan</span>
+              )}
+              {loan.netoff_closed && (
+                <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-600 rounded-full font-semibold">Net-off closed</span>
+              )}
               <LoanStatusBadge status={loan.status} />
             </div>
             <p className="text-xs text-muted-foreground mt-0.5">
@@ -380,7 +389,9 @@ function LoanPassbookCard({ loan: initialLoan, navigate }) {
 
                 {/* Action */}
                 <div className="flex flex-col items-center justify-center gap-1">
-                  {isPaid ? (
+                  {emi.status === "netoff" ? (
+                    <span className="text-[10px] px-2 py-1 rounded bg-purple-50 text-purple-600 font-semibold border border-purple-200">Net-off</span>
+                  ) : isPaid ? (
                     <button
                       onClick={() => handleUndo(emi.due_month)}
                       disabled={undoLoading === emi.due_month}
@@ -460,6 +471,7 @@ export default function ClientDetail() {
   const [activeTab, setActiveTab] = useState("kyc");
   const [loans, setLoans] = useState(null);
   const [loansLoading, setLoansLoading] = useState(false);
+  const [showReloan, setShowReloan] = useState(false);
 
   useEffect(() => {
     axios
@@ -670,16 +682,27 @@ export default function ClientDetail() {
               <h2 className="font-bold text-foreground font-['Outfit']">Loan Passbook / ऋण पासबुक</h2>
               <p className="text-xs text-muted-foreground">Complete loan & EMI history for this client</p>
             </div>
-            {(user?.role === "muneem" || user?.role === "sipahi") && (
-              <button
-                onClick={() => navigate(`/loans/new?kyc_id=${id}&client=${encodeURIComponent(kyc.primary_borrower?.name || "")}`)}
-                className="flex items-center gap-2 bk-btn-primary text-sm py-2"
-                data-testid="new-loan-btn"
-              >
-                <PlusCircle size={15} />
-                New Loan
-              </button>
-            )}
+            <div className="flex items-center gap-2">
+              {loans && loans.length > 0 && (
+                <button
+                  onClick={() => setShowReloan(true)}
+                  className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-primary/20 transition-colors"
+                  data-testid="reloan-btn"
+                >
+                  <RefreshCw size={14} /> Re-Loan
+                </button>
+              )}
+              {(user?.role === "muneem" || user?.role === "sipahi") && (
+                <button
+                  onClick={() => navigate(`/loans/new?kyc_id=${id}&client=${encodeURIComponent(kyc.primary_borrower?.name || "")}`)}
+                  className="flex items-center gap-2 bk-btn-primary text-sm py-2"
+                  data-testid="new-loan-btn"
+                >
+                  <PlusCircle size={15} />
+                  New Loan
+                </button>
+              )}
+            </div>
           </div>
 
           {/* Loans list */}
@@ -725,6 +748,17 @@ export default function ClientDetail() {
             </>
           )}
         </div>
+      )}
+
+      {showReloan && loans && loans.length > 0 && (
+        <ReLoanModal
+          loanId={loans[loans.length - 1].id}
+          kycId={id}
+          clientName={kyc?.primary_borrower?.name}
+          currentLoan={loans[loans.length - 1]}
+          onClose={() => setShowReloan(false)}
+          onSuccess={(newLoan) => navigate(`/loans/${newLoan.id}`)}
+        />
       )}
     </div>
   );

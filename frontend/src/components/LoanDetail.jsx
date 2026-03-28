@@ -3,7 +3,8 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, Edit, CheckCircle, AlertCircle, Clock, X, Loader2, Pencil, User } from "lucide-react";
+import { ArrowLeft, Edit, CheckCircle, AlertCircle, Clock, X, Loader2, Pencil, User, RefreshCw, MinusCircle } from "lucide-react";
+import ReLoanModal from "./ReLoanModal";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -17,9 +18,10 @@ const fmtMonth = (ym) => {
 };
 
 const EMI_STYLE = {
-  paid: { card: "bg-green-50 border-green-200", badge: "bg-green-100 text-green-800", icon: CheckCircle, iconCls: "text-green-600" },
-  overdue: { card: "bg-red-50 border-red-200", badge: "bg-red-100 text-red-700", icon: AlertCircle, iconCls: "text-red-600" },
-  pending: { card: "bg-card border-border", badge: "bg-gray-100 text-gray-600", icon: Clock, iconCls: "text-gray-400" },
+  paid:    { card: "bg-green-50 border-green-200",   badge: "bg-green-100 text-green-800",   icon: CheckCircle,  iconCls: "text-green-600"  },
+  overdue: { card: "bg-red-50 border-red-200",       badge: "bg-red-100 text-red-700",       icon: AlertCircle,  iconCls: "text-red-600"    },
+  pending: { card: "bg-card border-border",           badge: "bg-gray-100 text-gray-600",    icon: Clock,        iconCls: "text-gray-400"   },
+  netoff:  { card: "bg-purple-50 border-purple-200", badge: "bg-purple-100 text-purple-700", icon: MinusCircle,  iconCls: "text-purple-500" },
 };
 
 function CollectModal({ emi, loanId, onClose, onCollected }) {
@@ -160,6 +162,7 @@ export default function LoanDetail() {
   const [collectingEmi, setCollectingEmi] = useState(null);
   const [undoLoading, setUndoLoading] = useState(null);
   const [notingEmi, setNotingEmi] = useState(null);
+  const [showReloan, setShowReloan] = useState(false);
 
   useEffect(() => {
     axios.get(`${API}/loans/${id}`, { withCredentials: true })
@@ -231,32 +234,42 @@ export default function LoanDetail() {
             {(user?.role === "muneem" || user?.role === "sipahi") && loan.client_name_hindi && (
               <p className="text-sm text-muted-foreground">{loan.client_name}</p>
             )}
-            <div className="flex items-center gap-2 mt-1">
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
               <span className="font-mono text-sm text-muted-foreground">{loan.loan_number || "—"}</span>
+              {loan.is_reloan && (
+                <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold">Re-Loan</span>
+              )}
               <span className="text-sm text-muted-foreground">{loan.illaka_name} / {loan.misal_name}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[loan.status] || ""}`} data-testid="loan-status-badge">
-                {loan.status}
+                {loan.status}{loan.netoff_closed ? " · Net-off" : ""}
               </span>
             </div>
           </div>
         </div>
-        {canEdit && loan.status !== "closed" && (
-          <div className="flex items-center gap-2">
-            {loan.kyc_id && (
-              <button
-                onClick={() => navigate(`/clients/${loan.kyc_id}`)}
-                className="flex items-center gap-2 bg-muted text-foreground px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border"
-                data-testid="view-kyc-btn"
-                title="View Client KYC"
-              >
-                <User size={15} /> Client KYC
-              </button>
-            )}
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {loan.kyc_id && (
+            <button
+              onClick={() => navigate(`/clients/${loan.kyc_id}`)}
+              className="flex items-center gap-2 bg-muted text-foreground px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border"
+              data-testid="view-kyc-btn"
+              title="View Client KYC"
+            >
+              <User size={15} /> Client KYC
+            </button>
+          )}
+          {canEdit && loan.status !== "closed" && (
             <button onClick={() => navigate(`/loans/${id}/edit`)} className="flex items-center gap-2 bg-muted text-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border" data-testid="edit-loan-btn">
               <Edit size={16} /> Edit
             </button>
-          </div>
-        )}
+          )}
+          <button
+            onClick={() => setShowReloan(true)}
+            className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-primary/20 transition-colors"
+            data-testid="reloan-btn"
+          >
+            <RefreshCw size={15} /> Re-Loan
+          </button>
+        </div>
       </div>
 
       {/* Summary */}
@@ -291,6 +304,18 @@ export default function LoanDetail() {
               <p className="text-sm font-medium">{r.value}</p>
             </div>
           ))}
+          {loan.is_reloan && loan.net_disbursement_amount > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground">Net Disbursement to Client</p>
+              <p className="text-sm font-medium text-green-700">{fmt(loan.net_disbursement_amount)}</p>
+            </div>
+          )}
+          {loan.netoff_amount > 0 && (
+            <div>
+              <p className="text-xs text-muted-foreground">Net-off from Previous Loan</p>
+              <p className="text-sm font-medium text-amber-700">− {fmt(loan.netoff_amount)}</p>
+            </div>
+          )}
         </div>
       </div>
 
@@ -324,18 +349,19 @@ export default function LoanDetail() {
               const style = EMI_STYLE[emi.status] || EMI_STYLE.pending;
               const Icon = style.icon;
               const isCurrentMonth = emi.due_month === today;
-              const canCollect = emi.status !== "paid" && loan.status !== "closed";
+              const isNetoff = emi.status === "netoff";
+              const canCollect = emi.status !== "paid" && !isNetoff && loan.status !== "closed";
 
               return (
                 <div
                   key={emi.month}
-                  className={`rounded-xl border p-3 space-y-2 ${style.card} ${isCurrentMonth && emi.status !== "paid" ? "ring-2 ring-primary" : ""}`}
+                  className={`rounded-xl border p-3 space-y-2 ${style.card} ${isCurrentMonth && emi.status !== "paid" && !isNetoff ? "ring-2 ring-primary" : ""}`}
                   data-testid={`emi-card-${emi.month}`}
                 >
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-muted-foreground">EMI {emi.month}</span>
                     <span className={`text-xs px-1.5 py-0.5 rounded-full font-semibold ${style.badge}`}>
-                      {emi.status === "paid" ? "Paid" : emi.status === "overdue" ? "Overdue" : isCurrentMonth ? "Due Now" : "Pending"}
+                      {isNetoff ? "Net-off" : emi.status === "paid" ? "Paid" : emi.status === "overdue" ? "Overdue" : isCurrentMonth ? "Due Now" : "Pending"}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground">{fmtMonth(emi.due_month)}</p>
@@ -344,7 +370,9 @@ export default function LoanDetail() {
                     <p className="text-base font-bold font-['Outfit']">{fmt(emi.amount)}</p>
                   </div>
 
-                  {emi.status === "paid" ? (
+                  {isNetoff ? (
+                    <p className="text-xs text-purple-600">Settled via re-loan</p>
+                  ) : emi.status === "paid" ? (
                     <div className="space-y-1">
                       <p className="text-xs text-green-700">
                         {emi.paid_date ? new Date(emi.paid_date).toLocaleDateString("en-IN") : "—"}
@@ -375,15 +403,15 @@ export default function LoanDetail() {
                     </button>
                   ) : null}
 
-                  {/* Existing note */}
-                  {emi.note && (
+                  {/* Note display */}
+                  {emi.note && !isNetoff && (
                     <div className="mt-1 p-1.5 bg-amber-50 border border-amber-200 rounded-lg" data-testid={`emi-note-display-${emi.month}`}>
                       <p className="text-[11px] text-amber-800 leading-snug break-words">{emi.note}</p>
                     </div>
                   )}
 
-                  {/* Note button (always shown on unpaid) */}
-                  {emi.status !== "paid" && (
+                  {/* Note button (only on unpaid, non-netoff) */}
+                  {emi.status !== "paid" && !isNetoff && (
                     <button
                       onClick={() => setNotingEmi(emi)}
                       className="w-full flex items-center justify-center gap-1 text-xs py-1 rounded border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50 transition-colors mt-1"
@@ -422,6 +450,17 @@ export default function LoanDetail() {
           loanId={id}
           onClose={() => setNotingEmi(null)}
           onSaved={handleNoteSaved}
+        />
+      )}
+
+      {showReloan && (
+        <ReLoanModal
+          loanId={id}
+          kycId={loan.kyc_id}
+          clientName={loan.client_name}
+          currentLoan={loan}
+          onClose={() => setShowReloan(false)}
+          onSuccess={(newLoan) => navigate(`/loans/${newLoan.id}`)}
         />
       )}
     </div>

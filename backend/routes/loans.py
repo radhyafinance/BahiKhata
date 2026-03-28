@@ -9,7 +9,7 @@ from helpers import (
     _doc, generate_loan_number, _build_emi_schedule,
     _get_loan_status, _apply_overdue_to_schedule, _add_months, _loan_query_for_user
 )
-from models import LoanCreate, LoanStatusUpdate, PaymentCreate, EmiNoteUpdate
+from models import LoanCreate, LoanStatusUpdate, PaymentCreate, EmiNoteUpdate, ReLoanRequest
 
 router = APIRouter()
 
@@ -263,3 +263,133 @@ async def update_emi_note(loan_id: str, data: EmiNoteUpdate, request: Request):
     now = datetime.now(timezone.utc).isoformat()
     await db.loans.update_one({"_id": oid}, {"$set": {"emi_schedule": schedule, "updated_at": now}})
     return _doc(await db.loans.find_one({"_id": oid}))
+
+
+@router.post("/loans/{loan_id}/reloan")
+async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
+    """Create a re-loan for an existing client. Optionally net-off outstanding balance."""
+    current_user = await get_current_user(request)
+    try:
+        oid = ObjectId(loan_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid loan ID")
+
+    loan = await db.loans.find_one({"_id": oid})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    kyc_id = loan.get("kyc_id")
+    customer_id = loan.get("customer_id", "—")
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Calculate outstanding on existing loan
+    schedule = loan.get("emi_schedule", [])
+    total_repayable = float(loan.get("total_repayable") or ((loan.get("emi_amount") or 0) * 12))
+    total_paid = float(loan.get("total_paid") or 0.0)
+    outstanding = max(0.0, total_repayable - total_paid)
+    netoff_amount = 0.0
+
+    # Net-off: close existing active/overdue loan
+    if data.net_off and outstanding > 0 and loan.get("status") != "closed":
+        for emi in schedule:
+            if emi.get("status") != "paid":
+                emi["status"] = "netoff"
+                emi["note"] = f"Net-off: closed via re-loan on {data.loan_date}"
+        netoff_amount = outstanding
+        await db.loans.update_one(
+            {"_id": oid},
+            {"$set": {
+                "emi_schedule": schedule,
+                "status": "closed",
+                "netoff_closed": True,
+                "netoff_date": now,
+                "updated_at": now,
+            }}
+        )
+
+    # Update KYC phone / co_borrower / guarantor if provided
+    if kyc_id:
+        kyc_updates = {}
+        if data.phone:
+            kyc_updates["primary_borrower.phone"] = data.phone
+        if data.co_borrower:
+            co_data = {k: v for k, v in data.co_borrower.model_dump().items() if v is not None}
+            if co_data:
+                kyc_updates["co_borrower"] = co_data
+        if data.guarantor:
+            g_data = {k: v for k, v in data.guarantor.model_dump().items() if v is not None}
+            if g_data:
+                kyc_updates["guarantor"] = g_data
+        if kyc_updates:
+            kyc_updates["updated_at"] = now
+            try:
+                await db.kycs.update_one({"_id": ObjectId(kyc_id)}, {"$set": kyc_updates})
+            except Exception:
+                pass
+
+    # Fetch KYC fields for the new loan record
+    relative_name, relative_name_hindi, client_name_hindi = "", "", ""
+    if kyc_id:
+        try:
+            kyc_doc = await db.kycs.find_one(
+                {"_id": ObjectId(kyc_id)},
+                {"primary_borrower.relative_name": 1,
+                 "primary_borrower.relative_name_hindi": 1,
+                 "primary_borrower.name_hindi": 1}
+            )
+            if kyc_doc:
+                pb = kyc_doc.get("primary_borrower") or {}
+                relative_name = pb.get("relative_name") or ""
+                relative_name_hindi = pb.get("relative_name_hindi") or ""
+                client_name_hindi = pb.get("name_hindi") or ""
+        except Exception:
+            pass
+
+    # Build and insert new loan
+    loan_date_obj = date_type.fromisoformat(data.loan_date)
+    emi_amount, new_schedule = _build_emi_schedule(data.new_disbursement_amount, loan_date_obj)
+    loan_number = await generate_loan_number(customer_id, kyc_id or loan_id)
+    net_disbursement = data.new_disbursement_amount - netoff_amount
+
+    new_loan_doc = {
+        "kyc_id": kyc_id,
+        "customer_id": customer_id,
+        "loan_number": loan_number,
+        "relative_name": relative_name,
+        "relative_name_hindi": relative_name_hindi,
+        "client_name": loan.get("client_name"),
+        "client_name_hindi": client_name_hindi,
+        "client_phone": data.phone or loan.get("client_phone"),
+        "illaka_id": loan.get("illaka_id"),
+        "illaka_name": loan.get("illaka_name"),
+        "misal_id": loan.get("misal_id"),
+        "misal_name": loan.get("misal_name"),
+        "principal_amount": data.new_disbursement_amount,
+        "interest_rate": 17.0,
+        "emi_amount": emi_amount,
+        "total_repayable": emi_amount * 12,
+        "interest_amount": (emi_amount * 12) - data.new_disbursement_amount,
+        "loan_date": data.loan_date,
+        "due_date": _add_months(loan_date_obj, 12).isoformat(),
+        "status": _get_loan_status(new_schedule),
+        "sipahi_id": current_user["id"],
+        "sipahi_name": current_user["name"],
+        "total_paid": 0.0,
+        "notes": data.notes,
+        "emi_schedule": new_schedule,
+        "is_reloan": True,
+        "parent_loan_id": loan_id,
+        "netoff_amount": netoff_amount,
+        "net_disbursement_amount": net_disbursement,
+        "created_at": now,
+        "updated_at": now,
+    }
+
+    result = await db.loans.insert_one(new_loan_doc)
+    new_id = str(result.inserted_id)
+
+    # Back-link old loan to new loan
+    await db.loans.update_one({"_id": oid}, {"$set": {"reloan_id": new_id, "updated_at": now}})
+
+    new_loan_doc["_id"] = result.inserted_id
+    return _doc(new_loan_doc)

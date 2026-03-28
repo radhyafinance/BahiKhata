@@ -55,7 +55,7 @@ def _apply_overdue_to_schedule(schedule: list) -> bool:
 def _get_loan_status(schedule: list) -> str:
     if not schedule:
         return "active"
-    if all(e["status"] == "paid" for e in schedule):
+    if all(e["status"] in ("paid", "netoff") for e in schedule):
         return "closed"
     if any(e["status"] == "overdue" for e in schedule):
         return "overdue"

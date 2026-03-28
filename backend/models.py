@@ -124,3 +124,13 @@ class EmiNoteUpdate(BaseModel):
 
 class TransliterateRequest(BaseModel):
     text: str
+
+
+class ReLoanRequest(BaseModel):
+    new_disbursement_amount: float
+    loan_date: str
+    net_off: bool = False
+    phone: Optional[str] = None
+    co_borrower: Optional[PersonKYCData] = None
+    guarantor: Optional[PersonKYCData] = None
+    notes: Optional[str] = None
