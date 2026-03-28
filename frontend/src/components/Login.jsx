@@ -7,7 +7,7 @@ import { Eye, EyeOff, Loader2 } from "lucide-react";
 export default function Login() {
   const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -18,7 +18,7 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
-      await login(email, password);
+      await login(phone, password);
       toast.success("Welcome to Bahi Khata!");
       navigate("/");
     } catch (err) {
@@ -107,17 +107,17 @@ export default function Login() {
           <form onSubmit={handleSubmit} className="space-y-5" data-testid="login-form">
             <div>
               <label className="bk-label">
-                <span className="bk-label-en">Email Address</span>
-                <span className="bk-label-hi">ईमेल पता</span>
+                <span className="bk-label-en">Mobile Number</span>
+                <span className="bk-label-hi">मोबाइल नंबर</span>
               </label>
               <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 className="bk-input"
-                placeholder="officer@bahikhata.com"
+                placeholder="10-digit mobile number"
                 required
-                data-testid="login-email-input"
+                data-testid="login-phone-input"
               />
             </div>
 

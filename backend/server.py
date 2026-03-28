@@ -41,7 +41,19 @@ app.add_middleware(
 
 @app.on_event("startup")
 async def startup():
-    await db.users.create_index("email", unique=True)
+    try:
+        await db.users.drop_index("email_1")
+    except Exception:
+        pass
+    try:
+        await db.users.drop_index("phone_1")
+    except Exception:
+        pass
+    await db.users.create_index("email", unique=True, sparse=True)
+    await db.users.create_index(
+        "phone", unique=True,
+        partialFilterExpression={"phone": {"$gt": ""}}
+    )
     await db.kycs.create_index([("created_at", -1)])
     await db.kycs.create_index("field_officer_id")
     await db.kycs.create_index("status")
@@ -59,19 +71,26 @@ async def startup():
     await db.loans.create_index([("loan_date", -1)])
     await db.payments.create_index("loan_id")
 
-    admin_email = os.environ.get("ADMIN_EMAIL", "admin@bahikhata.com")
-    admin_password = os.environ.get("ADMIN_PASSWORD", "Admin@123")
-    existing = await db.users.find_one({"email": admin_email})
+    admin_email = os.environ.get("ADMIN_EMAIL")
+    admin_phone = os.environ.get("ADMIN_PHONE")
+    admin_password = os.environ.get("ADMIN_PASSWORD")
+    existing = await db.users.find_one({"$or": [{"email": admin_email}, {"phone": admin_phone}]})
     if not existing:
         await db.users.insert_one({
-            "name": "Super Admin", "email": admin_email,
+            "name": "Super Admin", "email": admin_email, "phone": admin_phone,
             "password_hash": hash_password(admin_password),
             "role": "admin", "assigned_illaka_ids": [], "is_active": True,
             "created_at": datetime.now(timezone.utc).isoformat()
         })
-        logger.info(f"Admin created: {admin_email}")
-    elif not verify_password(admin_password, existing.get("password_hash", "")):
-        await db.users.update_one({"email": admin_email}, {"$set": {"password_hash": hash_password(admin_password)}})
+        logger.info(f"Admin created: {admin_email} / {admin_phone}")
+    else:
+        updates = {}
+        if not existing.get("phone") and admin_phone:
+            updates["phone"] = admin_phone
+        if not verify_password(admin_password, existing.get("password_hash", "")):
+            updates["password_hash"] = hash_password(admin_password)
+        if updates:
+            await db.users.update_one({"_id": existing["_id"]}, {"$set": updates})
 
     try:
         init_storage()

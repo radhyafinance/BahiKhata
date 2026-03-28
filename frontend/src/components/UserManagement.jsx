@@ -20,7 +20,7 @@ const ROLE_BADGE = {
   sipahi: "bg-green-100 text-green-800",
 };
 
-const emptyForm = { name: "", email: "", password: "", role: "sipahi", phone: "", assigned_illaka_ids: [], maalik_id: "" };
+const emptyForm = { name: "", phone: "", email: "", password: "", role: "sipahi", assigned_illaka_ids: [], maalik_id: "" };
 
 function UserModal({ user: editUser, currentUser, illakas, maaliks, onClose, onSave }) {
   const [form, setForm] = useState(editUser ? { ...editUser, password: "", assigned_illaka_ids: editUser.assigned_illaka_ids || [] } : { ...emptyForm });
@@ -84,8 +84,12 @@ function UserModal({ user: editUser, currentUser, illakas, maaliks, onClose, onS
               <input type="text" value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} className="bk-input" required data-testid="user-name-input" />
             </div>
             <div className="col-span-2">
-              <label className="bk-label"><span className="bk-label-en">Email *</span></label>
-              <input type="email" value={form.email} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} className="bk-input" required={!editUser} disabled={!!editUser} data-testid="user-email-input" />
+              <label className="bk-label"><span className="bk-label-en">Mobile Number *</span><span className="bk-label-hi">मोबाइल नंबर</span></label>
+              <input type="tel" value={form.phone || ""} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} className="bk-input" required placeholder="10-digit mobile number" data-testid="user-phone-input" />
+            </div>
+            <div className="col-span-2">
+              <label className="bk-label"><span className="bk-label-en">Email (optional)</span><span className="bk-label-hi">ईमेल (वैकल्पिक)</span></label>
+              <input type="email" value={form.email || ""} onChange={e => setForm(p => ({ ...p, email: e.target.value }))} className="bk-input" disabled={!!editUser} data-testid="user-email-input" />
             </div>
             <div className="col-span-2">
               <label className="bk-label"><span className="bk-label-en">{editUser ? "New Password" : "Password *"}</span></label>
@@ -96,10 +100,6 @@ function UserModal({ user: editUser, currentUser, illakas, maaliks, onClose, onS
               <select value={form.role} onChange={e => setForm(p => ({ ...p, role: e.target.value }))} className="bk-input" required data-testid="user-role-select">
                 {availableRoles.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="bk-label"><span className="bk-label-en">Phone</span><span className="bk-label-hi">फ़ोन</span></label>
-              <input type="tel" value={form.phone || ""} onChange={e => setForm(p => ({ ...p, phone: e.target.value }))} className="bk-input" data-testid="user-phone-input" />
             </div>
           </div>
 

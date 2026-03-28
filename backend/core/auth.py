@@ -20,9 +20,9 @@ def verify_password(plain: str, hashed: str) -> bool:
     return bcrypt.checkpw(plain.encode("utf-8"), hashed.encode("utf-8"))
 
 
-def create_access_token(user_id: str, email: str, role: str) -> str:
+def create_access_token(user_id: str, phone: str, role: str) -> str:
     return jwt.encode(
-        {"sub": user_id, "email": email, "role": role,
+        {"sub": user_id, "phone": phone, "role": role,
          "exp": datetime.now(timezone.utc) + timedelta(hours=10), "type": "access"},
         get_jwt_secret(), algorithm=JWT_ALGORITHM
     )

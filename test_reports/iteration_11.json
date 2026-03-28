@@ -1,0 +1,92 @@
+{
+  "summary": "Phone-based login feature fully tested. All 13 backend tests pass, all 8 frontend checks pass. One critical backend bug found and fixed: users without email couldn't be created (MongoDB sparse index indexes explicit null). Fixed by omitting email key from doc when not provided.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/users",
+        "issue": "Duplicate key `phone` in doc dict (line 45 and 48 of routes/users.py both set phone). Harmless (second wins) but dead code.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend": {
+      "total": 13,
+      "passed": 13,
+      "failed": 0,
+      "file": "/app/backend/tests/test_phone_login.py",
+      "xml": "/app/test_reports/pytest/phone_login_results.xml",
+      "classes_tested": [
+        "TestPhoneLogin (7 tests) — admin login, sipahi login, wrong phone 401, wrong password 401, email field fails 422, missing phone 422, empty phone",
+        "TestPhoneLoginCookieSession (3 tests) — httponly cookie set, /auth/me after login, /auth/me without login",
+        "TestUserCreationWithPhone (3 tests) — create user phone-only, create without phone fails 422, create with phone+email and verify phone login"
+      ]
+    },
+    "frontend": {
+      "total_checks": 8,
+      "passed": 8,
+      "failed": 0,
+      "checks": {
+        "login_phone_input_present": "PASS — data-testid=login-phone-input, type=tel, placeholder='10-digit mobile number'",
+        "no_email_input_on_login": "PASS — data-testid=login-email-input not present",
+        "mobile_number_label": "PASS — 'Mobile Number' / 'मोबाइल नंबर' label on login form",
+        "admin_login_success": "PASS — phone=9999999999, password=Admin@123 → dashboard redirect + 'Welcome to Bahi Khata!' toast",
+        "sipahi_login_success": "PASS — phone=8888888888, password=Test@1234 → Sipahi dashboard loaded",
+        "wrong_phone_error": "PASS — Shows 'Invalid mobile number or password' for wrong phone",
+        "wrong_password_error": "PASS — Shows 'Invalid mobile number or password' for wrong password",
+        "user_modal_phone_required": "PASS — Mobile Number * required, Email (optional) in Add Team Member modal",
+        "create_user_phone_only": "PASS — Created TEST_UI_PhoneUser without email, appears in user list with phone"
+      }
+    }
+  },
+  "bugs_fixed": [
+    {
+      "file": "/app/backend/routes/users.py",
+      "issue": "MongoDB email_1 sparse unique index indexes explicit null values (not missing fields). Storing `email: None` blocked creating second user without email (DuplicateKeyError).",
+      "fix": "Changed doc construction to omit 'email' key when data.email is falsy, rather than storing None. Only adds email to doc if provided.",
+      "rca": "MongoDB sparse indexes skip MISSING fields but DO index null/None values. The startup code (server.py) correctly recreated email_1 as sparse, but the user doc always included email=None. Fix: use conditional inclusion — `if data.email: doc['email'] = ...`"
+    }
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_phone_login.py",
+    "/app/test_reports/pytest/phone_login_results.xml"
+  ],
+  "action_items": [
+    "LOW: Remove duplicate `phone` key in routes/users.py line 48 (doc dict already sets phone at line 45)"
+  ],
+  "critical_code_review_comments": [
+    "FIXED: routes/users.py was storing email=None in MongoDB doc — sparse unique index still indexes null, causing DuplicateKeyError for 2nd user without email. Fixed by omitting email field from doc when not provided.",
+    "LOW: routes/users.py doc dict has duplicate phone key (line 45: phone=data.phone AND line 48: phone=data.phone) — harmless but cluttered.",
+    "OK: server.py startup correctly drops+recreates email_1 with sparse=True and phone_1 with partialFilterExpression. Only caveat: sparse indexes still index null, the doc-level fix is required.",
+    "OK: create_access_token now uses phone instead of email in JWT payload — consistent with login-by-phone flow.",
+    "OK: _user_from_doc doesn't expose password_hash — secure."
+  ],
+  "updated_files": [
+    "/app/backend/routes/users.py",
+    "/app/backend/tests/test_phone_login.py"
+  ],
+  "success_rate": {
+    "backend": "100% (13/13 tests)",
+    "frontend": "100% (8/8 checks)"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "sipahi": "phone=8888888888 / Test@1234"
+  },
+  "seed_data_creation": "Created TEST_UI_PhoneUser_4723914 (phone=7774723914, no email, sipahi role) via UI during frontend test. Backend tests created/deactivated TEST users with timestamp-based phones.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Phone-based login fully tested and working (iteration_11). Admin: phone=9999999999/Admin@123, Sipahi: phone=8888888888/Test@1234. Critical fix applied: routes/users.py now omits email key from MongoDB doc when email not provided (prevents DuplicateKeyError on sparse email_1 index). Backend test file: /app/backend/tests/test_phone_login.py (13 tests). All login flows verified end-to-end. UserManagement modal shows 'Mobile Number *' (required) and 'Email (optional)'. User display in list: shows `email · phone` or just `· phone` when no email.",
+  "rca_of_issue": {
+    "bug": "Creating multiple users without email fails with 500 Internal Server Error (DuplicateKeyError on email_1 index)",
+    "root_cause": "MongoDB sparse indexes do NOT skip null values — they only skip documents where the field is completely absent. routes/users.py was explicitly storing `email: None` in the document (field present, value null). The email_1 sparse unique index then treated two null email documents as duplicates.",
+    "reproduction": "1. Create user via POST /api/users with no email → succeeds. 2. Create another user with no email → 500 DuplicateKeyError.",
+    "fix": "In routes/users.py create_user(), conditionally include email in doc only when provided: `if data.email: doc['email'] = data.email.lower().strip()`. This makes email field absent (not null) for users without email, which sparse index correctly skips."
+  }
+}

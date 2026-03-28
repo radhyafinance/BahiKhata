@@ -8,13 +8,13 @@ router = APIRouter()
 
 @router.post("/auth/login")
 async def login(req: LoginRequest, response: Response):
-    email = req.email.lower().strip()
-    user = await db.users.find_one({"email": email})
+    phone = req.phone.strip()
+    user = await db.users.find_one({"phone": phone})
     if not user or not verify_password(req.password, user.get("password_hash", "")):
-        raise HTTPException(status_code=401, detail="Invalid email or password")
+        raise HTTPException(status_code=401, detail="Invalid mobile number or password")
     if not user.get("is_active", True):
         raise HTTPException(status_code=403, detail="Account deactivated.")
-    token = create_access_token(str(user["_id"]), email, user.get("role", "sipahi"))
+    token = create_access_token(str(user["_id"]), phone, user.get("role", "sipahi"))
     response.set_cookie("access_token", token, httponly=True, secure=False, samesite="lax", max_age=36000, path="/")
     return _user_from_doc(user)
 

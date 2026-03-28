@@ -16,10 +16,10 @@ export function AuthProvider({ children }) {
       .finally(() => setLoading(false));
   }, []);
 
-  const login = async (email, password) => {
+  const login = async (phone, password) => {
     const { data } = await axios.post(
       `${API}/auth/login`,
-      { email, password },
+      { phone, password },
       { withCredentials: true }
     );
     setUser(data);

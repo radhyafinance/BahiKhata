@@ -34,21 +34,24 @@ async def create_user(data: UserCreate, request: Request):
     else:
         raise HTTPException(status_code=403, detail="Access denied")
 
-    if await db.users.find_one({"email": data.email.lower()}):
-        raise HTTPException(status_code=400, detail="Email already exists")
+    if await db.users.find_one({"phone": data.phone}):
+        raise HTTPException(status_code=400, detail="Mobile number already registered")
 
     maalik_id = data.maalik_id
     if user["role"] == "maalik" and data.role in ["muneem", "sipahi"]:
         maalik_id = user["id"]
 
     doc = {
-        "name": data.name, "email": data.email.lower().strip(),
+        "name": data.name, "phone": data.phone,
         "password_hash": hash_password(data.password),
-        "role": data.role, "phone": data.phone,
+        "role": data.role,
         "assigned_illaka_ids": data.assigned_illaka_ids or [],
         "maalik_id": maalik_id,
         "is_active": True, "created_at": datetime.now(timezone.utc).isoformat()
     }
+    # Only include email if provided — sparse unique index indexes null but not missing fields
+    if data.email:
+        doc["email"] = data.email.lower().strip()
     result = await db.users.insert_one(doc)
     doc["_id"] = result.inserted_id
     return _user_from_doc(doc)

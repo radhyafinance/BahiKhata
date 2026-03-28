@@ -3,16 +3,16 @@ from typing import Optional, List
 
 
 class LoginRequest(BaseModel):
-    email: str
+    phone: str
     password: str
 
 
 class UserCreate(BaseModel):
     name: str
-    email: str
+    phone: str
+    email: Optional[str] = None
     password: str
     role: str  # admin | maalik | muneem | sipahi
-    phone: Optional[str] = None
     assigned_illaka_ids: Optional[List[str]] = []
     maalik_id: Optional[str] = None
 
