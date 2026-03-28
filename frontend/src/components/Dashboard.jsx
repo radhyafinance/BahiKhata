@@ -51,10 +51,11 @@ export default function Dashboard() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const illakaParam = selectedIllaka ? `&illaka_id=${selectedIllaka.id}` : "";
+        const p = new URLSearchParams({ limit: "5" });
+        if (selectedIllaka) p.append("illaka_id", selectedIllaka.id);
         const [s, k] = await Promise.all([
-          axios.get(`${API}/dashboard/stats?${illakaParam}`, { withCredentials: true }),
-          axios.get(`${API}/kycs?limit=5${illakaParam}`, { withCredentials: true }),
+          axios.get(`${API}/dashboard/stats${selectedIllaka ? `?illaka_id=${selectedIllaka.id}` : ""}`, { withCredentials: true }),
+          axios.get(`${API}/kycs?${p}`, { withCredentials: true }),
         ]);
         setStats(s.data);
         setRecent(k.data.kycs || []);

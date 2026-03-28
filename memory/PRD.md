@@ -146,6 +146,7 @@ See CHANGELOG.md for full history.
 - [x] Live photo with back camera + auto-GPS
 - [x] Re-Loan with Net-Off (all roles, active + closed loans, optional phone/co-borrower/guarantor edit)
 - [x] Login with Mobile Number instead of Email (phone is now the login identifier for all roles)
+- [x] Illaka Selection after login (global context, persists in sessionStorage, switcher in top-right)
 
 ### P2 (Backlog)
 - [ ] Days Overdue badge on Collection Sheet EMI rows
