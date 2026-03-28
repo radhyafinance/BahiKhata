@@ -130,103 +130,101 @@ function MisalSection({ misal, month, onCollect }) {
         <div className="flex items-center gap-2">
           {expanded ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRight size={16} className="text-muted-foreground" />}
           <span className="font-semibold text-sm text-foreground">{misal.misal_name}</span>
-          <span className="text-xs text-muted-foreground">({total} loans)</span>
+          <span className="text-xs text-muted-foreground">({total})</span>
         </div>
         <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${collected === total ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
-          {collected}/{total} collected
+          {collected}/{total}
         </span>
       </button>
 
       {expanded && (
-        <div className="divide-y divide-border">
-          {/* Row Header — desktop */}
-          <div className="hidden sm:grid grid-cols-[1fr_2fr_1fr_1fr_auto] gap-2 px-4 py-2 bg-muted/20 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-            <span>ID / Loan No.</span>
-            <span>Name / Husband</span>
-            <span>Balance</span>
-            <span>EMI</span>
-            <span>Action</span>
+        <div className="divide-y divide-border/60">
+          {/* Column Header */}
+          <div className="grid grid-cols-[52px_1fr_72px_68px] gap-0 px-3 py-1.5 bg-muted/20 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            <span className="text-right pr-2">EMI</span>
+            <span className="pl-1">नाम</span>
+            <span className="text-right pr-2">शेष राशि</span>
+            <span className="text-center">Action</span>
           </div>
 
           {misal.rows.map((row) => {
             const status = EMI_STATUS[row.emi_status] || EMI_STATUS.pending;
             const StatusIcon = status.icon;
             const isPaid = row.emi_status === "paid";
+            const clientName = row.client_name_hindi || row.client_name || "—";
+            const husbandName = row.relative_name_hindi || row.relative_name || "";
+            const guarantorName = row.guarantor_name_hindi || row.guarantor_name || "";
 
             return (
               <div
                 key={row.loan_db_id}
-                className={`flex sm:grid sm:grid-cols-[1fr_2fr_1fr_1fr_auto] gap-2 items-center px-4 py-3 text-sm transition-colors ${isPaid ? "bg-green-50/40" : row.emi_status === "overdue" ? "bg-red-50/30" : ""}`}
+                className={`grid grid-cols-[52px_1fr_72px_68px] gap-0 items-start px-3 py-2.5 text-sm transition-colors ${isPaid ? "bg-green-50/50" : row.emi_status === "overdue" ? "bg-red-50/40" : ""}`}
                 data-testid={`collection-row-${row.loan_db_id}`}
               >
-                {/* ID + Loan No */}
-                <div className="min-w-0">
-                  <p className="font-mono text-xs text-primary font-semibold truncate">{row.customer_id}</p>
-                  <p className="font-mono text-xs text-muted-foreground truncate">{row.loan_number}</p>
+                {/* EMI Amount */}
+                <div className="text-right pr-2 pt-0.5 flex-shrink-0">
+                  <p className="font-bold text-foreground text-sm leading-tight">
+                    {new Intl.NumberFormat("en-IN").format(row.emi_amount)}
+                  </p>
+                  <div className={`inline-flex items-center justify-center mt-1 w-full`}>
+                    <StatusIcon size={12} className={status.iconCls} />
+                  </div>
                 </div>
 
-                {/* Name + Husband */}
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-foreground text-sm truncate">
-                    {row.client_name_hindi || row.client_name || "—"}
+                {/* Names column: Client / Husband / Guarantor */}
+                <div className="pl-1 min-w-0">
+                  <p className="font-semibold text-foreground text-sm leading-snug break-words" data-testid={`client-name-${row.loan_db_id}`}>
+                    {clientName}
                   </p>
-                  {row.client_name_hindi && (
-                    <p className="text-xs text-muted-foreground truncate">{row.client_name}</p>
+                  {husbandName && (
+                    <p className="text-xs text-muted-foreground leading-snug break-words mt-0.5" data-testid={`husband-name-${row.loan_db_id}`}>
+                      {husbandName}
+                    </p>
                   )}
-                  <p className="text-xs text-muted-foreground truncate mt-0.5">
-                    {(row.relative_name_hindi || row.relative_name)
-                      ? `s/o d/o w/o ${row.relative_name_hindi || row.relative_name}`
-                      : "—"}
+                  {guarantorName && (
+                    <p className="text-xs text-blue-600 leading-snug break-words mt-0.5" data-testid={`guarantor-name-${row.loan_db_id}`}>
+                      {guarantorName}
+                    </p>
+                  )}
+                </div>
+
+                {/* Balance + Month */}
+                <div className="text-right pr-2 pt-0.5">
+                  <p className="font-semibold text-foreground text-sm leading-tight tabular-nums">
+                    {fmt(row.outstanding_balance)}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 whitespace-nowrap">
+                    {fmtMonth(row.emi_month)}
                   </p>
                 </div>
 
-                {/* Balance + EMI — mobile shows inline, desktop separate columns */}
-                <div className="hidden sm:block text-right">
-                  <p className="font-medium text-foreground">{fmt(row.outstanding_balance)}</p>
-                  <p className="text-xs text-muted-foreground">remaining</p>
-                </div>
-                <div className="hidden sm:block text-right">
-                  <p className="font-semibold">{fmt(row.emi_amount)}</p>
-                  <div className={`inline-flex items-center gap-1 mt-0.5 text-xs px-1.5 py-0.5 rounded-full font-semibold ${status.cls}`}>
-                    <StatusIcon size={10} className={status.iconCls} />
-                    {status.label}
-                  </div>
-                </div>
-
-                {/* Mobile: combined balance + status */}
-                <div className="sm:hidden flex flex-col items-end text-right">
-                  <p className="font-semibold text-xs">{fmt(row.emi_amount)}</p>
-                  <div className={`inline-flex items-center gap-1 mt-0.5 text-xs px-1.5 py-0.5 rounded-full font-semibold ${status.cls}`}>
-                    <StatusIcon size={10} className={status.iconCls} />
-                    {status.label}
-                  </div>
-                </div>
-
-                {/* Action */}
-                <div className="flex items-center gap-1 flex-shrink-0">
+                {/* Collect / Done */}
+                <div className="flex flex-col items-center gap-1 pt-0.5">
                   {isPaid ? (
-                    <span className="text-xs text-green-600 font-semibold whitespace-nowrap">Done</span>
+                    <CheckCircle size={20} className="text-green-500" />
                   ) : (
-                    <button
-                      onClick={() => onCollect(row)}
-                      className={`text-xs px-3 py-1.5 rounded-lg font-semibold whitespace-nowrap transition-colors ${
-                        row.emi_status === "overdue"
-                          ? "bg-red-600 text-white hover:bg-red-700"
-                          : "bg-primary text-white hover:bg-primary/90"
-                      }`}
-                      data-testid={`collect-btn-${row.loan_db_id}`}
-                    >
-                      Collect
-                    </button>
+                    <>
+                      <button
+                        onClick={() => onCollect(row)}
+                        className={`text-xs px-2 py-1.5 rounded-lg font-bold w-full text-center transition-colors ${
+                          row.emi_status === "overdue"
+                            ? "bg-red-600 text-white hover:bg-red-700"
+                            : "bg-primary text-white hover:bg-primary/90"
+                        }`}
+                        data-testid={`collect-btn-${row.loan_db_id}`}
+                      >
+                        Collect
+                      </button>
+                      <button
+                        onClick={() => navigate(`/loans/${row.loan_db_id}`)}
+                        className="p-1 rounded hover:bg-muted text-muted-foreground"
+                        title="View"
+                        data-testid={`view-loan-btn-${row.loan_db_id}`}
+                      >
+                        <ExternalLink size={12} />
+                      </button>
+                    </>
                   )}
-                  <button
-                    onClick={() => navigate(`/loans/${row.loan_db_id}`)}
-                    className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground"
-                    title="View Loan"
-                    data-testid={`view-loan-btn-${row.loan_db_id}`}
-                  >
-                    <ExternalLink size={13} />
-                  </button>
                 </div>
               </div>
             );

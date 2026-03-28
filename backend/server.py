@@ -1099,7 +1099,8 @@ async def get_collection_sheet(
     if valid_oids:
         raw_kycs = await db.kycs.find(
             {"_id": {"$in": valid_oids}},
-            {"_id": 1, "primary_borrower.relative_name": 1, "primary_borrower.relative_name_hindi": 1, "customer_id": 1}
+            {"_id": 1, "primary_borrower.relative_name": 1, "primary_borrower.relative_name_hindi": 1,
+             "guarantor.name": 1, "guarantor.name_hindi": 1, "customer_id": 1}
         ).to_list(5000)
         kyc_map = {str(k["_id"]): k for k in raw_kycs}
 
@@ -1123,6 +1124,8 @@ async def get_collection_sheet(
         kyc = kyc_map.get(kyc_id, {})
         relative_name = (kyc.get("primary_borrower") or {}).get("relative_name") or ""
         relative_name_hindi = (kyc.get("primary_borrower") or {}).get("relative_name_hindi") or ""
+        guarantor_name = (kyc.get("guarantor") or {}).get("name") or ""
+        guarantor_name_hindi = (kyc.get("guarantor") or {}).get("name_hindi") or ""
         customer_id = loan.get("customer_id") or kyc.get("customer_id") or "—"
 
         total_repayable = loan.get("total_repayable") or ((loan.get("emi_amount") or 0) * 12)
@@ -1136,6 +1139,8 @@ async def get_collection_sheet(
             "client_name_hindi": loan.get("client_name_hindi") or "",
             "relative_name": relative_name,
             "relative_name_hindi": relative_name_hindi,
+            "guarantor_name": guarantor_name,
+            "guarantor_name_hindi": guarantor_name_hindi,
             "emi_amount": emi.get("amount", 0),
             "emi_month": emi.get("due_month", month),
             "emi_status": emi.get("status", "pending"),
