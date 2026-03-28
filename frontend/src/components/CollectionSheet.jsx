@@ -20,6 +20,13 @@ const fmtMonth = (ym) => {
   return new Date(y, m - 1).toLocaleDateString("en-IN", { month: "short", year: "numeric" });
 };
 
+const fmtLoanDate = (dateStr) => {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return "—";
+  return d.toLocaleDateString("en-IN", { month: "short", year: "numeric" });
+};
+
 const EMI_STATUS = {
   paid: { cls: "bg-green-100 text-green-800", label: "Collected", icon: CheckCircle, iconCls: "text-green-600" },
   overdue: { cls: "bg-red-100 text-red-700", label: "Overdue", icon: AlertCircle, iconCls: "text-red-600" },
@@ -259,13 +266,13 @@ function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
                   )}
                 </div>
 
-                {/* Balance + Month */}
+                {/* Balance + Disbursement Month */}
                 <div className="text-right pr-2 pt-0.5">
                   <p className="font-semibold text-foreground text-sm leading-tight tabular-nums">
                     {fmt(row.outstanding_balance)}
                   </p>
                   <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 whitespace-nowrap">
-                    {fmtMonth(row.emi_month)}
+                    {fmtLoanDate(row.loan_date)}
                   </p>
                 </div>
 

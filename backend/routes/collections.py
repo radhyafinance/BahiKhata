@@ -84,6 +84,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             "emi_status": emi.get("status", "pending"),
             "emi_note": emi.get("note") or "",
             "outstanding_balance": outstanding,
+            "loan_date": loan.get("loan_date") or "",
         }
 
         if illaka_id not in illakas_map:
