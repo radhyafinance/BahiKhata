@@ -149,6 +149,7 @@ export default function LoanDetail() {
           <div>
             <h1 className="text-xl sm:text-2xl font-bold font-['Outfit']">{loan.client_name}</h1>
             <div className="flex items-center gap-2 mt-1">
+              <span className="font-mono text-sm text-muted-foreground">{loan.loan_number || "—"}</span>
               <span className="text-sm text-muted-foreground">{loan.illaka_name} / {loan.misal_name}</span>
               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[loan.status] || ""}`} data-testid="loan-status-badge">
                 {loan.status}

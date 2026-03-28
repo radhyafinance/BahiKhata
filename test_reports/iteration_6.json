@@ -1,0 +1,72 @@
+{
+  "summary": "Comprehensive testing of 4 new features: Customer ID generation, Loan ID generation, Mobile uniqueness, and Collection Sheet (Vasuli). All 16 backend tests passed. All frontend flows verified via Playwright.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_results": {
+    "backend_tests": {
+      "total": 16,
+      "passed": 16,
+      "failed": 0
+    },
+    "frontend_checks": {
+      "vasuli_nav_item_in_sidebar": "PASS",
+      "collection_sheet_title_Vasuli_वसूली": "PASS",
+      "month_picker_working": "PASS - value 2026-03",
+      "collection_summary_bar": "PASS - shows x of y EMIs collected with progress bar",
+      "illaka_sections_visible": "PASS - TEST_ILLAKA_CENTRAL section shown",
+      "misal_subsections": "PASS - TEST_Misal_1 with 2 loan rows",
+      "collect_button_present": "PASS - 2 Collect buttons found",
+      "collect_modal_opens": "PASS - modal shows client name, amount, date fields",
+      "collect_modal_submit": "PASS - submits successfully, updates status to Collected",
+      "summary_updates_after_collect": "PASS - 1 of 2 EMIs collected, 50%",
+      "customer_id_in_clientlist": "PASS - DE0001, DE0002... pattern shown in Customer ID column",
+      "loan_number_in_loanlist": "PASS - DE0005-L1 shown as sub-text under client name",
+      "loan_number_in_loandetail": "PASS - DE0005-L1 shown in font-mono in header"
+    }
+  },
+  "backend_features_verified": [
+    "Customer ID format: 2 uppercase letters from illaka_name + 4-digit sequential (DE0001, DE0002...)",
+    "Customer ID sequential: two consecutive KYCs with same illaka prefix get n and n+1",
+    "Customer ID persisted: GET /api/kycs/{id} returns correct customer_id",
+    "Auto-loan from KYC: loan_number = customer_id-L1 format",
+    "Standalone loan via POST /api/loans also gets loan_number",
+    "Second loan for same KYC gets loan_number L2 (sequential per customer)",
+    "Mobile uniqueness: second KYC with same phone returns 400 with mobile error message",
+    "Different mobiles: both KYCs succeed",
+    "No phone KYC: allowed (no false positive from mobile uniqueness check)",
+    "Collection sheet: returns {month, total, collected, illakas} structure",
+    "Collection sheet: accepts ?month=YYYY-MM parameter",
+    "Collection sheet: each illaka has illaka_id, illaka_name, misals; each misal has rows with loan_db_id, client_name, emi_amount, emi_status, loan_number, customer_id",
+    "Collection sheet: collected <= total always",
+    "Collection sheet: sipahi can access their assigned loans",
+    "Loan list: newly created loans have loan_number field",
+    "KYC list: newly created KYCs have customer_id field"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_new_features.py",
+    "/app/test_reports/pytest/new_features_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Old KYCs/loans (pre-update) show '--' for customer_id/loan_number - expected behavior per product spec",
+    "Delhi illaka was created during testing (ID: 69c78cf96781e1fb0d95f0dd) with misal TEST_Misal_Delhi",
+    "generate_customer_id uses regex: re.sub(r'[^A-Za-z]', '', illaka_name)[:2].upper() - works correctly for 'Delhi' → 'DE', 'TEST_Illaka_Central' → 'TE'",
+    "generate_loan_number counts loans per kyc_id - handles both auto-loan and standalone loan correctly",
+    "Collection sheet endpoint correctly excludes closed loans (status != 'closed')",
+    "Collection sheet groups by illaka → misal → rows ordered by loan creation date"
+  ],
+  "updated_files": ["/app/backend/tests/test_new_features.py"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "Admin: admin@bahikhata.com / Admin@123 | Sipahi: TEST_sipahi_loans@bahikhata.com / Test@1234",
+  "seed_data_creation": "Created Delhi illaka (ID: 69c78cf96781e1fb0d95f0dd) + TEST_Misal_Delhi for testing. Created ~10 test KYCs with DE#### customer IDs. Created several loans with DE####-L# loan numbers. Assigned Delhi illaka to sipahi user.",
+  "retest_needed": false,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "All new features working: customer_id (DE####), loan_number (DE####-L#), mobile uniqueness (400 on dup), collection sheet (Vasuli). Delhi illaka exists in DB. Test backend: /app/backend/tests/test_new_features.py (16 tests, 100% pass). Previous EMI tests: /app/backend/tests/test_loans_emi.py. Sipahi assigned to TEST_Illaka_Central AND Delhi illaka now."
+}

@@ -106,7 +106,7 @@ export default function ClientList() {
         <div className="hidden sm:grid grid-cols-[1fr_1fr_1fr_auto_auto] gap-4 px-5 py-3 bg-muted/50 border-b border-border text-xs font-semibold text-muted-foreground uppercase tracking-wider">
           <span>Client Name / नाम</span>
           <span>Phone / फ़ोन</span>
-          <span>KYC Number</span>
+          <span>Customer ID</span>
           <span>Status</span>
           <span>Date</span>
         </div>
@@ -140,7 +140,7 @@ export default function ClientList() {
                       {kyc.primary_borrower?.name || "—"}
                     </p>
                     <p className="text-xs text-muted-foreground sm:hidden">
-                      {kyc.primary_borrower?.phone} · {kyc.kyc_number}
+                      {kyc.primary_borrower?.phone} · {kyc.customer_id || kyc.kyc_number}
                     </p>
                   </div>
                 </div>
@@ -148,7 +148,7 @@ export default function ClientList() {
                   {kyc.primary_borrower?.phone || "—"}
                 </span>
                 <span className="text-sm text-muted-foreground hidden sm:block font-mono">
-                  {kyc.kyc_number}
+                  {kyc.customer_id || kyc.kyc_number}
                 </span>
                 <StatusBadge status={kyc.status} />
                 <span className="text-xs text-muted-foreground hidden sm:block">

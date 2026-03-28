@@ -139,8 +139,7 @@ export default function LoanList() {
                     </div>
                     <div>
                       <p className="font-semibold text-foreground text-sm">{loan.client_name}</p>
-                      <p className="text-xs text-muted-foreground sm:hidden">{loan.illaka_name} · {loan.misal_name}</p>
-                      <p className="text-xs text-muted-foreground hidden sm:block">{loan.sipahi_name}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{loan.loan_number || loan.id?.slice(-6)}</p>
                     </div>
                   </div>
                   <div className="hidden sm:block">

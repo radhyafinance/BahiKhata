@@ -181,8 +181,27 @@ def _doc(d: dict) -> dict:
     d["id"] = str(d.pop("_id"))
     return d
 
-def generate_kyc_number() -> str:
-    return f"BK{datetime.now().strftime('%Y%m%d')}{str(uuid.uuid4()).replace('-','')[:6].upper()}"
+async def generate_customer_id(illaka_name: str) -> str:
+    """Generate Customer ID: 2 uppercase letters from Illaka + 4-digit sequential per prefix."""
+    prefix = re.sub(r'[^A-Za-z]', '', illaka_name)[:2].upper()
+    if len(prefix) < 2:
+        prefix = (prefix + 'XX')[:2]
+    last = await db.kycs.find_one(
+        {"customer_id": {"$regex": f"^{re.escape(prefix)}\\d{{4}}$"}},
+        sort=[("customer_id", -1)]
+    )
+    num = 1
+    if last and last.get("customer_id"):
+        try:
+            num = int(last["customer_id"][len(prefix):]) + 1
+        except (ValueError, IndexError):
+            num = 1
+    return f"{prefix}{num:04d}"
+
+async def generate_loan_number(customer_id: str, kyc_id: str) -> str:
+    """Generate Loan ID: {customer_id}-L{n} sequential per customer."""
+    count = await db.loans.count_documents({"kyc_id": kyc_id})
+    return f"{customer_id}-L{count + 1}"
 
 # ─── Loan EMI Helpers ──────────────────────────────────────────────────────────
 def _add_months(dt: date_type, months: int) -> date_type:
@@ -480,6 +499,7 @@ async def list_kycs(
         query["misal_id"] = misal_id
     if search:
         query["$or"] = [
+            {"customer_id": {"$regex": search, "$options": "i"}},
             {"kyc_number": {"$regex": search, "$options": "i"}},
             {"primary_borrower.name": {"$regex": search, "$options": "i"}},
             {"primary_borrower.phone": {"$regex": search, "$options": "i"}},
@@ -504,9 +524,17 @@ async def create_kyc(data: KYCCreate, request: Request):
             if await db.kycs.find_one({"primary_borrower.aadhaar_number": {"$regex": pattern}}):
                 raise HTTPException(status_code=400, detail=f"KYC already exists for Aadhaar {pb_aadhaar}. Duplicate entry not allowed / इस आधार नंबर से KYC पहले से मौजूद है।")
 
+    # Duplicate mobile check
+    pb_phone = (data.primary_borrower.phone or "").strip()
+    if pb_phone:
+        if await db.kycs.find_one({"primary_borrower.phone": pb_phone}):
+            raise HTTPException(status_code=400, detail=f"Mobile {pb_phone} is already registered with another KYC. / यह मोबाइल नंबर पहले से दर्ज है।")
+
+    customer_id = await generate_customer_id(data.illaka_name)
     now = datetime.now(timezone.utc).isoformat()
     doc = {
-        "kyc_number": generate_kyc_number(),
+        "customer_id": customer_id,
+        "kyc_number": customer_id,  # keep for backward compat
         "status": "active",
         "illaka_id": data.illaka_id,
         "illaka_name": data.illaka_name,
@@ -530,10 +558,15 @@ async def create_kyc(data: KYCCreate, request: Request):
 
     # Auto-create loan if disbursement amount provided
     if data.disbursement_amount and data.disbursement_amount > 0:
+        kyc_id_str = str(result.inserted_id)
         loan_date_obj = date_type.today()
         emi_amount, schedule = _build_emi_schedule(data.disbursement_amount, loan_date_obj)
+        loan_number = await generate_loan_number(customer_id, kyc_id_str)
         loan_doc = {
-            "kyc_id": str(result.inserted_id),
+            "kyc_id": kyc_id_str,
+            "customer_id": customer_id,
+            "loan_number": loan_number,
+            "relative_name": data.primary_borrower.relative_name or "",
             "client_name": data.primary_borrower.name or "",
             "client_phone": data.primary_borrower.phone,
             "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
@@ -822,8 +855,29 @@ async def create_loan(data: LoanCreate, request: Request):
     now = datetime.now(timezone.utc).isoformat()
     loan_date_obj = date_type.fromisoformat(data.loan_date)
     emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)
+
+    # Lookup customer_id and relative_name from KYC
+    customer_id = "—"
+    relative_name = ""
+    if data.kyc_id:
+        try:
+            kyc = await db.kycs.find_one(
+                {"_id": ObjectId(data.kyc_id)},
+                {"customer_id": 1, "primary_borrower.relative_name": 1}
+            )
+            if kyc:
+                customer_id = kyc.get("customer_id") or "—"
+                relative_name = (kyc.get("primary_borrower") or {}).get("relative_name") or ""
+        except Exception:
+            pass
+
+    loan_number = await generate_loan_number(customer_id, data.kyc_id)
+
     doc = {
         "kyc_id": data.kyc_id,
+        "customer_id": customer_id,
+        "loan_number": loan_number,
+        "relative_name": relative_name,
         "client_name": data.client_name,
         "client_phone": data.client_phone,
         "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
@@ -976,6 +1030,96 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     await db.payments.delete_one({"loan_id": loan_id, "emi_month": emi_month})
     return {"message": f"EMI for {emi_month} uncollected"}
 
+# ─── Collection Sheet ─────────────────────────────────────────────────────────
+@api_router.get("/collections/sheet")
+async def get_collection_sheet(
+    request: Request,
+    month: Optional[str] = None,  # YYYY-MM
+):
+    current_user = await get_current_user(request)
+    if not month:
+        today = date_type.today()
+        month = f"{today.year}-{today.month:02d}"
+
+    query = await _loan_query_for_user(current_user)
+    query["status"] = {"$ne": "closed"}
+
+    loans = await db.loans.find(query).sort(
+        [("illaka_id", 1), ("misal_id", 1), ("created_at", 1)]
+    ).to_list(5000)
+
+    # Bulk-fetch KYC data for relative_name
+    kyc_ids = [l.get("kyc_id") for l in loans if l.get("kyc_id")]
+    valid_oids = []
+    for kid in kyc_ids:
+        try:
+            valid_oids.append(ObjectId(kid))
+        except Exception:
+            pass
+    kyc_map = {}
+    if valid_oids:
+        raw_kycs = await db.kycs.find(
+            {"_id": {"$in": valid_oids}},
+            {"_id": 1, "primary_borrower.relative_name": 1, "customer_id": 1}
+        ).to_list(5000)
+        kyc_map = {str(k["_id"]): k for k in raw_kycs}
+
+    # Group by illaka → misal (preserve insertion order)
+    illakas_map = {}  # illaka_id → {illaka_name, misals: {misal_id → ...}}
+    illaka_order = []
+    misal_order = {}  # illaka_id → [misal_ids in order]
+
+    for loan in loans:
+        schedule = loan.get("emi_schedule", [])
+        emi = next((e for e in schedule if e.get("due_month") == month), None)
+        if not emi:
+            continue
+
+        illaka_id = loan.get("illaka_id", "unknown")
+        illaka_name = loan.get("illaka_name", "Unknown Illaka")
+        misal_id = loan.get("misal_id", "unknown")
+        misal_name = loan.get("misal_name", "Unknown Misal")
+        kyc_id = loan.get("kyc_id", "")
+
+        kyc = kyc_map.get(kyc_id, {})
+        relative_name = (kyc.get("primary_borrower") or {}).get("relative_name") or ""
+        customer_id = loan.get("customer_id") or kyc.get("customer_id") or "—"
+
+        total_repayable = loan.get("total_repayable") or ((loan.get("emi_amount") or 0) * 12)
+        outstanding = total_repayable - (loan.get("total_paid") or 0)
+
+        row = {
+            "loan_db_id": str(loan["_id"]),
+            "loan_number": loan.get("loan_number") or "—",
+            "customer_id": customer_id,
+            "client_name": loan.get("client_name") or "",
+            "relative_name": relative_name,
+            "emi_amount": emi.get("amount", 0),
+            "emi_month": emi.get("due_month", month),
+            "emi_status": emi.get("status", "pending"),
+            "outstanding_balance": outstanding,
+        }
+
+        if illaka_id not in illakas_map:
+            illakas_map[illaka_id] = {"illaka_id": illaka_id, "illaka_name": illaka_name, "misals": {}}
+            illaka_order.append(illaka_id)
+            misal_order[illaka_id] = []
+        if misal_id not in illakas_map[illaka_id]["misals"]:
+            illakas_map[illaka_id]["misals"][misal_id] = {"misal_id": misal_id, "misal_name": misal_name, "rows": []}
+            misal_order[illaka_id].append(misal_id)
+        illakas_map[illaka_id]["misals"][misal_id]["rows"].append(row)
+
+    result = []
+    for il_id in illaka_order:
+        il = illakas_map[il_id]
+        misals_list = [il["misals"][m_id] for m_id in misal_order[il_id]]
+        result.append({"illaka_id": il["illaka_id"], "illaka_name": il["illaka_name"], "misals": misals_list})
+
+    total_rows = sum(len(m["rows"]) for il in result for m in il["misals"])
+    collected = sum(1 for il in result for m in il["misals"] for r in m["rows"] if r["emi_status"] == "paid")
+    return {"month": month, "total": total_rows, "collected": collected, "illakas": result}
+
+
 # ─── Dashboard Stats ──────────────────────────────────────────────────────────
 @api_router.get("/dashboard/stats")
 async def dashboard_stats(request: Request):
@@ -1016,6 +1160,8 @@ async def startup():
     await db.kycs.create_index("illaka_id")
     await db.kycs.create_index("misal_id")
     await db.kycs.create_index("primary_borrower.aadhaar_number")
+    await db.kycs.create_index("customer_id")
+    await db.kycs.create_index("primary_borrower.phone")
     await db.illakas.create_index("maalik_id")
     await db.misals.create_index("illaka_id")
     await db.loans.create_index("kyc_id")

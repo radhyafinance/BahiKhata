@@ -178,7 +178,7 @@ export default function ClientDetail() {
               {kyc.primary_borrower?.name || "KYC Detail"}
             </h1>
             <div className="flex items-center gap-2 mt-1">
-              <span className="font-mono text-sm text-muted-foreground">{kyc.kyc_number}</span>
+              <span className="font-mono text-sm text-muted-foreground">{kyc.customer_id || kyc.kyc_number}</span>
               <StatusBadge status={kyc.status} />
             </div>
           </div>
