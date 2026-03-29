@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
-import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin, TrendingUp, ClipboardList, Globe, ChevronDown } from "lucide-react";
+import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin, TrendingUp, ClipboardList, Globe, ChevronDown, BookOpen } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -27,6 +27,9 @@ function getNavItems(role) {
   base.push({ to: "/clients", icon: FileText, label: "Clients", labelHi: "ग्राहक" });
   base.push({ to: "/loans", icon: TrendingUp, label: "Loans", labelHi: "कर्ज" });
   base.push({ to: "/collections", icon: ClipboardList, label: "Vasuli", labelHi: "वसूली" });
+  if (role !== "sipahi") {
+    base.push({ to: "/accounts", icon: BookOpen, label: "Accounts", labelHi: "खाता" });
+  }
   if (role === "admin" || role === "maalik") {
     base.push({ to: "/illakas", icon: MapPin, label: "Illakas", labelHi: "इलाके / मिसाल" });
     base.push({ to: "/users", icon: Users, label: "Team", labelHi: "टीम" });

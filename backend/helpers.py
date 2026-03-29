@@ -1,5 +1,5 @@
 import re, calendar
-from datetime import date as date_type
+from datetime import datetime, timezone, date as date_type
 from bson import ObjectId
 from core.database import db
 
@@ -100,6 +100,36 @@ async def _kyc_query_for_user(user: dict) -> dict:
         else:
             query["illaka_id"] = {"$in": assigned}
     return query
+
+
+async def create_journal_entry_internal(
+    illaka_id: str,
+    date: str,
+    narration: str,
+    lines: list,
+    entry_type: str = "manual",
+    reference_id: str = None,
+    created_by_id: str = None,
+    created_by_name: str = None,
+) -> str:
+    """Insert a balanced double-entry journal entry. Returns the new entry's id."""
+    now = datetime.now(timezone.utc).isoformat()
+    total_amount = sum(float(l.get("debit", 0)) for l in lines)
+    doc = {
+        "date": date,
+        "illaka_id": illaka_id,
+        "narration": narration,
+        "entry_type": entry_type,
+        "reference_id": reference_id,
+        "lines": lines,
+        "total_amount": total_amount,
+        "created_by_id": created_by_id,
+        "created_by_name": created_by_name,
+        "created_at": now,
+        "updated_at": now,
+    }
+    result = await db.journal_entries.insert_one(doc)
+    return str(result.inserted_id)
 
 
 async def _loan_query_for_user(user: dict) -> dict:

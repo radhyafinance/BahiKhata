@@ -134,3 +134,35 @@ class ReLoanRequest(BaseModel):
     co_borrower: Optional[PersonKYCData] = None
     guarantor: Optional[PersonKYCData] = None
     notes: Optional[str] = None
+
+
+class AccountHeadCreate(BaseModel):
+    name: str
+    group_id: str
+
+
+class AccountHeadUpdate(BaseModel):
+    name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+class JournalEntryLine(BaseModel):
+    account_head_id: str
+    debit: float = 0.0
+    credit: float = 0.0
+
+
+class JournalEntryCreate(BaseModel):
+    date: str
+    illaka_id: str
+    narration: str
+    lines: List[JournalEntryLine]
+
+
+class SimpleEntryCreate(BaseModel):
+    date: str
+    illaka_id: str
+    account_head_id: str
+    amount: float
+    narration: str
+    cash_head_id: Optional[str] = None
