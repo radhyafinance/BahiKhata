@@ -111,6 +111,7 @@ async def create_journal_entry_internal(
     reference_id: str = None,
     created_by_id: str = None,
     created_by_name: str = None,
+    **extra_fields,
 ) -> str:
     """Insert a balanced double-entry journal entry. Returns the new entry's id."""
     now = datetime.now(timezone.utc).isoformat()
@@ -128,6 +129,7 @@ async def create_journal_entry_internal(
         "created_at": now,
         "updated_at": now,
     }
+    doc.update(extra_fields)
     result = await db.journal_entries.insert_one(doc)
     return str(result.inserted_id)
 

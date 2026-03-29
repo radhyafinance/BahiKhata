@@ -399,29 +399,29 @@ class TestCashBook:
     """GET /api/accounts/cashbook"""
 
     def test_cashbook_returns_correct_structure(self, admin_session):
-        """Cash book should return month, entries, opening/closing balances"""
+        """Cash book should return month, dr_sections, cr_entries, opening/closing balances"""
         resp = admin_session.get(f"{BASE_URL}/api/accounts/cashbook?month=2026-02")
         assert resp.status_code == 200, f"Failed: {resp.text}"
         data = resp.json()
         assert "month" in data
-        assert "entries" in data
+        # New format: dr_sections and cr_entries (not 'entries')
+        assert "dr_sections" in data, "cashbook should return dr_sections"
+        assert "cr_entries" in data, "cashbook should return cr_entries"
         assert "opening_balance" in data
         assert "total_receipts" in data
         assert "total_payments" in data
         assert "closing_balance" in data
         assert data["month"] == "2026-02"
 
-    def test_cashbook_entries_have_correct_fields(self, admin_session):
-        """Each cashbook entry should have date, narration, receipts, payments, balance"""
+    def test_cashbook_cr_entries_have_required_fields(self, admin_session):
+        """Each cr_entry should have date, narration, amount fields"""
         resp = admin_session.get(f"{BASE_URL}/api/accounts/cashbook?month=2026-02")
         assert resp.status_code == 200
-        entries = resp.json().get("entries", [])
-        for entry in entries[:3]:  # Check first 3
-            assert "date" in entry, f"Entry missing date: {entry}"
-            assert "narration" in entry, f"Entry missing narration: {entry}"
-            assert "receipts" in entry, f"Entry missing receipts: {entry}"
-            assert "payments" in entry, f"Entry missing payments: {entry}"
-            assert "balance" in entry, f"Entry missing balance: {entry}"
+        cr_entries = resp.json().get("cr_entries", [])
+        for entry in cr_entries[:3]:  # Check first 3
+            assert "date" in entry, f"cr_entry missing date: {entry}"
+            assert "narration" in entry, f"cr_entry missing narration: {entry}"
+            assert "amount" in entry, f"cr_entry missing amount: {entry}"
 
     def test_cashbook_balance_is_consistent(self, admin_session):
         """Closing balance should equal opening + receipts - payments"""
@@ -437,7 +437,8 @@ class TestCashBook:
         resp = admin_session.get(f"{BASE_URL}/api/accounts/cashbook?month=2026-02&illaka_id={first_illaka_id}")
         assert resp.status_code == 200
         data = resp.json()
-        assert isinstance(data.get("entries"), list)
+        assert isinstance(data.get("dr_sections"), list)
+        assert isinstance(data.get("cr_entries"), list)
 
 
 # ── P&L Summary ───────────────────────────────────────────────────────────────

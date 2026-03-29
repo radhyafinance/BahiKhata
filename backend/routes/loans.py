@@ -80,6 +80,10 @@ async def _book_emi_collection(loan_doc: dict, payment: dict, user_id: str, user
             lines=lines, entry_type="emi_collection",
             reference_id=str(loan_doc["_id"]),
             created_by_id=user_id, created_by_name=user_name,
+            misal_id=loan_doc.get("misal_id", ""),
+            misal_name=loan_doc.get("misal_name", ""),
+            client_name=loan_doc.get("client_name", ""),
+            loan_number=loan_doc.get("loan_number", ""),
         )
     except Exception as e:
         import logging

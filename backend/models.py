@@ -166,3 +166,27 @@ class SimpleEntryCreate(BaseModel):
     amount: float
     narration: str
     cash_head_id: Optional[str] = None
+
+
+class ExpenseTemplateField(BaseModel):
+    field_id: Optional[str] = None
+    label: str
+    account_head_id: str
+    display_order: int = 0
+
+
+class ExpenseTemplateCreate(BaseModel):
+    illaka_id: str
+    fields: List[ExpenseTemplateField]
+
+
+class ExpenseSubmissionEntry(BaseModel):
+    field_id: str
+    amount: float
+
+
+class ExpenseSubmissionCreate(BaseModel):
+    illaka_id: str
+    month: str  # YYYY-MM
+    entries: List[ExpenseSubmissionEntry]
+    action: str = "draft"  # "draft" or "submit"
