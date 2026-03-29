@@ -155,6 +155,7 @@ See CHANGELOG.md for full history.
 - [x] Login with Mobile Number instead of Email (phone is now the login identifier for all roles)
 - [x] Illaka Selection after login (global context, persists in sessionStorage, switcher in top-right)
 - [x] Accounts Module (Cash Book, P&L Summary, Account Heads management, auto journal entries on loan disbursement & EMI collection)
+- [x] Enhanced Accounts Module: Full Journal Entry (Admin/Maalik), Expense Sheet per Illaka (Muneem monthly form, Admin template editor), Two-column Cashbook (Dr left/Cr right, EMIs by Misal), "Bid" monthly aggregate tab
 
 ### P2 (Backlog)
 - [ ] Days Overdue badge on Collection Sheet EMI rows
