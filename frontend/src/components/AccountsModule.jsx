@@ -45,7 +45,7 @@ function MonthNav({ month, onChange }) {
 }
 
 // ── Simple Entry Modal (Muneem / quick entry) ─────────────────────────────────
-function SimpleEntryModal({ open, onClose, onSave, heads, illakaId, eligibleIllakas }) {
+function SimpleEntryModal({ open, onClose, onSave, heads, illakaId, eligibleIllakas, editEntry }) {
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
   const [accountHeadId, setAccountHeadId] = useState("");
@@ -54,12 +54,21 @@ function SimpleEntryModal({ open, onClose, onSave, heads, illakaId, eligibleIlla
   const [selectedIllakaId, setSelectedIllakaId] = useState("");
   const [saving, setSaving] = useState(false);
 
-  const effectiveIllakaId = illakaId || selectedIllakaId;
-  const needsIllakaSelect = !illakaId;
+  const isEditMode = !!editEntry?.id;
+  const effectiveIllakaId = (isEditMode ? editEntry.illaka_id : null) || illakaId || selectedIllakaId;
+  const needsIllakaSelect = !illakaId && !isEditMode;
 
   useEffect(() => {
-    if (!open) { setAccountHeadId(""); setAmount(""); setNarration(""); setSelectedIllakaId(""); }
-  }, [open]);
+    if (open && editEntry?.id) {
+      setDate(editEntry.date || today);
+      setAccountHeadId(editEntry.account_head_id || "");
+      setAmount(editEntry.amount?.toString() || "");
+      setNarration(editEntry.narration || "");
+    } else if (!open) {
+      setDate(today);
+      setAccountHeadId(""); setAmount(""); setNarration(""); setSelectedIllakaId("");
+    }
+  }, [open, editEntry]);
 
   if (!open) return null;
 
@@ -79,13 +88,16 @@ function SimpleEntryModal({ open, onClose, onSave, heads, illakaId, eligibleIlla
     }
     setSaving(true);
     try {
-      const res = await fetch(`${API}/api/accounts/entries/expense`, {
-        method: "POST",
+      const url = isEditMode
+        ? `${API}/api/accounts/entries/${editEntry.id}`
+        : `${API}/api/accounts/entries/expense`;
+      const res = await fetch(url, {
+        method: isEditMode ? "PUT" : "POST",
         headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ date, illaka_id: effectiveIllakaId, account_head_id: accountHeadId, amount: parseFloat(amount), narration }),
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.detail || "Failed"); }
-      toast.success("Entry added");
+      toast.success(isEditMode ? "Entry updated" : "Entry added");
       onSave();
       onClose();
     } catch (err) { toast.error(err.message); }
@@ -96,7 +108,7 @@ function SimpleEntryModal({ open, onClose, onSave, heads, illakaId, eligibleIlla
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
       <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-lg font-bold mb-5">Quick Income / Expense Entry</h2>
+        <h2 className="text-lg font-bold mb-5">{isEditMode ? "Edit Entry" : "Quick Income / Expense Entry"}</h2>
         <form onSubmit={handleSubmit} className="space-y-4">
           {needsIllakaSelect && (
             <div>
@@ -150,7 +162,7 @@ function SimpleEntryModal({ open, onClose, onSave, heads, illakaId, eligibleIlla
             <button type="submit" disabled={saving}
               className="flex-1 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:bg-primary/90 transition-colors disabled:opacity-60"
               data-testid="entry-save-btn">
-              {saving ? "Saving..." : "Save Entry"}
+              {saving ? "Saving..." : isEditMode ? "Update Entry" : "Save Entry"}
             </button>
           </div>
         </form>
@@ -258,9 +270,10 @@ function ManageHeadsModal({ open, onClose, heads, groups, onRefresh }) {
 }
 
 // ── Two-Column Cash Book ───────────────────────────────────────────────────────
-function CashBook({ month, illakaId, refresh }) {
+function CashBook({ month, illakaId, refresh, user, onDelete, onEdit }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const canAct = user?.role === "admin" || user?.role === "maalik";
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -340,10 +353,19 @@ function CashBook({ month, illakaId, refresh }) {
                           </div>
                           {misal.entries?.map((e, ei) => (
                             <div key={ei} className="flex items-center justify-between py-0.5 ml-2">
-                              <span className="text-xs text-muted-foreground truncate max-w-[180px]">
+                              <span className="text-xs text-muted-foreground truncate max-w-[160px]">
                                 {e.client_name || e.narration}
                               </span>
-                              <span className="text-xs font-medium">{fmt(e.amount)}</span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs font-medium">{fmt(e.amount)}</span>
+                                {canAct && (
+                                  <button onClick={() => onDelete(e.entry_id)}
+                                    className="p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                                    title="Delete EMI entry" data-testid={`delete-emi-${e.entry_id}`}>
+                                    <Trash2 size={11} />
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -353,11 +375,29 @@ function CashBook({ month, illakaId, refresh }) {
                 }
                 return (
                   <div key={idx} className="flex items-center justify-between px-4 py-2.5">
-                    <div>
-                      <p className="text-sm font-medium">{section.narration}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{section.narration}</p>
                       <p className="text-xs text-muted-foreground">{section.date}</p>
                     </div>
-                    <span className="text-sm font-bold text-green-700">{fmt(section.amount)}</span>
+                    <div className="flex items-center gap-2 ml-2">
+                      <span className="text-sm font-bold text-green-700">{fmt(section.amount)}</span>
+                      {canAct && (
+                        <div className="flex gap-0.5">
+                          {section.entry_type === "expense_voucher" && (
+                            <button onClick={() => onEdit(section.entry_id)}
+                              className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                              title="Edit entry" data-testid={`edit-entry-${section.entry_id}`}>
+                              <Edit3 size={12} />
+                            </button>
+                          )}
+                          <button onClick={() => onDelete(section.entry_id)}
+                            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                            title="Delete entry" data-testid={`delete-entry-${section.entry_id}`}>
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -385,11 +425,29 @@ function CashBook({ month, illakaId, refresh }) {
             <div className="divide-y divide-border">
               {crEntries.map((e, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-2.5">
-                  <div>
-                    <p className="text-sm font-medium">{e.narration}</p>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{e.narration}</p>
                     <p className="text-xs text-muted-foreground">{e.date} · {e.contra_account}</p>
                   </div>
-                  <span className="text-sm font-bold text-red-700">{fmt(e.amount)}</span>
+                  <div className="flex items-center gap-2 ml-2">
+                    <span className="text-sm font-bold text-red-700">{fmt(e.amount)}</span>
+                    {canAct && (
+                      <div className="flex gap-0.5">
+                        {e.entry_type === "expense_voucher" && (
+                          <button onClick={() => onEdit(e.entry_id)}
+                            className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                            title="Edit entry" data-testid={`edit-entry-${e.entry_id}`}>
+                            <Edit3 size={12} />
+                          </button>
+                        )}
+                        <button onClick={() => onDelete(e.entry_id)}
+                          className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                          title="Delete entry" data-testid={`delete-entry-${e.entry_id}`}>
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               ))}
               {crEntries.length === 0 && (
@@ -670,6 +728,7 @@ export default function AccountsModule() {
   const [showJournalEntry, setShowJournalEntry] = useState(false);
   const [showHeadsModal, setShowHeadsModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [editEntry, setEditEntry] = useState(null);
 
   const isAdmin = user?.role === "admin";
   const isMaalik = user?.role === "maalik";
@@ -690,6 +749,36 @@ export default function AccountsModule() {
   useEffect(() => { loadHeads(); }, [loadHeads]);
 
   const handleSaved = () => { setRefreshKey(k => k + 1); };
+
+  const handleDeleteEntry = useCallback(async (entryId) => {
+    if (!window.confirm("Delete this journal entry? This cannot be undone.")) return;
+    try {
+      const res = await fetch(`${API}/api/accounts/entries/${entryId}`, {
+        method: "DELETE", credentials: "include",
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
+      toast.success("Entry deleted");
+      setRefreshKey(k => k + 1);
+    } catch (err) { toast.error(err.message); }
+  }, []);
+
+  const handleEditEntry = useCallback(async (entryId) => {
+    try {
+      const res = await fetch(`${API}/api/accounts/entries/${entryId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load entry");
+      const entry = await res.json();
+      const nonCashLine = entry.lines?.find(l => l.group_type === "expense" || l.group_type === "income");
+      if (!nonCashLine) { toast.error("Cannot edit this entry type. Delete and recreate using Journal Entry."); return; }
+      setEditEntry({
+        id: entryId,
+        date: entry.date,
+        narration: entry.narration,
+        amount: nonCashLine.debit > 0 ? nonCashLine.debit : nonCashLine.credit,
+        account_head_id: nonCashLine.account_head_id,
+        illaka_id: entry.illaka_id,
+      });
+    } catch (err) { toast.error("Could not load entry for editing"); }
+  }, []);
 
   const tabs = [
     { key: "cashbook", label: "Cash Book", icon: BookOpen },
@@ -758,7 +847,7 @@ export default function AccountsModule() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === "cashbook" && <CashBook month={month} illakaId={illakaId} refresh={refreshKey} />}
+      {activeTab === "cashbook" && <CashBook month={month} illakaId={illakaId} refresh={refreshKey} user={user} onDelete={handleDeleteEntry} onEdit={handleEditEntry} />}
       {activeTab === "bid" && <Bid month={month} illakaId={illakaId} refresh={refreshKey} />}
       {activeTab === "summary" && <PLSummary month={month} illakaId={illakaId} refresh={refreshKey} />}
       {activeTab === "expense" && (
@@ -772,12 +861,13 @@ export default function AccountsModule() {
 
       {/* Modals */}
       <SimpleEntryModal
-        open={showSimpleEntry}
-        onClose={() => setShowSimpleEntry(false)}
+        open={showSimpleEntry || !!editEntry}
+        onClose={() => { setShowSimpleEntry(false); setEditEntry(null); }}
         onSave={handleSaved}
         heads={heads}
         illakaId={illakaId}
         eligibleIllakas={(eligibleIllakas || []).filter(i => i.id !== "all")}
+        editEntry={editEntry}
       />
       <FullJournalEntryModal
         open={showJournalEntry}

@@ -1,0 +1,63 @@
+{
+  "summary": "Iteration 15: Tested admin Edit/Delete journal entries (cashbook) + admin Unlock submitted expense sheets. All 23 backend tests pass. All frontend features verified for admin and muneem roles.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "feature_tests": {
+    "get_single_entry": "PASS - GET /api/accounts/entries/{entry_id} returns 200 with all fields (id, date, narration, lines, entry_type, total_amount, illaka_id). Invalid ID → 400. Nonexistent → 404. Admin and Muneem both can fetch.",
+    "delete_entry_admin": "PASS - DELETE /api/accounts/entries/{entry_id} returns 200 with message. Deleted entry returns 404 on subsequent GET. Invalid ID → 400. Nonexistent → 404.",
+    "delete_entry_muneem_403": "PASS - Muneem gets 403 on DELETE /api/accounts/entries/{entry_id}.",
+    "update_entry_expense_voucher": "PASS - PUT /api/accounts/entries/{entry_id} updates expense_voucher narration and amount. Changes persist on GET.",
+    "update_auto_generated_loan_disbursement_400": "PASS - PUT on loan_disbursement entry returns 400 'Auto-generated entries cannot be edited'.",
+    "update_auto_generated_emi_collection_400": "PASS - PUT on emi_collection entry returns 400 'Auto-generated entries cannot be edited'.",
+    "update_sipahi_403": "PASS - Sipahi gets 403 on PUT entry.",
+    "unlock_submission_admin": "PASS - PATCH /api/accounts/expense-submissions/{sub_id}/unlock returns 200. Submission status reverts to 'draft', journal_entry_id set to null.",
+    "unlock_removes_journal_entry": "PASS - Associated journal entry is deleted from DB after unlock (GET returns 404).",
+    "unlock_muneem_403": "PASS - Muneem gets 403 on PATCH /unlock.",
+    "unlock_draft_400": "PASS - Unlocking an already-draft submission returns 400 'not in submitted state'.",
+    "unlock_nonexistent_404": "PASS - Unlocking nonexistent submission returns 404.",
+    "cashbook_edit_btn_on_expense_voucher": "PASS - Admin sees pencil (edit) icon on expense_voucher type entries in cashbook. Edit button opens pre-filled 'Edit Entry' modal with correct date, amount, narration, account head.",
+    "cashbook_no_edit_btn_on_expense_sheet": "PASS - Expense_sheet type entry shows only trash (delete) icon, NO edit button.",
+    "cashbook_delete_btn_on_all_types": "PASS - Delete (trash) button appears on all entry types (expense_voucher, expense_sheet).",
+    "cashbook_edit_flow": "PASS - Clicking edit button, updating narration/amount, clicking 'Update Entry' shows 'Entry updated' toast and reflects changes in cashbook.",
+    "cashbook_delete_flow": "PASS - Clicking delete shows confirm dialog 'Delete this journal entry? This cannot be undone.', confirms deletion with 'Entry deleted' toast, entry removed from cashbook list.",
+    "expense_sheet_unlock_flow": "PASS - Admin sees orange 'Unlock' button on submitted expense sheet. Clicking shows confirm dialog. After confirm: 'Entry updated' toast shown, sheet reverts to draft (Save Draft + Submit buttons appear, Unlock button disappears).",
+    "muneem_no_edit_delete_buttons": "PASS - Muneem cashbook shows 0 edit buttons and 0 delete buttons (data-testid^='edit-entry-' and data-testid^='delete-entry-' not found).",
+    "muneem_no_unlock_button": "PASS - Muneem Expense Sheet tab does NOT show Unlock button (data-testid='unlock-expense-btn' not found).",
+    "muneem_expense_form_accessible": "PASS - Muneem can see Monthly Expense form with Save Draft and Submit buttons after admin unlock."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_edit_delete_unlock.py",
+    "/app/test_reports/pytest/edit_delete_unlock_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OK: GET /api/accounts/entries/{entry_id} does not filter by illaka/role - any authenticated user can fetch any entry by ID. This is acceptable for the current design (read-only access) but worth noting for future auditing.",
+    "OK: PUT /api/accounts/entries/{entry_id} uses SimpleEntryCreate body - illaka_id is required but the existing illaka_id is not validated against the user's accessible illakas for admin. Minor gap for Muneem (who can only edit current-month entries per freeze check).",
+    "OK: PATCH /unlock correctly sets journal_entry_id=None and status=draft, also records unlocked_by_id/name/at for audit trail.",
+    "OK: Frontend canAct check (user.role === 'admin' || user.role === 'maalik') correctly gates edit/delete buttons in CashBook component.",
+    "OK: handleEditEntry fetches entry by ID then extracts nonCashLine to pre-fill SimpleEntryModal - works correctly for expense_voucher type."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_edit_delete_unlock.py"
+  ],
+  "success_rate": {
+    "backend": "100% (23/23 tests)",
+    "frontend": "100% (all features verified: cashbook edit+delete buttons, edit modal pre-fill, delete confirm, expense sheet unlock, muneem restrictions)"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "muneem": "phone=7777000001 / Test@1234 (TEST_Muneem_Accounts, assigned Delhi illaka)"
+  },
+  "seed_data_creation": "Created and deleted TEST_UI_Edit_Delete_Test entry (₹999) during testing. Edited TEST_Current month entry → renamed to TEST_UI_Updated_Narration (₹888). Mar 2026 Delhi expense sheet unlocked by admin (now in draft state - Muneem can re-submit). Expense template for Delhi now has 'TEST_Draft Field' (from backend tests). Several TEST_ backend test entries created/cleaned up.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 15: All admin edit/delete/unlock features fully tested. Backend: 23/23 tests (test_edit_delete_unlock.py). Frontend: cashbook edit+delete+unlock all working. Key state: Delhi illaka Mar 2026 expense sheet is now in DRAFT state (unlocked by admin during test). Expense template for Delhi has 'TEST_Draft Field' field. TEST_Current month entry was renamed to TEST_UI_Updated_Narration (₹888) during testing. All previous tests from iteration_14 remain passing.",
+  "rca_of_issue": null
+}

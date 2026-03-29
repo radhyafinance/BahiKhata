@@ -315,6 +315,19 @@ async def update_journal_entry(entry_id: str, data: SimpleEntryCreate, request: 
     return _doc(await db.journal_entries.find_one({"_id": ObjectId(entry_id)}))
 
 
+@router.get("/accounts/entries/{entry_id}")
+async def get_journal_entry(entry_id: str, request: Request):
+    """Fetch a single journal entry by ID."""
+    await get_current_user(request)
+    try:
+        entry = await db.journal_entries.find_one({"_id": ObjectId(entry_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid entry ID")
+    if not entry:
+        raise HTTPException(status_code=404, detail="Journal entry not found")
+    return _doc(entry)
+
+
 @router.delete("/accounts/entries/{entry_id}")
 async def delete_journal_entry(entry_id: str, request: Request):
     current_user = await get_current_user(request)
@@ -765,6 +778,42 @@ async def delete_expense_submission(sub_id: str, request: Request):
             pass
     await db.expense_submissions.delete_one({"_id": ObjectId(sub_id)})
     return {"message": "Submission deleted. Muneem can re-submit now."}
+
+
+@router.patch("/accounts/expense-submissions/{sub_id}/unlock")
+async def unlock_expense_submission(sub_id: str, request: Request):
+    """Admin/Maalik unlocks a submitted expense sheet back to draft so Muneem can re-edit."""
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Only Admin/Maalik can unlock submissions")
+    try:
+        sub = await db.expense_submissions.find_one({"_id": ObjectId(sub_id)})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid submission ID")
+    if not sub:
+        raise HTTPException(status_code=404, detail="Submission not found")
+    if sub.get("status") != "submitted":
+        raise HTTPException(status_code=400, detail="Submission is not in submitted state")
+    # Delete the associated journal entry
+    if sub.get("journal_entry_id"):
+        try:
+            await db.journal_entries.delete_one({"_id": ObjectId(sub["journal_entry_id"])})
+        except Exception:
+            pass
+    now = datetime.now(timezone.utc).isoformat()
+    await db.expense_submissions.update_one(
+        {"_id": ObjectId(sub_id)},
+        {"$set": {
+            "status": "draft",
+            "journal_entry_id": None,
+            "unlocked_by_id": current_user["id"],
+            "unlocked_by_name": current_user["name"],
+            "unlocked_at": now,
+            "updated_at": now,
+        }}
+    )
+    updated = await db.expense_submissions.find_one({"_id": ObjectId(sub_id)})
+    return {"submission": _doc(updated), "message": "Expense sheet unlocked. Muneem can now re-edit and re-submit."}
 
 
 # ── Monthly P&L Summary ────────────────────────────────────────────────────────

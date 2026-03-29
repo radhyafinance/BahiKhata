@@ -121,12 +121,14 @@ function TemplateEditor({ illakaId, illakaName, expenseHeads, onSaved }) {
 
 // ── Monthly Expense Form (Muneem fills) ────────────────────────────────────────
 function MonthlyExpenseForm({ illakaId, illakaName, month, onSubmitted }) {
+  const { user } = useAuth();
   const [template, setTemplate] = useState(null);
   const [submission, setSubmission] = useState(null);
   const [amounts, setAmounts] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [unlocking, setUnlocking] = useState(false);
 
   const [y, m] = month.split("-").map(Number);
   const monthLabel = `${MONTHS[m - 1]} ${y}`;
@@ -203,6 +205,21 @@ function MonthlyExpenseForm({ illakaId, illakaName, month, onSubmitted }) {
     finally { setSaving(false); }
   };
 
+  const handleUnlock = async () => {
+    if (!submission?.id) return;
+    if (!window.confirm("Unlock this expense sheet? The submitted journal entry will be removed and Muneem can re-edit.")) return;
+    setUnlocking(true);
+    try {
+      const res = await fetch(`${API}/api/accounts/expense-submissions/${submission.id}/unlock`, {
+        method: "PATCH", credentials: "include",
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.detail); }
+      toast.success("Expense sheet unlocked. Muneem can now re-edit and re-submit.");
+      await load();
+    } catch (err) { toast.error(err.message); }
+    finally { setUnlocking(false); }
+  };
+
   const totalAmount = template?.fields?.reduce((s, f) => s + (parseFloat(amounts[f.field_id]) || 0), 0) || 0;
   const isSubmitted = submission?.status === "submitted";
 
@@ -219,9 +236,18 @@ function MonthlyExpenseForm({ illakaId, illakaName, month, onSubmitted }) {
     <div className="max-w-lg">
       {/* Status bar */}
       {isSubmitted && (
-        <div className="mb-4 flex items-center gap-2 p-3 rounded-xl bg-green-50 border border-green-200 text-green-800 text-sm">
-          <Lock size={14} />
-          <span>Submitted on {submission.submitted_at?.slice(0, 10)} by {submission.submitted_by_name}. Contact admin to unlock.</span>
+        <div className="mb-4 flex items-center justify-between p-3 rounded-xl bg-green-50 border border-green-200 text-green-800 text-sm">
+          <div className="flex items-center gap-2 min-w-0">
+            <Lock size={14} className="flex-shrink-0" />
+            <span className="truncate">Submitted on {submission.submitted_at?.slice(0, 10)} by {submission.submitted_by_name}.</span>
+          </div>
+          {(user?.role === "admin" || user?.role === "maalik") && (
+            <button onClick={handleUnlock} disabled={unlocking}
+              className="ml-3 px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-semibold hover:bg-amber-700 disabled:opacity-60 transition-colors flex-shrink-0"
+              data-testid="unlock-expense-btn">
+              {unlocking ? "Unlocking..." : "Unlock"}
+            </button>
+          )}
         </div>
       )}
       {submission?.status === "draft" && (
