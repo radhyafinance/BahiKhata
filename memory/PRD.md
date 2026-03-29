@@ -161,3 +161,4 @@ See CHANGELOG.md for full history.
 - [ ] Days Overdue badge on Collection Sheet EMI rows
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
+- [x] Admin/Maalik Edit & Delete journal entries from Cashbook view; Admin/Maalik Unlock submitted Expense Sheets (reverts to draft + removes journal entry so Muneem can re-edit and re-submit)
