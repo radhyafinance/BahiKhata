@@ -36,7 +36,11 @@ async def generate_loan_number(customer_id: str, kyc_id: str) -> str:
 
 def _add_months(dt: date_type, months: int) -> date_type:
     m = dt.month - 1 + months
-    return dt.replace(year=dt.year + m // 12, month=m % 12 + 1)
+    year = dt.year + m // 12
+    month = m % 12 + 1
+    # Clamp to last valid day of the target month (handles Jan 31 → Feb 28, etc.)
+    last_day = calendar.monthrange(year, month)[1]
+    return dt.replace(year=year, month=month, day=min(dt.day, last_day))
 
 
 def _apply_overdue_to_schedule(schedule: list) -> bool:
