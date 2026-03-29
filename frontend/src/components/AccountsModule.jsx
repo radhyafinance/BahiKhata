@@ -43,20 +43,24 @@ function MonthNav({ month, onChange }) {
 }
 
 // ── Simple Entry Modal ─────────────────────────────────────────────────────────
-function EntryModal({ open, onClose, onSave, editEntry, heads, illakaId }) {
+function EntryModal({ open, onClose, onSave, editEntry, heads, illakaId, eligibleIllakas }) {
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
   const [accountHeadId, setAccountHeadId] = useState("");
   const [amount, setAmount] = useState("");
   const [narration, setNarration] = useState("");
+  const [selectedIllakaId, setSelectedIllakaId] = useState("");
   const [saving, setSaving] = useState(false);
+
+  // Determine effective illaka_id: use prop if set, else user picks
+  const effectiveIllakaId = illakaId || selectedIllakaId;
+  const needsIllakaSelect = !illakaId;
 
   useEffect(() => {
     if (editEntry) {
       setDate(editEntry.date || today);
       setNarration(editEntry.narration || "");
       setAmount(editEntry.total_amount || "");
-      // Find the non-cash head from lines
       const nonCash = (editEntry.lines || []).find(l => !["Cash in Hand", "Bank Account"].includes(l.account_head_name));
       if (nonCash) setAccountHeadId(nonCash.account_head_id || "");
     } else {
@@ -64,6 +68,7 @@ function EntryModal({ open, onClose, onSave, editEntry, heads, illakaId }) {
       setAccountHeadId("");
       setAmount("");
       setNarration("");
+      setSelectedIllakaId("");
     }
   }, [editEntry, open]);
 
@@ -79,22 +84,21 @@ function EntryModal({ open, onClose, onSave, editEntry, heads, illakaId }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!accountHeadId || !amount || !narration || !illakaId) {
-      toast.error("Please fill all fields");
+    if (!accountHeadId || !amount || !narration || !effectiveIllakaId) {
+      toast.error("Please fill all fields" + (!effectiveIllakaId ? " including Illaka" : ""));
       return;
     }
     setSaving(true);
     try {
-      const token = localStorage.getItem("token");
-      const url = editEntry
+            const url = editEntry
         ? `${API}/api/accounts/entries/${editEntry.id}`
         : `${API}/api/accounts/entries/expense`;
       const method = editEntry ? "PUT" : "POST";
       const res = await fetch(url, {
         method,
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({
-          date, illaka_id: illakaId, account_head_id: accountHeadId,
+          date, illaka_id: effectiveIllakaId, account_head_id: accountHeadId,
           amount: parseFloat(amount), narration,
         }),
       });
@@ -120,6 +124,22 @@ function EntryModal({ open, onClose, onSave, editEntry, heads, illakaId }) {
           {editEntry ? "Edit Entry" : "Add Income / Expense Entry"}
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {needsIllakaSelect && (
+            <div>
+              <label className="block text-xs font-semibold text-muted-foreground mb-1">Illaka</label>
+              <select
+                value={selectedIllakaId} onChange={e => setSelectedIllakaId(e.target.value)}
+                className="w-full rounded-lg border border-border px-3 py-2 text-sm bg-background focus:outline-none focus:ring-2 focus:ring-primary/30"
+                data-testid="entry-illaka-select"
+                required
+              >
+                <option value="">Select Illaka...</option>
+                {(eligibleIllakas || []).map(ill => (
+                  <option key={ill.id} value={ill.id}>{ill.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
           <div>
             <label className="block text-xs font-semibold text-muted-foreground mb-1">Date</label>
             <input
@@ -197,10 +217,9 @@ function ManageHeadsModal({ open, onClose, heads, groups, onRefresh }) {
     if (!newName.trim() || !newGroupId) { toast.error("Fill all fields"); return; }
     setSaving(true);
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/api/accounts/heads`, {
+            const res = await fetch(`${API}/api/accounts/heads`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        headers: { "Content-Type": "application/json" }, credentials: "include",
         body: JSON.stringify({ name: newName.trim(), group_id: newGroupId }),
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
@@ -214,9 +233,8 @@ function ManageHeadsModal({ open, onClose, heads, groups, onRefresh }) {
   const handleDelete = async (headId) => {
     if (!window.confirm("Delete this account head?")) return;
     try {
-      const token = localStorage.getItem("token");
-      const res = await fetch(`${API}/api/accounts/heads/${headId}`, {
-        method: "DELETE", headers: { Authorization: `Bearer ${token}` },
+            const res = await fetch(`${API}/api/accounts/heads/${headId}`, {
+        method: "DELETE", credentials: "include",
       });
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail); }
       toast.success("Account head deleted");
@@ -301,11 +319,10 @@ function CashBook({ month, illakaId, refresh }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      const params = new URLSearchParams({ month });
+            const params = new URLSearchParams({ month });
       if (illakaId) params.set("illaka_id", illakaId);
       const res = await fetch(`${API}/api/accounts/cashbook?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       setData(await res.json());
     } catch {
@@ -435,11 +452,10 @@ function PLSummary({ month, illakaId, refresh }) {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
-      const params = new URLSearchParams({ month });
+            const params = new URLSearchParams({ month });
       if (illakaId) params.set("illaka_id", illakaId);
       const res = await fetch(`${API}/api/accounts/summary?${params}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        credentials: "include",
       });
       setData(await res.json());
     } catch {
@@ -549,7 +565,7 @@ function PLSummary({ month, illakaId, refresh }) {
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function AccountsModule() {
   const { user } = useAuth();
-  const { selectedIllaka } = useIllaka();
+  const { selectedIllaka, eligibleIllakas } = useIllaka();
   const illakaId = selectedIllaka?.id || null;
 
   const today = new Date();
@@ -567,10 +583,9 @@ export default function AccountsModule() {
 
   const loadHeads = useCallback(async () => {
     try {
-      const token = localStorage.getItem("token");
-      const [hRes, gRes] = await Promise.all([
-        fetch(`${API}/api/accounts/heads`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API}/api/accounts/groups`, { headers: { Authorization: `Bearer ${token}` } }),
+            const [hRes, gRes] = await Promise.all([
+        fetch(`${API}/api/accounts/heads`, { credentials: "include" }),
+        fetch(`${API}/api/accounts/groups`, { credentials: "include" }),
       ]);
       setHeads(await hRes.json());
       setGroups(await gRes.json());
@@ -660,6 +675,7 @@ export default function AccountsModule() {
         editEntry={editEntry}
         heads={heads}
         illakaId={illakaId}
+        eligibleIllakas={eligibleIllakas}
       />
       <ManageHeadsModal
         open={showHeadsModal}

@@ -58,10 +58,11 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 │   │   ├── users.py       # /api/users CRUD
 │   │   ├── illakas.py     # /api/illakas, /api/misals CRUD
 │   │   ├── kycs.py        # /api/kycs CRUD + customer ID + auto-loan
-│   │   ├── loans.py       # /api/loans CRUD + payments + PATCH emi-note + POST reloan
+│   │   ├── loans.py       # /api/loans CRUD + payments + PATCH emi-note + POST reloan + auto journal entries
 │   │   ├── ocr.py         # /api/upload, /api/files, /api/ocr/aadhaar*, /api/transliterate
 │   │   ├── collections.py # /api/collections/sheet
-│   │   └── dashboard.py   # /api/dashboard/stats
+│   │   ├── dashboard.py   # /api/dashboard/stats
+│   │   └── accounts.py    # /api/accounts/* (groups, heads, entries, cashbook, summary)
 │   └── tests/
 │       ├── test_bahikhata.py
 │       ├── test_loans_emi.py
@@ -88,16 +89,22 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 │           ├── ClientDetail.jsx     # KYC tab + Passbook tab (Re-Loan button)
 │           ├── LoanList.jsx
 │           ├── LoanDetail.jsx       # EMI grid + Re-Loan button + netoff display
-│           └── CollectionSheet.jsx  # Vasuli view grouped by Illaka → Misal
+│           ├── CollectionSheet.jsx  # Vasuli view grouped by Illaka → Misal
+│           ├── AccountsModule.jsx   # Cash Book + P&L Summary + Manage Heads
+│           ├── IllakaContext.jsx    # Global Illaka state (selectedIllaka, eligibleIllakas)
+│           └── IllakaSelector.jsx  # Illaka picker post-login
 ```
 
 ## DB Schema
-- **users**: {email, password_hash, role, name, assigned_illaka_ids, maalik_id, is_active}
+- **users**: {email, password_hash, role, name, phone, assigned_illaka_ids, maalik_id, is_active}
 - **illakas**: {name, maalik_id, description}
 - **misals**: {name, illaka_id, description}
 - **kycs**: {customer_id, kyc_number, illaka_id, misal_id, primary_borrower {name, name_hindi, relative_name, relative_name_hindi, aadhaar_number, dob, gender, phone, address, aadhaar_front_path, aadhaar_back_path}, co_borrower, guarantor, live_photo_path, gps_location, field_officer_id, status, loan_id, disbursement_amount}
 - **loans**: {loan_number, customer_id, kyc_id, principal_amount, interest_rate, emi_amount, total_repayable, loan_date, status, emi_schedule [{month, due_month, amount, status, paid_amount, paid_date, note}], total_paid, illaka_id, misal_id}
 - **payments**: {loan_id, emi_month, amount, payment_date, collected_by_id, collected_by_name, notes}
+- **account_groups**: {name, type (equity/liability/asset/income/expense), nature (debit/credit), display_order}
+- **account_heads**: {name, group_id, group_name, group_type, is_system, system_key, is_active, created_by}
+- **journal_entries**: {date, illaka_id, narration, entry_type (manual/expense_voucher/loan_disbursement/emi_collection), reference_id, lines [{account_head_id, account_head_name, group_name, group_type, debit, credit}], total_amount, created_by_id, created_by_name}
 
 ## 3rd Party Integrations
 - **Emergent Object Storage** — profile photos, Aadhaar scans
@@ -147,6 +154,7 @@ See CHANGELOG.md for full history.
 - [x] Re-Loan with Net-Off (all roles, active + closed loans, optional phone/co-borrower/guarantor edit)
 - [x] Login with Mobile Number instead of Email (phone is now the login identifier for all roles)
 - [x] Illaka Selection after login (global context, persists in sessionStorage, switcher in top-right)
+- [x] Accounts Module (Cash Book, P&L Summary, Account Heads management, auto journal entries on loan disbursement & EMI collection)
 
 ### P2 (Backlog)
 - [ ] Days Overdue badge on Collection Sheet EMI rows
