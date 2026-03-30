@@ -482,6 +482,39 @@ async def get_bid(
 
     entries = await db.journal_entries.find(query).to_list(2000)
 
+    # ── Pre-fetch loan data for old-style (2-line) EMI entries ─────────────
+    # Old entries have no interest income contra line; we calculate it from the loan.
+    old_emi_loan_ids = set()
+    for _e in entries:
+        if _e.get("entry_type") == "emi_collection" and not _e.get("is_gyal"):
+            _has_interest = any(
+                _l.get("account_head_id") != (cash_head_id or "")
+                and _l.get("group_type") == "income"
+                and float(_l.get("credit", 0)) > 0
+                for _l in _e.get("lines", [])
+            )
+            if not _has_interest and _e.get("reference_id"):
+                old_emi_loan_ids.add(_e["reference_id"])
+
+    old_loan_data: dict = {}
+    interest_income_head_fallback: dict = {}
+    if old_emi_loan_ids:
+        try:
+            _loan_docs = await db.loans.find(
+                {"_id": {"$in": [ObjectId(lid) for lid in old_emi_loan_ids if lid]}},
+                {"_id": 1, "principal_amount": 1, "emi_amount": 1},
+            ).to_list(5000)
+            old_loan_data = {str(ld["_id"]): ld for ld in _loan_docs}
+        except Exception:
+            pass
+        _ih = await db.account_heads.find_one({"system_key": "interest_income"})
+        if _ih:
+            interest_income_head_fallback = {
+                "id": str(_ih["_id"]),
+                "name": _ih.get("name", "Interest Income on Loans"),
+            }
+    # ────────────────────────────────────────────────────────────────────────
+
     # Collect all cash movements
     emi_misal_map: dict = {}
     emi_misal_order: list = []
@@ -505,7 +538,8 @@ async def get_bid(
                     if mid not in emi_misal_map:
                         emi_misal_map[mid] = {"misal_id": mid, "misal_name": mname, "total": 0.0}
                         emi_misal_order.append(mid)
-                    # Separate interest income (Cr contra of income type) from principal recovery
+
+                    # Step 1: try to read interest from the entry lines (new-style 3-line entries)
                     emi_interest = 0.0
                     for c in entry["lines"]:
                         if (c.get("account_head_id") != cash_head_id
@@ -519,6 +553,25 @@ async def get_bid(
                             dr_head_map[hid]["total"] = round(
                                 dr_head_map[hid]["total"] + float(c.get("credit", 0)), 2
                             )
+
+                    # Step 2: if no interest line found (old-style entry), calculate from loan data
+                    if emi_interest == 0.0 and interest_income_head_fallback and entry.get("reference_id"):
+                        loan_for_emi = old_loan_data.get(entry["reference_id"])
+                        if loan_for_emi:
+                            principal = float(loan_for_emi.get("principal_amount", 0))
+                            if principal > 0:
+                                calculated_interest = round(cash_dr - (principal / 12), 2)
+                                if calculated_interest > 0:
+                                    emi_interest = calculated_interest
+                                    hid = interest_income_head_fallback["id"]
+                                    hname = interest_income_head_fallback["name"]
+                                    if hid not in dr_head_map:
+                                        dr_head_map[hid] = {"account_head_name": hname, "total": 0.0}
+                                    dr_head_map[hid]["total"] = round(
+                                        dr_head_map[hid]["total"] + emi_interest, 2
+                                    )
+                                # else: EMI < principal/12 (underpayment) — treat full EMI as principal recovery
+
                     principal_recovery = round(cash_dr - emi_interest, 2)
                     emi_misal_map[mid]["total"] = round(emi_misal_map[mid]["total"] + principal_recovery, 2)
                 else:
