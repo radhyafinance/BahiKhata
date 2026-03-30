@@ -100,8 +100,8 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 - **illakas**: {name, maalik_id, description}
 - **misals**: {name, illaka_id, description}
 - **kycs**: {customer_id, kyc_number, illaka_id, misal_id, primary_borrower {name, name_hindi, relative_name, relative_name_hindi, aadhaar_number, dob, gender, phone, address, aadhaar_front_path, aadhaar_back_path}, co_borrower, guarantor, live_photo_path, gps_location, field_officer_id, status, loan_id, disbursement_amount}
-- **loans**: {loan_number, customer_id, kyc_id, principal_amount, interest_rate, emi_amount, total_repayable, loan_date, status, emi_schedule [{month, due_month, amount, status, paid_amount, paid_date, note}], total_paid, illaka_id, misal_id}
-- **payments**: {loan_id, emi_month, amount, payment_date, collected_by_id, collected_by_name, notes}
+- **loans**: {loan_number, customer_id, kyc_id, principal_amount, interest_rate, emi_amount, total_repayable, loan_date, status, emi_schedule [{month, due_month, amount, status, paid_amount, paid_date, note}], total_paid, illaka_id, misal_id, is_reloan, parent_loan_id, netoff_amount, **is_gyal**, **gyal_since**}
+- **journal_entries**: {date, illaka_id, narration, entry_type (manual/expense_voucher/loan_disbursement/emi_collection/**gyal_writeoff**), reference_id, lines [{account_head_id, account_head_name, group_name, group_type, debit, credit}], total_amount, created_by_id, created_by_name}
 - **account_groups**: {name, type (equity/liability/asset/income/expense), nature (debit/credit), display_order}
 - **account_heads**: {name, group_id, group_name, group_type, is_system, system_key, is_active, created_by}
 - **journal_entries**: {date, illaka_id, narration, entry_type (manual/expense_voucher/loan_disbursement/emi_collection), reference_id, lines [{account_head_id, account_head_name, group_name, group_type, debit, credit}], total_amount, created_by_id, created_by_name}
@@ -156,9 +156,10 @@ See CHANGELOG.md for full history.
 - [x] Illaka Selection after login (global context, persists in sessionStorage, switcher in top-right)
 - [x] Accounts Module (Cash Book, P&L Summary, Account Heads management, auto journal entries on loan disbursement & EMI collection)
 - [x] Enhanced Accounts Module: Full Journal Entry (Admin/Maalik), Expense Sheet per Illaka (Muneem monthly form, Admin template editor), Two-column Cashbook (Dr left/Cr right, EMIs by Misal), "Bid" monthly aggregate tab
+- [x] Admin/Maalik Edit & Delete journal entries; Admin/Maalik Unlock submitted Expense Sheets
+- [x] **Gyal (Bad Debt) Feature** — Manual Year-End Closing per Illaka (Admin/Maalik), marks 36+ month loans as Gyal, creates Bad Debt write-off journal entries, Gyal Wasool (Bad Debt Recovery) income account for EMI collections on Gyal loans, Collection Sheet shows Gyal rows at bottom with grey/muted separator, LoanDetail shows Gyal badge and Gyal-since date (added 2026-03-30)
 
 ### P2 (Backlog)
 - [ ] Days Overdue badge on Collection Sheet EMI rows
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
-- [x] Admin/Maalik Edit & Delete journal entries from Cashbook view; Admin/Maalik Unlock submitted Expense Sheets (reverts to draft + removes journal entry so Muneem can re-edit and re-submit)
