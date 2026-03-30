@@ -157,7 +157,7 @@ See CHANGELOG.md for full history.
 - [x] Accounts Module (Cash Book, P&L Summary, Account Heads management, auto journal entries on loan disbursement & EMI collection)
 - [x] Enhanced Accounts Module: Full Journal Entry (Admin/Maalik), Expense Sheet per Illaka (Muneem monthly form, Admin template editor), Two-column Cashbook (Dr left/Cr right, EMIs by Misal), "Bid" monthly aggregate tab
 - [x] Admin/Maalik Edit & Delete journal entries; Admin/Maalik Unlock submitted Expense Sheets
-- [x] **Gyal (Bad Debt) Feature** — Manual Year-End Closing per Illaka (Admin/Maalik), marks 36+ month loans as Gyal, creates Bad Debt write-off journal entries, Gyal Wasool (Bad Debt Recovery) income account for EMI collections on Gyal loans, Collection Sheet shows Gyal rows at bottom with grey/muted separator, LoanDetail shows Gyal badge and Gyal-since date (added 2026-03-30)
+- [x] **Gyal (Bad Debt) Feature** — Manual Year-End Closing per Illaka (Admin/Maalik), marks 36+ month loans as Gyal, creates Bad Debt write-off journal entries, Gyal Wasool (Bad Debt Recovery) income account for EMI collections on Gyal loans, Collection Sheet shows Gyal rows at bottom with grey/muted separator, LoanDetail shows Gyal badge and Gyal-since date. **Undo Year-End Closing**: most recent closing can be undone (reverts loans + deletes write-off entries); blocked if next year's closing exists (added 2026-03-30)
 
 ### P2 (Backlog)
 - [ ] Days Overdue badge on Collection Sheet EMI rows

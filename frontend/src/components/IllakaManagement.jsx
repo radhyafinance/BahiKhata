@@ -138,7 +138,7 @@ function YearEndClosingModal({ illaka, onClose }) {
   const [history, setHistory] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [undoLoading, setUndoLoading] = useState(false);
-  const [undoDone, setUndoDone] = useState(null);
+  const [undoDoneDate, setUndoDoneDate] = useState(null);
 
   useEffect(() => {
     axios.get(`${API}/loans/year-end-closing/history?illaka_id=${illaka.id}`, { withCredentials: true })
@@ -194,7 +194,7 @@ function YearEndClosingModal({ illaka, onClose }) {
         { illaka_id: illaka.id, closing_date: closingDateToUndo },
         { withCredentials: true }
       );
-      setUndoDone(res.data);
+      setUndoDoneDate(closingDateToUndo);
       setHistory(prev => (prev || []).filter(h => h.closing_date !== closingDateToUndo));
       toast.success(res.data.message);
     } catch (e) {
@@ -234,7 +234,7 @@ function YearEndClosingModal({ illaka, onClose }) {
                       <span className="text-xs text-muted-foreground ml-2">{h.count} loan(s) marked Gyal</span>
                     </div>
                     {i === 0 ? (
-                      undoDone && undoDone.undone_count > 0 ? (
+                      undoDoneDate === h.closing_date ? (
                         <span className="text-xs text-green-600 font-semibold">Undone</span>
                       ) : (
                         <button
@@ -253,7 +253,7 @@ function YearEndClosingModal({ illaka, onClose }) {
                   </div>
                 ))}
               </div>
-              {latestClosing && !undoDone && (
+              {latestClosing && !undoDoneDate && (
                 <p className="text-[11px] text-muted-foreground">
                   Only the most recent closing can be undone. Older closings are locked.
                 </p>
