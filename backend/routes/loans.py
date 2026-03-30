@@ -279,7 +279,21 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     schedule = doc.get("emi_schedule", [])
     emi_item = next((e for e in schedule if e["due_month"] == data.emi_month), None)
     if not emi_item:
-        raise HTTPException(status_code=404, detail=f"EMI month {data.emi_month} not found in loan schedule")
+        if not doc.get("is_gyal"):
+            raise HTTPException(status_code=404, detail=f"EMI month {data.emi_month} not found in loan schedule")
+        # Gyal loan — add a synthetic entry for this month so collection can be recorded
+        emi_item = {
+            "month": len(schedule) + 1,
+            "due_month": data.emi_month,
+            "amount": 0,
+            "status": "pending",
+            "paid_amount": 0.0,
+            "paid_date": None,
+            "collected_by_id": None,
+            "collected_by_name": None,
+            "is_gyal_entry": True,
+        }
+        schedule.append(emi_item)
     if emi_item["status"] == "paid":
         raise HTTPException(status_code=400, detail="This EMI is already paid / यह किस्त पहले से चुकाई जा चुकी है")
     amount = data.amount if data.amount else emi_item["amount"]
@@ -321,6 +335,18 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     emi_item = next((e for e in schedule if e["due_month"] == emi_month), None)
     if not emi_item:
         raise HTTPException(status_code=404, detail="EMI month not found")
+    now = datetime.now(timezone.utc).isoformat()
+    # For synthetic Gyal entries, remove them entirely rather than reverting status
+    if emi_item.get("is_gyal_entry"):
+        schedule = [e for e in schedule if e["due_month"] != emi_month]
+        total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
+        await db.loans.update_one(
+            {"_id": ObjectId(loan_id)},
+            {"$set": {"emi_schedule": schedule, "total_paid": total_paid,
+                      "status": _get_loan_status(schedule), "updated_at": now}}
+        )
+        await db.payments.delete_one({"loan_id": loan_id, "emi_month": emi_month})
+        return {"message": f"Gyal collection for {emi_month} undone"}
     y, mo = map(int, emi_month.split("-"))
     last_day = calendar.monthrange(y, mo)[1]
     new_emi_status = "overdue" if date_type.today() > date_type(y, mo, last_day) else "pending"

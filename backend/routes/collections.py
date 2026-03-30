@@ -26,7 +26,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
     ).to_list(5000)
 
     # Bulk-fetch KYC data for relative_name
-    kyc_ids = [l.get("kyc_id") for l in loans if l.get("kyc_id")]
+    kyc_ids = [loan.get("kyc_id") for loan in loans if loan.get("kyc_id")]
     valid_oids = []
     for kid in kyc_ids:
         try:
@@ -42,6 +42,15 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         ).to_list(5000)
         kyc_map = {str(k["_id"]): k for k in raw_kycs}
 
+    # Bulk-fetch payments for Gyal loans in the selected month (to show Gyal-Wasool collections)
+    gyal_loan_ids = [str(loan["_id"]) for loan in loans if loan.get("is_gyal")]
+    gyal_payment_map: dict = {}
+    if gyal_loan_ids:
+        gyal_payments = await db.payments.find(
+            {"loan_id": {"$in": gyal_loan_ids}, "emi_month": month}
+        ).to_list(5000)
+        gyal_payment_map = {p["loan_id"]: p for p in gyal_payments}
+
     # Group by illaka → misal
     illakas_map = {}
     illaka_order = []
@@ -50,8 +59,20 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
     for loan in loans:
         schedule = loan.get("emi_schedule", [])
         emi = next((e for e in schedule if e.get("due_month") == month), None)
-        if not emi:
-            continue
+
+        # Gyal loans always appear regardless of month — payment record is source of truth
+        if not emi or emi.get("is_gyal_entry"):
+            if loan.get("is_gyal"):
+                gyal_payment = gyal_payment_map.get(str(loan["_id"]))
+                preserved_note = emi.get("note", "") if emi else ""
+                emi = {
+                    "due_month": month,
+                    "amount": gyal_payment["amount"] if gyal_payment else 0,
+                    "status": "paid" if gyal_payment else "pending",
+                    "note": preserved_note,
+                }
+            elif not emi:
+                continue
 
         illaka_id = loan.get("illaka_id", "unknown")
         illaka_name = loan.get("illaka_name", "Unknown Illaka")
