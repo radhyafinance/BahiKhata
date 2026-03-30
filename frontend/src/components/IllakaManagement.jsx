@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
-import { Plus, Edit, Trash2, ChevronDown, ChevronRight, MapPin, Home, X, Loader2 } from "lucide-react";
+import { Plus, Edit, Trash2, ChevronDown, ChevronRight, MapPin, Home, X, Loader2, CalendarCheck, AlertTriangle } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -123,6 +123,162 @@ function MisalModal({ misal, illakaId, illakaName, onClose, onSave }) {
   );
 }
 
+function YearEndClosingModal({ illaka, onClose }) {
+  const getDefaultClosingDate = () => {
+    const today = new Date();
+    const year = today.getMonth() >= 3 ? today.getFullYear() : today.getFullYear() - 1;
+    return `${year}-03-31`;
+  };
+
+  const [closingDate, setClosingDate] = useState(getDefaultClosingDate());
+  const [preview, setPreview] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const [done, setDone] = useState(null);
+
+  const fetchPreview = async () => {
+    setPreviewLoading(true);
+    setPreview(null);
+    try {
+      const res = await axios.get(
+        `${API}/loans/year-end-closing/preview?illaka_id=${illaka.id}&closing_date=${closingDate}`,
+        { withCredentials: true }
+      );
+      setPreview(res.data);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to fetch preview");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleConfirm = async () => {
+    if (!window.confirm(`This will mark ${preview?.count} loan(s) as Gyal and create write-off entries. Proceed?`)) return;
+    setConfirmLoading(true);
+    try {
+      const res = await axios.post(
+        `${API}/loans/year-end-closing`,
+        { illaka_id: illaka.id, closing_date: closingDate },
+        { withCredentials: true }
+      );
+      setDone(res.data);
+      toast.success(res.data.message);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Year-end closing failed");
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="year-end-modal">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-card rounded-xl shadow-2xl w-full max-w-lg border border-border">
+        <div className="flex items-center justify-between p-5 border-b border-border">
+          <div>
+            <h2 className="font-bold text-lg font-['Outfit'] flex items-center gap-2">
+              <CalendarCheck size={20} className="text-amber-600" />
+              Year-End Closing — Gyal
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{illaka.name} · वित्तीय वर्ष समापन</p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X size={18} /></button>
+        </div>
+
+        <div className="p-5 space-y-4">
+          {done ? (
+            <div className="text-center py-6 space-y-3">
+              <CalendarCheck size={40} className="mx-auto text-amber-500" />
+              <p className="font-bold text-lg font-['Outfit']">{done.message}</p>
+              <p className="text-sm text-muted-foreground">
+                Write-off journal entries have been created in the Accounts module.
+              </p>
+              <button onClick={onClose} className="bk-btn-primary mt-2">Close</button>
+            </div>
+          ) : (
+            <>
+              <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg flex gap-2 text-sm text-amber-800">
+                <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
+                <span>
+                  Loans disbursed <strong>36+ months before</strong> the closing date that are not yet closed will be marked as <strong>Gyal</strong> (Bad Debt). This action creates permanent write-off accounting entries.
+                </span>
+              </div>
+
+              <div>
+                <label className="bk-label">
+                  <span className="bk-label-en">Financial Year Closing Date *</span>
+                  <span className="bk-label-hi">वित्तीय वर्ष समापन तिथि</span>
+                </label>
+                <input
+                  type="date"
+                  value={closingDate}
+                  onChange={(e) => { setClosingDate(e.target.value); setPreview(null); }}
+                  className="bk-input"
+                  data-testid="closing-date-input"
+                />
+                <p className="text-xs text-muted-foreground mt-1">Typically March 31st of the financial year being closed.</p>
+              </div>
+
+              <button
+                onClick={fetchPreview}
+                disabled={previewLoading || !closingDate}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-lg border border-border text-sm font-semibold hover:bg-muted transition-colors disabled:opacity-50"
+                data-testid="preview-gyal-btn"
+              >
+                {previewLoading ? <Loader2 size={16} className="animate-spin" /> : <CalendarCheck size={16} />}
+                Preview Eligible Loans
+              </button>
+
+              {preview && (
+                <div className="space-y-2" data-testid="gyal-preview">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold text-foreground">
+                      {preview.count} loan(s) eligible for Gyal
+                    </p>
+                    <span className="text-xs text-muted-foreground">Cutoff: {preview.cutoff_date}</span>
+                  </div>
+                  {preview.count === 0 ? (
+                    <p className="text-sm text-muted-foreground italic">No loans qualify. Nothing to close.</p>
+                  ) : (
+                    <div className="border border-border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                      {preview.loans.map((l, i) => (
+                        <div key={i} className="flex items-center justify-between px-3 py-2 text-sm border-b border-border/50 last:border-0">
+                          <div>
+                            <span className="font-medium">{l.client_name}</span>
+                            <span className="text-xs text-muted-foreground ml-2">{l.loan_number}</span>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xs text-muted-foreground">{l.loan_date}</p>
+                            <p className="text-xs font-semibold text-red-600">
+                              ₹{new Intl.NumberFormat("en-IN").format(l.outstanding)}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {preview.count > 0 && (
+                    <button
+                      onClick={handleConfirm}
+                      disabled={confirmLoading}
+                      className="w-full flex items-center justify-center gap-2 bg-amber-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-amber-700 transition-colors disabled:opacity-50"
+                      data-testid="confirm-gyal-btn"
+                    >
+                      {confirmLoading ? <Loader2 size={18} className="animate-spin" /> : <CalendarCheck size={18} />}
+                      Confirm Year-End Closing
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function IllakaManagement() {
   const { user } = useAuth();
   const [illakas, setIllakas] = useState([]);
@@ -132,6 +288,7 @@ export default function IllakaManagement() {
   const [loading, setLoading] = useState(true);
   const [illakaModal, setIllakaModal] = useState(undefined);
   const [misalModal, setMisalModal] = useState(undefined);
+  const [yearEndModal, setYearEndModal] = useState(null); // { illaka }
 
   useEffect(() => {
     const load = async () => {
@@ -232,6 +389,16 @@ export default function IllakaManagement() {
                   <button onClick={() => setMisalModal({ illakaId: illaka.id, illakaName: illaka.name, misal: null })} className="p-2 rounded-lg hover:bg-primary/10 text-primary" title="Add Misal" data-testid={`add-misal-${illaka.id}`}>
                     <Home size={16} />
                   </button>
+                  {(user?.role === "admin" || user?.role === "maalik") && (
+                    <button
+                      onClick={() => setYearEndModal({ illaka })}
+                      className="p-2 rounded-lg hover:bg-amber-50 text-amber-600"
+                      title="Year-End Closing (Gyal)"
+                      data-testid={`year-end-btn-${illaka.id}`}
+                    >
+                      <CalendarCheck size={16} />
+                    </button>
+                  )}
                   <button onClick={() => setIllakaModal(illaka)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" data-testid={`edit-illaka-${illaka.id}`}>
                     <Edit size={15} />
                   </button>
@@ -302,6 +469,13 @@ export default function IllakaManagement() {
           illakaName={misalModal?.illakaName}
           onClose={() => setMisalModal(undefined)}
           onSave={(saved, isNew) => saveMisal(misalModal.illakaId, saved, isNew)}
+        />
+      )}
+
+      {yearEndModal && (
+        <YearEndClosingModal
+          illaka={yearEndModal.illaka}
+          onClose={() => setYearEndModal(null)}
         />
       )}
     </div>

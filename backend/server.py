@@ -33,7 +33,7 @@ app.include_router(api_router)
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:3000", "https://vasuli-sheet.preview.emergentagent.com"],
+    allow_origins=[FRONTEND_URL, "http://localhost:3000", "https://loan-cashbook.preview.emergentagent.com"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -100,6 +100,48 @@ async def startup():
         logger.error(f"Storage init failed: {e}")
 
     await _seed_account_groups_and_heads()
+    await _migrate_add_gyal_heads()
+
+
+async def _migrate_add_gyal_heads():
+    """Ensure Gyal-related account heads exist. Safe to run multiple times."""
+    needed = ["gyal_wasool", "bad_debt_written_off"]
+    existing = await db.account_heads.find({"system_key": {"$in": needed}}).to_list(10)
+    existing_keys = {h["system_key"] for h in existing}
+    if len(existing_keys) >= 2:
+        return
+    income_group = await db.account_groups.find_one({"name": "Direct Income"})
+    expense_group = await db.account_groups.find_one({"name": "Direct Expense"})
+    if not income_group or not expense_group:
+        logger.warning("Account groups missing, skipping Gyal heads migration")
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    if "gyal_wasool" not in existing_keys:
+        await db.account_heads.insert_one({
+            "name": "Gyal Wasool (Bad Debt Recovery)",
+            "group_id": str(income_group["_id"]),
+            "group_name": "Direct Income",
+            "group_type": "income",
+            "is_system": True,
+            "system_key": "gyal_wasool",
+            "is_active": True,
+            "created_by": "system",
+            "created_at": now,
+        })
+        logger.info("Added Gyal Wasool account head")
+    if "bad_debt_written_off" not in existing_keys:
+        await db.account_heads.insert_one({
+            "name": "Bad Debt Written Off (Gyal)",
+            "group_id": str(expense_group["_id"]),
+            "group_name": "Direct Expense",
+            "group_type": "expense",
+            "is_system": True,
+            "system_key": "bad_debt_written_off",
+            "is_active": True,
+            "created_by": "system",
+            "created_at": now,
+        })
+        logger.info("Added Bad Debt Written Off account head")
 
 
 async def _seed_account_groups_and_heads():

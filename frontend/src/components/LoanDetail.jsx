@@ -251,6 +251,11 @@ export default function LoanDetail() {
               <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[loan.status] || ""}`} data-testid="loan-status-badge">
                 {loan.status}{loan.netoff_closed ? " · Net-off" : ""}
               </span>
+              {loan.is_gyal && (
+                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-200 text-gray-500 border border-gray-300" data-testid="gyal-badge">
+                  Gyal — घ्याल
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -322,6 +327,12 @@ export default function LoanDetail() {
             <div>
               <p className="text-xs text-muted-foreground">Net-off from Previous Loan</p>
               <p className="text-sm font-medium text-amber-700">− {fmt(loan.netoff_amount)}</p>
+            </div>
+          )}
+          {loan.is_gyal && (
+            <div>
+              <p className="text-xs text-muted-foreground">Gyal Since / घ्याल तिथि</p>
+              <p className="text-sm font-medium text-gray-500">{loan.gyal_since || "—"}</p>
             </div>
           )}
         </div>

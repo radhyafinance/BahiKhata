@@ -193,8 +193,128 @@ function NoteModal({ row, onClose, onSaved }) {
 function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
   const [expanded, setExpanded] = useState(true);
   const navigate = useNavigate();
+
+  const regularRows = misal.rows.filter((r) => !r.is_gyal);
+  const gyalRows = misal.rows.filter((r) => r.is_gyal);
   const total = misal.rows.length;
   const collected = misal.rows.filter((r) => r.emi_status === "paid").length;
+
+  const renderRow = (row, isGyal) => {
+    const status = EMI_STATUS[row.emi_status] || EMI_STATUS.pending;
+    const StatusIcon = status.icon;
+    const isPaid = row.emi_status === "paid";
+    const clientName = row.client_name_hindi || row.client_name || "—";
+    const husbandName = row.relative_name_hindi || row.relative_name || "";
+    const guarantorName = row.guarantor_name_hindi || row.guarantor_name || "";
+
+    return (
+      <div
+        key={row.loan_db_id}
+        className={`transition-colors ${
+          isGyal
+            ? "bg-gray-100/70 opacity-75"
+            : isPaid
+            ? "bg-green-50/50"
+            : row.emi_status === "overdue"
+            ? "bg-red-50/40"
+            : ""
+        }`}
+        data-testid={`collection-row-${row.loan_db_id}`}
+      >
+        <div className="grid grid-cols-[52px_1fr_72px_68px] gap-0 items-start px-3 py-2.5 text-sm">
+          {/* EMI Amount */}
+          <div className="text-right pr-2 pt-0.5 flex-shrink-0">
+            <p className={`font-bold text-sm leading-tight ${isGyal ? "text-gray-400" : "text-foreground"}`}>
+              {new Intl.NumberFormat("en-IN").format(row.emi_amount)}
+            </p>
+            <div className="inline-flex items-center justify-center mt-1 w-full">
+              <StatusIcon size={12} className={isGyal ? "text-gray-400" : status.iconCls} />
+            </div>
+          </div>
+
+          {/* Names column */}
+          <div className="pl-1 min-w-0">
+            <p className={`font-semibold text-sm leading-snug break-words ${isGyal ? "text-gray-400 line-through decoration-gray-400" : "text-foreground"}`} data-testid={`client-name-${row.loan_db_id}`}>
+              {clientName}
+            </p>
+            {husbandName && (
+              <p className={`text-xs leading-snug break-words mt-0.5 ${isGyal ? "text-gray-400" : "text-muted-foreground"}`} data-testid={`husband-name-${row.loan_db_id}`}>
+                {husbandName}
+              </p>
+            )}
+            {guarantorName && (
+              <p className={`text-xs leading-snug break-words mt-0.5 ${isGyal ? "text-gray-400" : "text-blue-600"}`} data-testid={`guarantor-name-${row.loan_db_id}`}>
+                {guarantorName}
+              </p>
+            )}
+          </div>
+
+          {/* Balance */}
+          <div className="text-right pr-2 pt-0.5">
+            <p className={`font-semibold text-sm leading-tight tabular-nums ${isGyal ? "text-gray-400" : "text-foreground"}`}>
+              {fmt(row.outstanding_balance)}
+            </p>
+            <p className={`text-[11px] leading-tight mt-0.5 whitespace-nowrap ${isGyal ? "text-gray-400" : "text-muted-foreground"}`}>
+              {fmtLoanDate(row.loan_date)}
+            </p>
+          </div>
+
+          {/* Action */}
+          <div className="flex flex-col items-center gap-1 pt-0.5">
+            {isPaid ? (
+              <CheckCircle size={20} className={isGyal ? "text-gray-400" : "text-green-500"} />
+            ) : isFrozen ? (
+              <div className="flex flex-col items-center gap-0.5">
+                <Lock size={14} className="text-muted-foreground" />
+                <span className="text-[9px] text-muted-foreground">Locked</span>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => onCollect(row)}
+                  className={`text-xs px-2 py-1.5 rounded-lg font-bold w-full text-center transition-colors ${
+                    isGyal
+                      ? "bg-gray-400 text-white hover:bg-gray-500"
+                      : row.emi_status === "overdue"
+                      ? "bg-red-600 text-white hover:bg-red-700"
+                      : "bg-primary text-white hover:bg-primary/90"
+                  }`}
+                  data-testid={`collect-btn-${row.loan_db_id}`}
+                >
+                  Collect
+                </button>
+                <button
+                  onClick={() => onNote(row)}
+                  className="flex items-center justify-center gap-0.5 text-[10px] w-full py-1 rounded border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50 transition-colors"
+                  data-testid={`note-btn-${row.loan_db_id}`}
+                >
+                  <Pencil size={9} />
+                  {row.emi_note ? "Edit" : "Note"}
+                </button>
+                <button
+                  onClick={() => navigate(`/loans/${row.loan_db_id}`)}
+                  className="p-1 rounded hover:bg-muted text-muted-foreground"
+                  title="View"
+                  data-testid={`view-loan-btn-${row.loan_db_id}`}
+                >
+                  <ExternalLink size={12} />
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Note display */}
+        {row.emi_note && (
+          <div className="px-3 pb-2" data-testid={`vasuli-note-display-${row.loan_db_id}`}>
+            <div className="p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 break-words leading-snug">
+              {row.emi_note}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="border border-border rounded-xl overflow-hidden">
@@ -208,6 +328,11 @@ function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
           {expanded ? <ChevronDown size={16} className="text-muted-foreground" /> : <ChevronRight size={16} className="text-muted-foreground" />}
           <span className="font-semibold text-sm text-foreground">{misal.misal_name}</span>
           <span className="text-xs text-muted-foreground">({total})</span>
+          {gyalRows.length > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 bg-gray-200 text-gray-500 rounded font-semibold">
+              {gyalRows.length} Gyal
+            </span>
+          )}
         </div>
         <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${collected === total ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
           {collected}/{total}
@@ -224,112 +349,22 @@ function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
             <span className="text-center">Action</span>
           </div>
 
-          {misal.rows.map((row) => {
-            const status = EMI_STATUS[row.emi_status] || EMI_STATUS.pending;
-            const StatusIcon = status.icon;
-            const isPaid = row.emi_status === "paid";
-            const clientName = row.client_name_hindi || row.client_name || "—";
-            const husbandName = row.relative_name_hindi || row.relative_name || "";
-            const guarantorName = row.guarantor_name_hindi || row.guarantor_name || "";
+          {/* Regular rows */}
+          {regularRows.map((row) => renderRow(row, false))}
 
-            return (
-              <div
-                key={row.loan_db_id}
-                className={`transition-colors ${isPaid ? "bg-green-50/50" : row.emi_status === "overdue" ? "bg-red-50/40" : ""}`}
-                data-testid={`collection-row-${row.loan_db_id}`}
-              >
-                <div className="grid grid-cols-[52px_1fr_72px_68px] gap-0 items-start px-3 py-2.5 text-sm">
-                {/* EMI Amount */}
-                <div className="text-right pr-2 pt-0.5 flex-shrink-0">
-                  <p className="font-bold text-foreground text-sm leading-tight">
-                    {new Intl.NumberFormat("en-IN").format(row.emi_amount)}
-                  </p>
-                  <div className={`inline-flex items-center justify-center mt-1 w-full`}>
-                    <StatusIcon size={12} className={status.iconCls} />
-                  </div>
-                </div>
-
-                {/* Names column: Client / Husband / Guarantor */}
-                <div className="pl-1 min-w-0">
-                  <p className="font-semibold text-foreground text-sm leading-snug break-words" data-testid={`client-name-${row.loan_db_id}`}>
-                    {clientName}
-                  </p>
-                  {husbandName && (
-                    <p className="text-xs text-muted-foreground leading-snug break-words mt-0.5" data-testid={`husband-name-${row.loan_db_id}`}>
-                      {husbandName}
-                    </p>
-                  )}
-                  {guarantorName && (
-                    <p className="text-xs text-blue-600 leading-snug break-words mt-0.5" data-testid={`guarantor-name-${row.loan_db_id}`}>
-                      {guarantorName}
-                    </p>
-                  )}
-                </div>
-
-                {/* Balance + Disbursement Month */}
-                <div className="text-right pr-2 pt-0.5">
-                  <p className="font-semibold text-foreground text-sm leading-tight tabular-nums">
-                    {fmt(row.outstanding_balance)}
-                  </p>
-                  <p className="text-[11px] text-muted-foreground leading-tight mt-0.5 whitespace-nowrap">
-                    {fmtLoanDate(row.loan_date)}
-                  </p>
-                </div>
-
-                {/* Action */}
-                <div className="flex flex-col items-center gap-1 pt-0.5">
-                  {isPaid ? (
-                    <CheckCircle size={20} className="text-green-500" />
-                  ) : isFrozen ? (
-                    <div className="flex flex-col items-center gap-0.5">
-                      <Lock size={14} className="text-muted-foreground" />
-                      <span className="text-[9px] text-muted-foreground">Locked</span>
-                    </div>
-                  ) : (
-                    <>
-                      <button
-                        onClick={() => onCollect(row)}
-                        className={`text-xs px-2 py-1.5 rounded-lg font-bold w-full text-center transition-colors ${
-                          row.emi_status === "overdue"
-                            ? "bg-red-600 text-white hover:bg-red-700"
-                            : "bg-primary text-white hover:bg-primary/90"
-                        }`}
-                        data-testid={`collect-btn-${row.loan_db_id}`}
-                      >
-                        Collect
-                      </button>
-                      <button
-                        onClick={() => onNote(row)}
-                        className="flex items-center justify-center gap-0.5 text-[10px] w-full py-1 rounded border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50 transition-colors"
-                        data-testid={`note-btn-${row.loan_db_id}`}
-                      >
-                        <Pencil size={9} />
-                        {row.emi_note ? "Edit" : "Note"}
-                      </button>
-                      <button
-                        onClick={() => navigate(`/loans/${row.loan_db_id}`)}
-                        className="p-1 rounded hover:bg-muted text-muted-foreground"
-                        title="View"
-                        data-testid={`view-loan-btn-${row.loan_db_id}`}
-                      >
-                        <ExternalLink size={12} />
-                      </button>
-                    </>
-                  )}
-                </div>
+          {/* Gyal separator + rows */}
+          {gyalRows.length > 0 && (
+            <>
+              <div className="flex items-center gap-2 px-3 py-1.5 bg-gray-100/60" data-testid="gyal-separator">
+                <div className="h-px flex-1 bg-gray-300" />
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 whitespace-nowrap">
+                  Gyal — घ्याल (Bad Debt)
+                </span>
+                <div className="h-px flex-1 bg-gray-300" />
               </div>
-
-              {/* Note display below row */}
-              {row.emi_note && (
-                <div className="px-3 pb-2" data-testid={`vasuli-note-display-${row.loan_db_id}`}>
-                  <div className="p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 break-words leading-snug">
-                    {row.emi_note}
-                  </div>
-                </div>
-              )}
-            </div>
-            );
-          })}
+              {gyalRows.map((row) => renderRow(row, true))}
+            </>
+          )}
         </div>
       )}
     </div>

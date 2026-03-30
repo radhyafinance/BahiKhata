@@ -1,0 +1,74 @@
+{
+  "summary": "Iteration 16: Tested Gyal (Bad Debt) feature - Year-End Closing, Gyal account heads, Collection Sheet gyal rows, and LoanDetail gyal badge. All 20 backend tests pass. All frontend flows verified for admin and muneem roles.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Year-End Closing confirmation",
+        "issues": ["Confirm dialog uses native window.confirm() instead of a custom styled modal - functional but less polished UX"]
+      }
+    ]
+  },
+  "feature_tests": {
+    "gyal_account_heads_bad_debt_written_off": "PASS - bad_debt_written_off system_key exists in account_heads, group_type=expense, name contains 'Bad Debt'",
+    "gyal_account_heads_gyal_wasool": "PASS - gyal_wasool system_key exists in account_heads, group_type=income, name contains 'Gyal Wasool'",
+    "year_end_preview_unauth": "PASS - Returns 401/403 for unauthenticated requests",
+    "year_end_preview_muneem_403": "PASS - Muneem gets 403 on GET /api/loans/year-end-closing/preview",
+    "year_end_preview_admin_200": "PASS - Admin gets 200 with count, loans, cutoff_date fields",
+    "year_end_preview_cutoff_36_months": "PASS - Cutoff date is exactly 36 months before closing_date (2025-03-31 → 2022-03-31)",
+    "year_end_closing_marks_gyal": "PASS - POST /api/loans/year-end-closing marks eligible loans is_gyal=True with gyal_since set",
+    "year_end_closing_creates_journal": "PASS - Journal entries created for bad_debt_written_off (debit) and loans_portfolio (credit)",
+    "year_end_closing_idempotent": "PASS - Already-gyal loans excluded from subsequent previews and closing runs",
+    "year_end_muneem_403_post": "PASS - Muneem gets 403 on POST /api/loans/year-end-closing",
+    "collection_sheet_is_gyal_field": "PASS - Each row in collection sheet response includes is_gyal and gyal_since fields",
+    "admin_sees_year_end_buttons": "PASS - Year-End Closing button (CalendarCheck icon) visible for each illaka in IllakaManagement for Admin (8 buttons)",
+    "muneem_no_year_end_button": "PASS - Year-End Closing button NOT visible for Muneem role",
+    "year_end_modal_opens": "PASS - Modal opens with CalendarCheck icon, illaka name (Delhi), and warning text",
+    "year_end_default_closing_date": "PASS - Closing date defaults to 2025-03-31 (last March 31st)",
+    "year_end_preview_no_loans": "PASS - Preview shows '0 loan(s) eligible for Gyal' and 'No loans qualify. Nothing to close.' when no eligible loans",
+    "year_end_confirm_hidden_for_0_loans": "PASS - Confirm Year-End Closing button NOT shown when count=0",
+    "year_end_preview_shows_loans": "PASS - Preview shows loan list (TEST_GyalConfirm, 2017-01-01, ₹6,000 outstanding) when eligible loans exist",
+    "year_end_confirm_visible_for_loans": "PASS - Confirm Year-End Closing button visible in amber when count > 0",
+    "year_end_done_state": "PASS - After confirmation, done state shows CalendarCheck icon, '1 loan(s) marked as Gyal (Bad Debt)', success toast",
+    "loan_detail_gyal_badge": "PASS - LoanDetail shows 'Gyal — घ्याल' grey badge next to loan status for gyal loans (data-testid=gyal-badge)",
+    "loan_detail_gyal_since": "PASS - LoanDetail shows 'Gyal Since / घ्याल तिथि' field with gyal_since date 2025-03-31",
+    "collection_sheet_gyal_separator": "PASS - Collection Sheet shows 'GYAL — घ्याल (BAD DEBT)' separator between regular rows and gyal rows (data-testid=gyal-separator)",
+    "collection_sheet_gyal_styling": "PASS - Gyal rows shown in grey/muted style with strikethrough on client name, grey collect button",
+    "collection_sheet_misal_gyal_count": "PASS - Misal header shows '1 Gyal' badge when gyal rows exist"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_gyal_feature.py",
+    "/app/test_reports/pytest/gyal_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Minor: YearEndClosingModal uses window.confirm() (native browser dialog) for the final confirmation instead of a custom shadcn confirm modal - functional but inconsistent UX with the rest of the app",
+    "OK: _migrate_add_gyal_heads() is properly idempotent (checks existing_keys before inserting)",
+    "OK: year-end-closing preview and POST both use same query (is_gyal $ne True, loan_date $lte cutoff) - consistent behavior",
+    "OK: _book_emi_collection handles is_gyal loans separately (uses gyal_wasool head instead of loans_portfolio) - Gyal Wasool recovery works",
+    "OK: CollectionSheet frontend properly splits regularRows/gyalRows and renders separator only when gyalRows.length > 0",
+    "OK: loans.py is 581 lines - approaching 700 line limit but within acceptable range"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_gyal_feature.py"
+  ],
+  "success_rate": {
+    "backend": "100% (20/20 tests)",
+    "frontend": "100% (all features verified: year-end button admin-only, modal flow, preview, confirm, done state, gyal badge in LoanDetail, gyal separator in CollectionSheet)"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "muneem": "phone=7777000001 / Test@1234",
+    "sipahi": "phone=8888888888 / Test@1234 (used to create test loans - only sipahi/muneem can create loans)"
+  },
+  "seed_data_creation": "Created TEST_Gyal_Customer2 (KYC DE0020, loan 69c9e294d9e8bef1b31d5afd, 2018-01-01) - already gyal. Created TEST_GyalTest_Customer (KYC DE0022, loan 69c9e2f1731fc03fef4acdc3, 2019-06-01) - gyal, via automated tests. Created TEST_GyalConfirm (KYC TE0009, loan 69c9e450731fc03fef4acdc7, 2017-01-01, in TEST_Illaka_Central) - marked gyal during UI testing.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 16: All Gyal (Bad Debt) feature tests pass. Backend: 20/20 (test_gyal_feature.py). Frontend: Year-end closing button visible for admin on each illaka row, modal with calendarcheck icon works, preview shows eligible loans, confirm marks them gyal. LoanDetail shows gyal badge + gyal_since. CollectionSheet shows gyal separator + grey rows at bottom of misal. 3 test gyal loans exist in Delhi illaka (2018-01-01, 2019-06-01) and TEST_Illaka_Central (2017-01-01). All are already marked is_gyal=True with gyal_since=2025-03-31. Previous tests from iteration_15 still passing.",
+  "rca_of_issue": null
+}

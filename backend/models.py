@@ -190,3 +190,8 @@ class ExpenseSubmissionCreate(BaseModel):
     month: str  # YYYY-MM
     entries: List[ExpenseSubmissionEntry]
     action: str = "draft"  # "draft" or "submit"
+
+
+class YearEndClosingRequest(BaseModel):
+    illaka_id: str
+    closing_date: str  # "YYYY-MM-DD", typically March 31st

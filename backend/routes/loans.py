@@ -10,7 +10,7 @@ from helpers import (
     _get_loan_status, _apply_overdue_to_schedule, _add_months, _loan_query_for_user,
     create_journal_entry_internal
 )
-from models import LoanCreate, LoanStatusUpdate, PaymentCreate, EmiNoteUpdate, ReLoanRequest
+from models import LoanCreate, LoanStatusUpdate, PaymentCreate, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest
 
 router = APIRouter()
 
@@ -64,19 +64,34 @@ async def _book_loan_disbursement(loan_doc: dict, user_id: str, user_name: str):
 async def _book_emi_collection(loan_doc: dict, payment: dict, user_id: str, user_name: str):
     """Auto-create journal entry on EMI collection."""
     try:
-        sys_heads = await _get_system_heads()
-        if len(sys_heads) < 2:
-            return
+        is_gyal = loan_doc.get("is_gyal", False)
         amount = float(payment["amount"])
-        lines = [
-            _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
-            _make_head_line(sys_heads["loans_portfolio"], 0.0, amount),
-        ]
         emi_month = payment.get("emi_month", "")
+
+        if is_gyal:
+            gyal_head = await db.account_heads.find_one({"system_key": "gyal_wasool"})
+            cash_head = await db.account_heads.find_one({"system_key": "cash_in_hand"})
+            if not gyal_head or not cash_head:
+                return
+            lines = [
+                _make_head_line(cash_head, amount, 0.0),
+                _make_head_line(gyal_head, 0.0, amount),
+            ]
+            narration = f"Gyal Wasool from {loan_doc['client_name']} | {emi_month} | Loan# {loan_doc.get('loan_number', '')}"
+        else:
+            sys_heads = await _get_system_heads()
+            if len(sys_heads) < 2:
+                return
+            lines = [
+                _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
+                _make_head_line(sys_heads["loans_portfolio"], 0.0, amount),
+            ]
+            narration = f"EMI collected from {loan_doc['client_name']} | {emi_month} | Loan# {loan_doc.get('loan_number', '')}"
+
         await create_journal_entry_internal(
             illaka_id=loan_doc["illaka_id"],
             date=payment["payment_date"],
-            narration=f"EMI collected from {loan_doc['client_name']} | {emi_month} | Loan# {loan_doc.get('loan_number', '')}",
+            narration=narration,
             lines=lines, entry_type="emi_collection",
             reference_id=str(loan_doc["_id"]),
             created_by_id=user_id, created_by_name=user_name,
@@ -475,3 +490,91 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
     # Book accounting entry for the re-loan disbursement
     await _book_loan_disbursement(new_loan_doc, current_user["id"], current_user["name"])
     return _doc(new_loan_doc)
+
+
+
+@router.get("/loans/year-end-closing/preview")
+async def year_end_closing_preview(
+    request: Request,
+    illaka_id: str,
+    closing_date: str,
+):
+    """Preview how many loans would be marked Gyal for the given illaka & closing date."""
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Only Admin or Maalik can perform year-end closing")
+    closing_date_obj = date_type.fromisoformat(closing_date)
+    cutoff = _add_months(closing_date_obj, -36)
+    query = {
+        "illaka_id": illaka_id,
+        "status": {"$nin": ["closed"]},
+        "is_gyal": {"$ne": True},
+        "loan_date": {"$lte": cutoff.isoformat()},
+    }
+    count = await db.loans.count_documents(query)
+    loans = await db.loans.find(query, {
+        "client_name": 1, "loan_number": 1, "loan_date": 1,
+        "total_repayable": 1, "total_paid": 1
+    }).to_list(200)
+    rows = []
+    for loan_item in loans:
+        outstanding = max(0.0, float(loan_item.get("total_repayable") or 0) - float(loan_item.get("total_paid") or 0))
+        rows.append({
+            "loan_number": loan_item.get("loan_number") or "—",
+            "client_name": loan_item.get("client_name") or "—",
+            "loan_date": loan_item.get("loan_date") or "—",
+            "outstanding": outstanding,
+        })
+    return {"count": count, "loans": rows, "cutoff_date": cutoff.isoformat()}
+
+
+@router.post("/loans/year-end-closing")
+async def year_end_closing(data: YearEndClosingRequest, request: Request):
+    """Mark eligible loans as Gyal and create write-off journal entries."""
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Only Admin or Maalik can perform year-end closing")
+    closing_date_obj = date_type.fromisoformat(data.closing_date)
+    cutoff = _add_months(closing_date_obj, -36)
+    query = {
+        "illaka_id": data.illaka_id,
+        "status": {"$nin": ["closed"]},
+        "is_gyal": {"$ne": True},
+        "loan_date": {"$lte": cutoff.isoformat()},
+    }
+    loans_to_gyal = await db.loans.find(query).to_list(5000)
+    if not loans_to_gyal:
+        return {"marked_count": 0, "message": "No loans qualify for Gyal classification"}
+
+    heads = await db.account_heads.find(
+        {"system_key": {"$in": ["loans_portfolio", "bad_debt_written_off"]}}
+    ).to_list(10)
+    head_map = {h["system_key"]: h for h in heads}
+    now = datetime.now(timezone.utc).isoformat()
+    count = 0
+
+    for loan in loans_to_gyal:
+        await db.loans.update_one(
+            {"_id": loan["_id"]},
+            {"$set": {"is_gyal": True, "gyal_since": data.closing_date, "updated_at": now}}
+        )
+        if "loans_portfolio" in head_map and "bad_debt_written_off" in head_map:
+            outstanding = max(0.0, float(loan.get("total_repayable") or 0) - float(loan.get("total_paid") or 0))
+            if outstanding > 0:
+                lines = [
+                    _make_head_line(head_map["bad_debt_written_off"], outstanding, 0.0),
+                    _make_head_line(head_map["loans_portfolio"], 0.0, outstanding),
+                ]
+                await create_journal_entry_internal(
+                    illaka_id=data.illaka_id,
+                    date=data.closing_date,
+                    narration=f"Gyal Write-off: {loan.get('client_name', '')} | Loan# {loan.get('loan_number', '')}",
+                    lines=lines,
+                    entry_type="gyal_writeoff",
+                    reference_id=str(loan["_id"]),
+                    created_by_id=current_user["id"],
+                    created_by_name=current_user["name"],
+                )
+        count += 1
+
+    return {"marked_count": count, "message": f"{count} loan(s) marked as Gyal (Bad Debt)"}
