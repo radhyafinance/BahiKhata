@@ -7,7 +7,7 @@ from core.database import db
 from core.auth import get_current_user
 from helpers import (
     _doc, generate_customer_id, generate_loan_number,
-    _build_emi_schedule, _get_loan_status, _add_months, _kyc_query_for_user
+    _build_emi_schedule, _get_loan_status, _add_months, _kyc_query_for_user, book_loan_disbursement,
 )
 from models import KYCCreate, KYCStatusUpdate
 
@@ -127,8 +127,10 @@ async def create_kyc(data: KYCCreate, request: Request):
         }
         loan_res = await db.loans.insert_one(loan_doc)
         loan_id = str(loan_res.inserted_id)
+        loan_doc["_id"] = loan_res.inserted_id
         await db.kycs.update_one({"_id": result.inserted_id}, {"$set": {"loan_id": loan_id}})
         doc["loan_id"] = loan_id
+        await book_loan_disbursement(loan_doc, current_user["id"], current_user["name"])
 
     return _doc(doc)
 

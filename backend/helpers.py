@@ -1,4 +1,4 @@
-import re, calendar
+import re, calendar, logging
 from datetime import datetime, timezone, date as date_type
 from bson import ObjectId
 from core.database import db
@@ -119,7 +119,7 @@ async def create_journal_entry_internal(
 ) -> str:
     """Insert a balanced double-entry journal entry. Returns the new entry's id."""
     now = datetime.now(timezone.utc).isoformat()
-    total_amount = sum(float(l.get("debit", 0)) for l in lines)
+    total_amount = sum(float(line.get("debit", 0)) for line in lines)
     doc = {
         "date": date,
         "illaka_id": illaka_id,
@@ -153,3 +153,49 @@ async def _loan_query_for_user(user: dict) -> dict:
         if not assigned:
             return {"sipahi_id": user["id"]}
         return {"illaka_id": {"$in": assigned}}
+
+
+def _make_head_line(head: dict, debit: float, credit: float) -> dict:
+    return {
+        "account_head_id": str(head["_id"]),
+        "account_head_name": head.get("name", ""),
+        "group_name": head.get("group_name", ""),
+        "group_type": head.get("group_type", ""),
+        "debit": debit,
+        "credit": credit,
+    }
+
+
+async def _get_system_heads() -> dict:
+    heads = await db.account_heads.find(
+        {"system_key": {"$in": ["cash_in_hand", "loans_portfolio", "interest_income"]}}
+    ).to_list(10)
+    return {h["system_key"]: h for h in heads}
+
+
+async def book_loan_disbursement(loan_doc: dict, user_id: str, user_name: str) -> None:
+    """Create the journal entry for a loan disbursement. Safe to call from any route."""
+    try:
+        sys_heads = await _get_system_heads()
+        if len(sys_heads) < 3:
+            return
+        principal = float(loan_doc.get("principal_amount", 0))
+        interest = float(loan_doc.get("interest_amount", 0))
+        total = float(loan_doc.get("total_repayable", principal + interest))
+        lines = [
+            _make_head_line(sys_heads["loans_portfolio"], total, 0.0),
+            _make_head_line(sys_heads["cash_in_hand"], 0.0, principal),
+            _make_head_line(sys_heads["interest_income"], 0.0, interest),
+        ]
+        await create_journal_entry_internal(
+            illaka_id=loan_doc.get("illaka_id", ""),
+            date=loan_doc.get("loan_date", ""),
+            narration=f"Loan disbursed to {loan_doc.get('client_name', '')} | Loan# {loan_doc.get('loan_number', '')}",
+            lines=lines,
+            entry_type="loan_disbursement",
+            reference_id=str(loan_doc.get("_id") or loan_doc.get("id") or ""),
+            created_by_id=user_id,
+            created_by_name=user_name,
+        )
+    except Exception as exc:
+        logging.getLogger(__name__).warning(f"Failed to book loan disbursement: {exc}")

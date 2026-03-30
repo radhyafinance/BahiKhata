@@ -8,57 +8,11 @@ from core.auth import get_current_user
 from helpers import (
     _doc, generate_loan_number, _build_emi_schedule,
     _get_loan_status, _apply_overdue_to_schedule, _add_months, _loan_query_for_user,
-    create_journal_entry_internal
+    create_journal_entry_internal, _get_system_heads, _make_head_line, book_loan_disbursement
 )
 from models import LoanCreate, LoanStatusUpdate, PaymentCreate, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest, YearEndUndoRequest
 
 router = APIRouter()
-
-
-async def _get_system_heads():
-    """Fetch the 3 system account heads needed for auto-entries."""
-    heads = await db.account_heads.find(
-        {"system_key": {"$in": ["cash_in_hand", "loans_portfolio", "interest_income"]}}
-    ).to_list(10)
-    return {h["system_key"]: h for h in heads}
-
-
-def _make_head_line(head: dict, debit: float, credit: float) -> dict:
-    return {
-        "account_head_id": str(head["_id"]),
-        "account_head_name": head["name"],
-        "group_name": head.get("group_name", ""),
-        "group_type": head.get("group_type", ""),
-        "debit": debit,
-        "credit": credit,
-    }
-
-
-async def _book_loan_disbursement(loan_doc: dict, user_id: str, user_name: str):
-    """Auto-create journal entry on loan disbursement."""
-    try:
-        sys_heads = await _get_system_heads()
-        if len(sys_heads) < 3:
-            return
-        principal = float(loan_doc["principal_amount"])
-        interest = float(loan_doc.get("interest_amount", 0))
-        total = float(loan_doc.get("total_repayable", principal + interest))
-        lines = [
-            _make_head_line(sys_heads["loans_portfolio"], total, 0.0),
-            _make_head_line(sys_heads["cash_in_hand"], 0.0, principal),
-            _make_head_line(sys_heads["interest_income"], 0.0, interest),
-        ]
-        await create_journal_entry_internal(
-            illaka_id=loan_doc["illaka_id"],
-            date=loan_doc["loan_date"],
-            narration=f"Loan disbursed to {loan_doc['client_name']} | Loan# {loan_doc.get('loan_number', '')}",
-            lines=lines, entry_type="loan_disbursement",
-            reference_id=str(loan_doc.get("_id", "")),
-            created_by_id=user_id, created_by_name=user_name,
-        )
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).warning(f"Failed to book loan disbursement entry: {e}")
 
 
 async def _book_emi_collection(loan_doc: dict, payment: dict, user_id: str, user_name: str):
@@ -193,7 +147,7 @@ async def create_loan(data: LoanCreate, request: Request):
     }
     result = await db.loans.insert_one(doc)
     doc["_id"] = result.inserted_id
-    await _book_loan_disbursement(doc, current_user["id"], current_user["name"])
+    await book_loan_disbursement(doc, current_user["id"], current_user["name"])
     return _doc(doc)
 
 
@@ -514,7 +468,7 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
 
     new_loan_doc["_id"] = result.inserted_id
     # Book accounting entry for the re-loan disbursement
-    await _book_loan_disbursement(new_loan_doc, current_user["id"], current_user["name"])
+    await book_loan_disbursement(new_loan_doc, current_user["id"], current_user["name"])
     return _doc(new_loan_doc)
 
 
