@@ -135,6 +135,17 @@ function YearEndClosingModal({ illaka, onClose }) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [done, setDone] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [undoLoading, setUndoLoading] = useState(false);
+  const [undoDone, setUndoDone] = useState(null);
+
+  useEffect(() => {
+    axios.get(`${API}/loans/year-end-closing/history?illaka_id=${illaka.id}`, { withCredentials: true })
+      .then(r => setHistory(r.data.closings))
+      .catch(() => setHistory([]))
+      .finally(() => setHistoryLoading(false));
+  }, [illaka.id]);
 
   const fetchPreview = async () => {
     setPreviewLoading(true);
@@ -162,6 +173,10 @@ function YearEndClosingModal({ illaka, onClose }) {
         { withCredentials: true }
       );
       setDone(res.data);
+      setHistory(prev => {
+        const updated = [{ closing_date: closingDate, count: res.data.marked_count }, ...(prev || [])];
+        return updated.sort((a, b) => b.closing_date.localeCompare(a.closing_date));
+      });
       toast.success(res.data.message);
     } catch (e) {
       toast.error(e.response?.data?.detail || "Year-end closing failed");
@@ -170,11 +185,32 @@ function YearEndClosingModal({ illaka, onClose }) {
     }
   };
 
+  const handleUndo = async (closingDateToUndo) => {
+    if (!window.confirm(`Undo the year-end closing for ${closingDateToUndo}? This will restore ${history?.find(h => h.closing_date === closingDateToUndo)?.count || 0} loan(s) from Gyal and delete the write-off entries.`)) return;
+    setUndoLoading(closingDateToUndo);
+    try {
+      const res = await axios.post(
+        `${API}/loans/year-end-closing/undo`,
+        { illaka_id: illaka.id, closing_date: closingDateToUndo },
+        { withCredentials: true }
+      );
+      setUndoDone(res.data);
+      setHistory(prev => (prev || []).filter(h => h.closing_date !== closingDateToUndo));
+      toast.success(res.data.message);
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Undo failed");
+    } finally {
+      setUndoLoading(null);
+    }
+  };
+
+  const latestClosing = history && history.length > 0 ? history[0] : null;
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="year-end-modal">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative bg-card rounded-xl shadow-2xl w-full max-w-lg border border-border">
-        <div className="flex items-center justify-between p-5 border-b border-border">
+      <div className="relative bg-card rounded-xl shadow-2xl w-full max-w-lg border border-border max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-5 border-b border-border sticky top-0 bg-card z-10">
           <div>
             <h2 className="font-bold text-lg font-['Outfit'] flex items-center gap-2">
               <CalendarCheck size={20} className="text-amber-600" />
@@ -185,15 +221,65 @@ function YearEndClosingModal({ illaka, onClose }) {
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted"><X size={18} /></button>
         </div>
 
-        <div className="p-5 space-y-4">
+        <div className="p-5 space-y-5">
+          {/* Previous Closings History */}
+          {!historyLoading && history && history.length > 0 && (
+            <div className="space-y-2" data-testid="closing-history">
+              <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Previous Year Closings</p>
+              <div className="border border-border rounded-lg overflow-hidden divide-y divide-border/60">
+                {history.map((h, i) => (
+                  <div key={h.closing_date} className="flex items-center justify-between px-3 py-2.5">
+                    <div>
+                      <span className="text-sm font-semibold text-foreground">{h.closing_date}</span>
+                      <span className="text-xs text-muted-foreground ml-2">{h.count} loan(s) marked Gyal</span>
+                    </div>
+                    {i === 0 ? (
+                      undoDone && undoDone.undone_count > 0 ? (
+                        <span className="text-xs text-green-600 font-semibold">Undone</span>
+                      ) : (
+                        <button
+                          onClick={() => handleUndo(h.closing_date)}
+                          disabled={!!undoLoading}
+                          className="flex items-center gap-1 text-xs px-2.5 py-1.5 rounded-lg border border-red-200 text-red-600 hover:bg-red-50 font-semibold transition-colors disabled:opacity-50"
+                          data-testid={`undo-closing-btn-${h.closing_date}`}
+                        >
+                          {undoLoading === h.closing_date ? <Loader2 size={12} className="animate-spin" /> : <X size={12} />}
+                          Undo
+                        </button>
+                      )
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">Locked</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+              {latestClosing && !undoDone && (
+                <p className="text-[11px] text-muted-foreground">
+                  Only the most recent closing can be undone. Older closings are locked.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Divider if history exists */}
+          {!historyLoading && history && history.length > 0 && (
+            <div className="flex items-center gap-2">
+              <div className="h-px flex-1 bg-border" />
+              <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">New Closing</span>
+              <div className="h-px flex-1 bg-border" />
+            </div>
+          )}
+
           {done ? (
-            <div className="text-center py-6 space-y-3">
+            <div className="text-center py-4 space-y-3">
               <CalendarCheck size={40} className="mx-auto text-amber-500" />
               <p className="font-bold text-lg font-['Outfit']">{done.message}</p>
               <p className="text-sm text-muted-foreground">
                 Write-off journal entries have been created in the Accounts module.
               </p>
-              <button onClick={onClose} className="bk-btn-primary mt-2">Close</button>
+              <button onClick={() => setDone(null)} className="text-sm text-primary hover:underline">
+                Do another closing
+              </button>
             </div>
           ) : (
             <>
@@ -240,7 +326,7 @@ function YearEndClosingModal({ illaka, onClose }) {
                   {preview.count === 0 ? (
                     <p className="text-sm text-muted-foreground italic">No loans qualify. Nothing to close.</p>
                   ) : (
-                    <div className="border border-border rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                    <div className="border border-border rounded-lg overflow-hidden max-h-40 overflow-y-auto">
                       {preview.loans.map((l, i) => (
                         <div key={i} className="flex items-center justify-between px-3 py-2 text-sm border-b border-border/50 last:border-0">
                           <div>

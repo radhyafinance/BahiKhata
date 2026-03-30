@@ -195,3 +195,8 @@ class ExpenseSubmissionCreate(BaseModel):
 class YearEndClosingRequest(BaseModel):
     illaka_id: str
     closing_date: str  # "YYYY-MM-DD", typically March 31st
+
+
+class YearEndUndoRequest(BaseModel):
+    illaka_id: str
+    closing_date: str

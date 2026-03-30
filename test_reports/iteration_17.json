@@ -1,0 +1,75 @@
+{
+  "summary": "Iteration 17: Tested Undo Year-End Closing feature. Backend 40/40 tests pass. Frontend all key flows verified with 1 minor UI bug found.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "YearEndClosingModal (IllakaManagement.jsx)",
+        "issue": "After undoing the most recent closing (when multiple closings exist), the remaining (previously-locked) closing incorrectly shows 'Undone' green label instead of 'Undo' button. Root cause: `undoDone` state is set after any undo and is never reset when history is filtered — so the new i=0 entry inherits the 'Undone' label. Workaround: close and reopen the modal. Fix: track which specific closing_date was undone, or reset undoDone when remaining history is non-empty.",
+        "selector": "[data-testid='closing-history'] span.text-green-600",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "feature_tests": {
+    "history_api_200_admin": "PASS - GET /api/loans/year-end-closing/history returns 200 with closings list",
+    "history_sorted_newest_first": "PASS - closings are sorted newest date first",
+    "history_closings_have_date_and_count": "PASS - each entry has closing_date and count fields",
+    "history_muneem_403": "PASS - Muneem gets 403 on GET /api/loans/year-end-closing/history",
+    "history_unauth_401_403": "PASS - Unauthenticated gets 401/403",
+    "undo_muneem_403": "PASS - Muneem gets 403 on POST /api/loans/year-end-closing/undo",
+    "undo_nonexistent_404": "PASS - Undo for non-existent closing returns 404",
+    "undo_reverts_is_gyal": "PASS - After undo, loan has is_gyal=False and no gyal_since",
+    "undo_blocked_400_newer_exists": "PASS - Trying to undo older closing when newer exists returns 400 with detail message",
+    "undo_newer_then_older_flow": "PASS - After undoing newer, the older can be undone successfully",
+    "undo_removed_from_history": "PASS - Undone closing removed from history list",
+    "loan_reappears_in_preview_after_undo": "PASS - After undo, loan eligible for re-closing in preview",
+    "redo_closing_after_undo": "PASS - New closing can be done after undo",
+    "ui_modal_opens_with_history": "PASS - YearEndClosingModal shows 'Previous Year Closings' section with history loaded on mount",
+    "ui_most_recent_has_undo_button": "PASS - Only the most recent closing (i=0) has Undo button",
+    "ui_older_closings_show_locked": "PASS - Older closings (i>0) show 'Locked' text",
+    "ui_confirm_dialog_on_undo": "PASS - Clicking Undo shows window.confirm dialog with correct count",
+    "ui_after_undo_entry_removed": "PASS - After undo, the closing entry is removed from history list",
+    "ui_success_toast_after_undo": "PASS - Toast '1 loan(s) restored from Gyal' shown after undo",
+    "ui_do_another_closing_link": "PASS - After new closing, done state shows 'Do another closing' link",
+    "ui_do_another_closing_flow": "PASS - Clicking 'Do another closing' resets to form, and new closing appears in history",
+    "ui_muneem_no_year_end_buttons": "PASS - Muneem sees 0 Year-End Closing buttons on Illakas page"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_undo_year_end_closing.py",
+    "/app/test_reports/pytest/undo_results.xml"
+  ],
+  "action_items": [
+    "FIX (LOW priority): YearEndClosingModal - After undoing the most recent closing, the remaining most-recent closing shows 'Undone' label instead of 'Undo' button. Fix in handleUndo: track which specific closing date was undone (e.g., use `const [undoDoneDate, setUndoDoneDate] = useState(null)` instead of `undoDone`) so the label only appears on the entry that was actually undone."
+  ],
+  "critical_code_review_comments": [
+    "BUG: YearEndClosingModal `undoDone` state is shared across all rows. After undoing (say) 2025-03-31, the filtered history shows 2024-03-31 as i=0, and since `undoDone.undone_count > 0`, it renders 'Undone' for 2024-03-31 which was NOT undone. Fix: replace `undoDone` with `undoDoneDate` (string) tracking which specific closing_date was undone.",
+    "OK: routes/loans.py history endpoint correctly uses gyal_since as a grouping key and sorts descending - works correctly.",
+    "OK: undo endpoint properly checks for newer closings before allowing undo (gyal_since $gt closing_date).",
+    "OK: undo endpoint deletes gyal_writeoff journal entries by reference_id, entry_type, and illaka_id - good specificity.",
+    "OK: YearEndClosingModal sticky header with max-h-[90vh] overflow-y-auto - modal is scrollable for many closings.",
+    "NOTE: routes/loans.py is now 641 lines (just under 700 limit). Monitor for growth."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_undo_year_end_closing.py"
+  ],
+  "success_rate": {
+    "backend": "100% (40/40 tests pass)",
+    "frontend": "95% (all flows pass; 1 minor UI bug with Undone label misplacement)"
+  },
+  "seed_data_creation": "Created TEST_FrontendLocked_A (KYC 69c9f5dd, loan 69c9f5e4, 2014-01-01) and TEST_FrontendLocked_B (KYC 69c9f5ee, loan 69c9f5ee, 2021-06-01) in Delhi illaka. Delhi currently has 2 closings: 2025-03-31 (1 loan) and 2024-03-31 (11 loans).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 17: Undo Year-End Closing tested. Backend: 40/40 pass (test_undo_year_end_closing.py). Frontend: All flows verified. 1 minor UI bug: after undoing the most recent closing (when 2+ closings exist), the remaining most-recent entry shows 'Undone' instead of 'Undo' button due to undoDone state not being reset. Delhi illaka has 2 closings: 2025-03-31 (1 loan: TEST_FrontendLocked_B) and 2024-03-31 (11 loans). TEST_Illaka_Central (69c6902e2eb75a3158e9a20c) has 1 closing (2025-03-31) from iteration 16 tests (re-done by iteration 17 tests).",
+  "rca_of_issue": {
+    "bug": "Undone label shown on wrong row in YearEndClosingModal",
+    "reproduction": "1. Open year-end modal for an illaka with 2+ closings (e.g., 2025-03-31 and 2024-03-31). 2. Click Undo on 2025-03-31 (most recent). 3. History updates to show only 2024-03-31. 4. 2024-03-31 now shows 'Undone' green label (incorrect - it was not undone).",
+    "root_cause": "In handleUndo, `setUndoDone(res.data)` stores the undo result but this state is used for ALL rows: `{i === 0 && undoDone && undoDone.undone_count > 0 ? <Undone/> : <UndoBtn/>}`. After the undone entry is filtered out of history, the new i=0 entry inherits the Undone state.",
+    "fix": "In IllakaManagement.jsx, replace `const [undoDone, setUndoDone] = useState(null)` with `const [undoDoneDate, setUndoDoneDate] = useState(null)`. In handleUndo: `setUndoDoneDate(closingDateToUndo)`. In render: `undoDoneDate === h.closing_date ? <Undone/> : <UndoBtn/>`"
+  }
+}
