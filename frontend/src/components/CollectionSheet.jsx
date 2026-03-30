@@ -234,7 +234,7 @@ function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
 
           {/* Names column */}
           <div className="pl-1 min-w-0">
-            <p className={`font-semibold text-sm leading-snug break-words ${isGyal ? "text-gray-400 line-through decoration-gray-400" : "text-foreground"}`} data-testid={`client-name-${row.loan_db_id}`}>
+            <p className={`font-semibold text-sm leading-snug break-words ${isGyal ? "text-gray-400" : "text-foreground"}`} data-testid={`client-name-${row.loan_db_id}`}>
               {clientName}
             </p>
             {husbandName && (
