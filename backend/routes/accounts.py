@@ -505,7 +505,22 @@ async def get_bid(
                     if mid not in emi_misal_map:
                         emi_misal_map[mid] = {"misal_id": mid, "misal_name": mname, "total": 0.0}
                         emi_misal_order.append(mid)
-                    emi_misal_map[mid]["total"] = round(emi_misal_map[mid]["total"] + cash_dr, 2)
+                    # Separate interest income (Cr contra of income type) from principal recovery
+                    emi_interest = 0.0
+                    for c in entry["lines"]:
+                        if (c.get("account_head_id") != cash_head_id
+                                and c.get("group_type") == "income"
+                                and float(c.get("credit", 0)) > 0):
+                            emi_interest += float(c.get("credit", 0))
+                            hid = c.get("account_head_id", "")
+                            hname = c.get("account_head_name", "Interest Income")
+                            if hid not in dr_head_map:
+                                dr_head_map[hid] = {"account_head_name": hname, "total": 0.0}
+                            dr_head_map[hid]["total"] = round(
+                                dr_head_map[hid]["total"] + float(c.get("credit", 0)), 2
+                            )
+                    principal_recovery = round(cash_dr - emi_interest, 2)
+                    emi_misal_map[mid]["total"] = round(emi_misal_map[mid]["total"] + principal_recovery, 2)
                 else:
                     # Other income receipts — group by contra account head
                     contra = [l for l in entry["lines"] if l.get("account_head_id") != cash_head_id]
@@ -525,7 +540,10 @@ async def get_bid(
                     gname = c.get("group_name", "")
                     if hid not in cr_head_map:
                         cr_head_map[hid] = {"account_head_name": hname, "group_name": gname, "total": 0.0}
-                    cr_head_map[hid]["total"] = round(cr_head_map[hid]["total"] + cash_cr, 2)
+                    # Use actual debit amount of each contra line (not cash_cr) so multi-line entries are correct
+                    cr_head_map[hid]["total"] = round(
+                        cr_head_map[hid]["total"] + float(c.get("debit", 0)), 2
+                    )
 
     # Build dr_totals
     dr_totals = []
@@ -539,7 +557,10 @@ async def get_bid(
     for h in dr_head_map.values():
         dr_totals.append({"type": "income", "label": h["account_head_name"], "total": h["total"]})
 
-    cr_totals = sorted(cr_head_map.values(), key=lambda x: x["group_name"])
+    cr_totals = sorted(
+        [h for h in cr_head_map.values() if h["total"] > 0],
+        key=lambda x: x["group_name"]
+    )
 
     closing = round(opening_balance + total_dr - total_cr, 2)
     return {

@@ -34,12 +34,25 @@ async def _book_emi_collection(loan_doc: dict, payment: dict, user_id: str, user
             narration = f"Gyal Wasool from {loan_doc['client_name']} | {emi_month} | Loan# {loan_doc.get('loan_number', '')}"
         else:
             sys_heads = await _get_system_heads()
-            if len(sys_heads) < 2:
+            if "cash_in_hand" not in sys_heads or "loans_portfolio" not in sys_heads:
                 return
-            lines = [
-                _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
-                _make_head_line(sys_heads["loans_portfolio"], 0.0, amount),
-            ]
+            # Split EMI into principal recovery and interest income.
+            # interest_per_emi = emi_amount - (principal / 12) reflects actual contractual interest.
+            principal_amount = float(loan_doc.get("principal_amount", 0))
+            interest_per_emi = round(amount - (principal_amount / 12), 2)
+            loans_portfolio_amount = round(amount - interest_per_emi, 2)  # = principal / 12
+
+            if "interest_income" in sys_heads and interest_per_emi > 0:
+                lines = [
+                    _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
+                    _make_head_line(sys_heads["loans_portfolio"], 0.0, loans_portfolio_amount),
+                    _make_head_line(sys_heads["interest_income"], 0.0, interest_per_emi),
+                ]
+            else:
+                lines = [
+                    _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
+                    _make_head_line(sys_heads["loans_portfolio"], 0.0, amount),
+                ]
             narration = f"EMI collected from {loan_doc['client_name']} | {emi_month} | Loan# {loan_doc.get('loan_number', '')}"
 
         await create_journal_entry_internal(

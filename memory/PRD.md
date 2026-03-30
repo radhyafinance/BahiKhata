@@ -158,6 +158,7 @@ See CHANGELOG.md for full history.
 - [x] Enhanced Accounts Module: Full Journal Entry (Admin/Maalik), Expense Sheet per Illaka (Muneem monthly form, Admin template editor), Two-column Cashbook (Dr left/Cr right, EMIs by Misal), "Bid" monthly aggregate tab
 - [x] Admin/Maalik Edit & Delete journal entries; Admin/Maalik Unlock submitted Expense Sheets
 - [x] **Gyal (Bad Debt) Feature** — Manual Year-End Closing per Illaka (Admin/Maalik), marks 36+ month loans as Gyal, creates Bad Debt write-off journal entries, Gyal Wasool (Bad Debt Recovery) income account for EMI collections on Gyal loans, Collection Sheet shows Gyal rows at bottom with grey/muted separator, LoanDetail shows Gyal badge and Gyal-since date. **Undo Year-End Closing**: most recent closing can be undone (reverts loans + deletes write-off entries); blocked if next year's closing exists (added 2026-03-30)
+- [x] **Interest Income Accounting Fix** (2026-03-30): Changed model from "recognize all interest upfront at disbursement" to "recognize interest monthly on EMI collection". Disbursement = 2-line (Dr: Loans Portfolio = principal, Cr: Cash = principal). EMI collection = 3-line (Dr: Cash = emi, Cr: Loans Portfolio = principal/12, Cr: Interest Income = emi - principal/12). Fixed Bid contra aggregation bug. Interest Income now correctly appears on Dr/Receipts side of Bid.
 
 ### P2 (Backlog)
 - [ ] Days Overdue badge on Collection Sheet EMI rows

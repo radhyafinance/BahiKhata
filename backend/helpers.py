@@ -174,18 +174,18 @@ async def _get_system_heads() -> dict:
 
 
 async def book_loan_disbursement(loan_doc: dict, user_id: str, user_name: str) -> None:
-    """Create the journal entry for a loan disbursement. Safe to call from any route."""
+    """Create the journal entry for a loan disbursement.
+    Only principal is recorded here. Interest income is recognised monthly on EMI collection.
+    Safe to call from any route.
+    """
     try:
         sys_heads = await _get_system_heads()
-        if len(sys_heads) < 3:
+        if "loans_portfolio" not in sys_heads or "cash_in_hand" not in sys_heads:
             return
         principal = float(loan_doc.get("principal_amount", 0))
-        interest = float(loan_doc.get("interest_amount", 0))
-        total = float(loan_doc.get("total_repayable", principal + interest))
         lines = [
-            _make_head_line(sys_heads["loans_portfolio"], total, 0.0),
+            _make_head_line(sys_heads["loans_portfolio"], principal, 0.0),
             _make_head_line(sys_heads["cash_in_hand"], 0.0, principal),
-            _make_head_line(sys_heads["interest_income"], 0.0, interest),
         ]
         await create_journal_entry_internal(
             illaka_id=loan_doc.get("illaka_id", ""),
