@@ -83,7 +83,7 @@ export default function Layout() {
       </div>
 
       {/* Nav */}
-      <nav className="flex-1 p-4 space-y-1" data-testid="sidebar-nav">
+      <nav className="flex-1 p-4 space-y-1 overflow-y-auto" data-testid="sidebar-nav">
         {navItems.map((item) => (
           <NavLink
             key={item.to}
