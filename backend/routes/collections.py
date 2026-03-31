@@ -116,24 +116,28 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                 }
             elif not emi:
                 # Non-gyal loan with no EMI for this specific month.
-                # If the loan has at least one EMI within the current FY, keep it on the
-                # sheet using its LAST scheduled EMI as the representative entry.
-                # This covers overdue loans whose 12-month tenure ended before the view month,
-                # and closed loans that are still within the current FY.
+                # Keep if: (a) loan has at least one EMI in the current FY, OR
+                #          (b) loan was disbursed in the current FY (first EMI may be next FY).
                 loan_has_fy_emi = any(e.get("due_month") in fy_months for e in schedule)
-                if not loan_has_fy_emi:
+                loan_date_ym = (loan.get("loan_date") or "")[:7]
+                loan_disbursed_in_fy = loan_date_ym in fy_months
+                if not loan_has_fy_emi and not loan_disbursed_in_fy:
                     continue  # Loan is entirely outside the current FY — skip
-                # Use the last EMI in the schedule as the representative (most recent)
                 if not schedule:
                     continue
-                last_emi = schedule[-1]
+                # For overdue/past-schedule loans: use the LAST EMI (most recent due)
+                # For newly disbursed loans (first EMI in next FY): use the FIRST EMI
+                if loan_disbursed_in_fy and not loan_has_fy_emi:
+                    rep_emi = schedule[0]
+                else:
+                    rep_emi = schedule[-1]
                 emi = {
-                    "due_month": last_emi.get("due_month", month),
-                    "amount": last_emi.get("amount", 0),
-                    "status": last_emi.get("status", "pending"),
-                    "note": last_emi.get("note", ""),
-                    "paid_amount": float(last_emi.get("paid_amount") or 0),
-                    "paid_date": last_emi.get("paid_date", ""),
+                    "due_month": rep_emi.get("due_month", month),
+                    "amount": rep_emi.get("amount", 0),
+                    "status": rep_emi.get("status", "pending"),
+                    "note": rep_emi.get("note", ""),
+                    "paid_amount": float(rep_emi.get("paid_amount") or 0),
+                    "paid_date": rep_emi.get("paid_date", ""),
                 }
 
         loan_illaka_id = loan.get("illaka_id", "unknown")
