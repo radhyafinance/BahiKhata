@@ -372,21 +372,37 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             <p className="lg:hidden text-[10px] text-muted-foreground/70 mt-0.5">{fmtLoanDate(row.loan_date)}</p>
           </div>
 
-          {/* पिछली बाक़ी — desktop only */}
-          <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
-            <p className="font-semibold text-sm tabular-nums text-foreground">
-              {row.netoff_amount > 0 ? fmt(row.netoff_amount) : "—"}
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
-          </div>
+          {/* पिछली बाक़ी — desktop only: loan from a PREVIOUS FY */}
+          {(() => {
+            const loanYm = row.loan_date ? row.loan_date.substring(0, 7) : null;
+            const isOldLoan = loanYm && loanYm < fyMonths[0];
+            return (
+              <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
+                {isOldLoan ? (
+                  <>
+                    <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.total_repayable)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
+                  </>
+                ) : null}
+              </div>
+            );
+          })()}
 
-          {/* किस्त हाल — desktop only */}
-          <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
-            <p className="font-semibold text-sm tabular-nums text-foreground">
-              {row.total_repayable > 0 ? fmt(row.total_repayable) : "—"}
-            </p>
-            <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
-          </div>
+          {/* किस्त हाल — desktop only: loan disbursed in CURRENT FY */}
+          {(() => {
+            const loanYm = row.loan_date ? row.loan_date.substring(0, 7) : null;
+            const isNewLoan = loanYm && loanYm >= fyMonths[0];
+            return (
+              <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
+                {isNewLoan ? (
+                  <>
+                    <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.total_repayable)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
+                  </>
+                ) : null}
+              </div>
+            );
+          })()}
 
           {/* 12-month FY strip — desktop only, expands to fill all available space */}
           <div className="hidden lg:flex self-stretch border-x border-border divide-x divide-border/50">
