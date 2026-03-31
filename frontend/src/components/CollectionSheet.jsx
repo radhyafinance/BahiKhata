@@ -366,7 +366,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         }`}
         data-testid={`collection-row-${row.loan_db_id}`}
       >
-        <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch text-sm">
+        <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch text-sm">
           {/* EMI Amount */}
           <div className="text-right pr-2 pl-3 py-3 flex flex-col justify-center flex-shrink-0">
             {row.is_netoff_combined && row.prev_emi_amount > 0 && (
@@ -397,8 +397,8 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                 {guarantorName}
               </p>
             )}
-            {/* Show loan date on mobile (new cols hidden on mobile) */}
-            <p className="lg:hidden text-[10px] text-muted-foreground/70 mt-0.5">{fmtLoanDate(row.loan_date)}</p>
+            {/* Show loan date on mobile only (not desktop or landscape) */}
+            <p className="lg:hidden landscape:hidden text-[10px] text-muted-foreground/70 mt-0.5">{fmtLoanDate(row.loan_date)}</p>
           </div>
 
           {/* पिछली बाक़ी — desktop only: loan from a PREVIOUS FY (or L1 opening balance for net-off combined) */}
@@ -411,7 +411,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               : isOldLoan;
             const prevAmount = row.is_netoff_combined ? row.prev_opening_balance : row.opening_balance;
             return (
-              <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
+              <div className="hidden lg:flex landscape:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
                 {showPrev ? (
                   <>
                     <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(prevAmount)}</p>
@@ -433,7 +433,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             // For net-off combined rows: always show new loan (L2) amount here
             const showNew = row.is_netoff_combined || isNewLoan;
             return (
-              <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
+              <div className="hidden lg:flex landscape:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
                 {showNew ? (
                   <>
                     <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.total_repayable)}</p>
@@ -450,8 +450,8 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             );
           })()}
 
-          {/* 12-month FY strip — desktop only, expands to fill all available space */}
-          <div className="hidden lg:flex self-stretch border-x border-border divide-x divide-border/50">
+          {/* 12-month FY strip — desktop or landscape, expands to fill all available space */}
+          <div className="hidden lg:flex landscape:flex self-stretch border-x border-border divide-x divide-border/50">
             {(row.emi_year_data || []).map((yd) => {
               const isCurr = yd.month === month;
 
@@ -631,16 +631,17 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       </button>
 
       {expanded && (
-        <div className="divide-y divide-border/60">
+        <div className="landscape:overflow-x-auto">
+        <div className="landscape:min-w-[1024px] divide-y divide-border/60">
           {/* Column Header */}
-          <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch bg-muted/40 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+          <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch bg-muted/40 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
             <span className="text-right pr-2 pl-3 py-2 self-center">EMI</span>
             <span className="pl-2 py-2 self-center">नाम / Name</span>
-            {/* New columns — desktop only */}
-            <span className="hidden lg:flex items-center justify-end pr-2 pl-1 py-2 text-right leading-tight">पिछली बाक़ी</span>
-            <span className="hidden lg:flex items-center justify-end pr-2 pl-1 py-2 text-right leading-tight">किस्त हाल</span>
-            {/* 12-month headers — desktop only, boxy */}
-            <div className="hidden lg:flex self-stretch border-x border-border divide-x divide-border/50 bg-muted/20">
+            {/* New columns — desktop or landscape */}
+            <span className="hidden lg:flex landscape:flex items-center justify-end pr-2 pl-1 py-2 text-right leading-tight">पिछली बाक़ी</span>
+            <span className="hidden lg:flex landscape:flex items-center justify-end pr-2 pl-1 py-2 text-right leading-tight">किस्त हाल</span>
+            {/* 12-month headers — desktop or landscape, boxy */}
+            <div className="hidden lg:flex landscape:flex self-stretch border-x border-border divide-x divide-border/50 bg-muted/20">
               {fyMonths.map(ym => {
                 const mo = parseInt(ym.split("-")[1], 10);
                 const isCurr = ym === month;
@@ -671,6 +672,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               {gyalRows.map((row) => renderRow(row, true))}
             </>
           )}
+        </div>
         </div>
       )}
     </div>

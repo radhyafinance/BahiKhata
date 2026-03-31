@@ -7,6 +7,7 @@ module.exports = {
   ],
   theme: {
   	extend: {
+		screens: { landscape: { raw: "(orientation: landscape)" } },
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
