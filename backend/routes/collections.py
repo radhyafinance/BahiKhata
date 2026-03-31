@@ -70,6 +70,8 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                     "amount": gyal_payment["amount"] if gyal_payment else 0,
                     "status": "paid" if gyal_payment else "pending",
                     "note": preserved_note,
+                    "paid_amount": gyal_payment["amount"] if gyal_payment else 0,
+                    "paid_date": gyal_payment.get("payment_date", "") if gyal_payment else "",
                 }
             elif not emi:
                 continue
@@ -104,6 +106,8 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             "emi_month": emi.get("due_month", month),
             "emi_status": emi.get("status", "pending"),
             "emi_note": emi.get("note") or "",
+            "emi_paid_amount": float(emi.get("paid_amount") or 0) if emi.get("status") == "paid" else 0,
+            "emi_paid_date": emi.get("paid_date") or "",
             "outstanding_balance": outstanding,
             "loan_date": loan.get("loan_date") or "",
             "is_gyal": loan.get("is_gyal", False),
@@ -124,6 +128,24 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         il = illakas_map[il_id]
         misals_list = [il["misals"][m_id] for m_id in misal_order[il_id]]
         result.append({"illaka_id": il["illaka_id"], "illaka_name": il["illaka_name"], "misals": misals_list})
+
+    # Attach the latest year-end closing YYYY-MM per illaka (for frontend permission checks)
+    result_illaka_ids = [il["illaka_id"] for il in result]
+    latest_closings: dict = {}
+    if result_illaka_ids:
+        gyal_loans_q = await db.loans.find(
+            {"illaka_id": {"$in": result_illaka_ids}, "is_gyal": True,
+             "gyal_since": {"$exists": True, "$ne": ""}},
+            {"illaka_id": 1, "gyal_since": 1}
+        ).to_list(5000)
+        for gl in gyal_loans_q:
+            il_id = gl.get("illaka_id", "")
+            gs = gl.get("gyal_since", "")
+            if gs and (il_id not in latest_closings or gs > latest_closings[il_id]):
+                latest_closings[il_id] = gs
+    for il in result:
+        closing = latest_closings.get(il["illaka_id"], "")
+        il["latest_closing_ym"] = closing[:7] if closing else ""
 
     total_rows = sum(len(m["rows"]) for il in result for m in il["misals"])
     collected = sum(1 for il in result for m in il["misals"] for r in m["rows"] if r["emi_status"] == "paid")

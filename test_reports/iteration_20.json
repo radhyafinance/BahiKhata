@@ -1,0 +1,69 @@
+{
+  "summary": "Iteration 20: Tested 'Edit EMI Payment' feature. 17/17 backend tests PASS + full frontend E2E verification. Admin can edit paid EMI entries via PATCH /api/loans/{loan_id}/payments/{emi_month}. Delhi illaka (id: 69c78cf96781e1fb0d95f0dd) has latest_closing_ym='2024-03'; entries ≤ 2024-03 are correctly locked (403). Muneem correctly blocked for non-current months. EditEmiModal fully functional with pre-filled fields and success toast.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "feature_tests": {
+    "collection_sheet_returns_200": "PASS — GET /api/collections/sheet returns 200 for admin",
+    "latest_closing_ym_per_illaka": "PASS — Every illaka in response has latest_closing_ym field",
+    "delhi_latest_closing_ym_is_2024_03": "PASS — Delhi illaka latest_closing_ym = '2024-03'",
+    "paid_rows_have_emi_paid_amount": "PASS — All paid rows have emi_paid_amount > 0",
+    "paid_rows_have_emi_paid_date": "PASS — All paid rows have emi_paid_date field",
+    "unpaid_rows_have_zero_emi_paid_amount": "PASS — Non-paid rows have emi_paid_amount = 0",
+    "admin_edit_current_month_paid_emi_200": "PASS — PATCH /loans/{id}/payments/2026-03 returns 200",
+    "edit_persists_in_collection_sheet": "PASS — After PATCH, collection sheet shows updated amount and date",
+    "edit_only_amount_keeps_date": "PASS — PATCH with only amount field → 200",
+    "invalid_loan_id_returns_400": "PASS — PATCH with invalid loan_id format → 400",
+    "nonexistent_loan_returns_404": "PASS — PATCH with nonexistent loan → 404",
+    "admin_edit_locked_month_2024_01_returns_403": "PASS — 403 for locked month 2024-01 in Delhi",
+    "admin_edit_closing_month_2024_03_returns_403": "PASS — 403 for closing month 2024-03 in Delhi",
+    "admin_edit_unlocked_month_returns_200": "PASS — 200 for emi_month 2026-03 (after closing)",
+    "muneem_edit_past_month_returns_403": "PASS — Muneem editing 2025-01 → 403",
+    "muneem_edit_future_month_returns_403": "PASS — Muneem editing 2026-06 → 403",
+    "muneem_edit_current_month_passes_role_check": "PASS — Muneem editing 2026-03 → not 403 (role check passed)",
+    "edit_buttons_visible_on_paid_rows_current_month": "PASS — 2 Edit buttons on paid rows in 2026-03 (data-testid=edit-emi-btn-{loan_id})",
+    "no_edit_buttons_on_unpaid_rows": "PASS — 11 Collect buttons on unpaid rows, no Edit buttons",
+    "edit_modal_opens": "PASS — EditEmiModal (data-testid=edit-emi-modal) opens on click",
+    "modal_subtitle_shows_edit_entry": "PASS — 'DE0021-L1 · Mar 2026 · Edit Entry' in subtitle",
+    "amount_field_prefilled": "PASS — Amount pre-filled with 950",
+    "date_field_prefilled": "PASS — Date pre-filled with 2026-03-28",
+    "toast_shows_entry_updated": "PASS — Toast: 'Entry updated for TEST_Gyal_Customer2'",
+    "modal_closes_after_submit": "PASS — Modal closed after successful submit",
+    "no_edit_buttons_in_locked_month_2024_02": "PASS — 0 Edit buttons in locked month 2024-02 (admin cannot edit locked entries)",
+    "edit_buttons_back_in_current_month": "PASS — 2 Edit buttons confirmed after switching back to 2026-03"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_edit_emi_payment.py",
+    "/app/test_reports/pytest/edit_emi_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Backend PATCH /loans/{id}/payments/{emi_month}: year-closing lock check runs before schedule lookup — correct order (role check → lock check → schedule → paid check)",
+    "Frontend canEditRow logic correctly uses row.emi_month > latestClosingYm for admin/maalik and row.emi_month === currentMonth for muneem/sipahi",
+    "EditEmiModal initializes amount from row.emi_paid_amount || row.emi_amount and date from row.emi_paid_date — correct fallback chain",
+    "Old journal entry is deleted atomically before creating new one in PATCH endpoint — correct accounting approach",
+    "collections.py correctly includes emi_paid_amount and emi_paid_date (only for paid rows) and latest_closing_ym per illaka"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_edit_emi_payment.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests pass)",
+    "frontend": "100% — all E2E checks pass"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "muneem": "phone=7777000001 / Test@1234"
+  },
+  "seed_data_creation": "No new seed data created. TEST_Gyal_Customer2 loan (id: 69c9e294d9e8bef1b31d5afd) in Delhi had a pre-existing paid EMI in 2026-03 (amount=950, date=2026-03-28). All test edits were restored to original values.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 20: Fully verified 'Edit EMI Payment' feature. Key data: Delhi illaka id=69c78cf96781e1fb0d95f0dd, latest_closing_ym=2024-03. TEST_Gyal_Customer2 loan (id=69c9e294d9e8bef1b31d5afd) has paid EMI in 2026-03 (amount=950, date=2026-03-28). Edit button (data-testid=edit-emi-btn-{loan_id}) appears on paid rows where emi_month > 2024-03. EditEmiModal (data-testid=edit-emi-modal) works with pre-filled amount/date. Toast shows 'Entry updated for {client_name}'. Locked months (≤2024-03) correctly show 0 Edit buttons. Backend test file: /app/backend/tests/test_edit_emi_payment.py (17 tests, all pass).",
+  "rca_of_issue": null
+}

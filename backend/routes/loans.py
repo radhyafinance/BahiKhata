@@ -10,7 +10,7 @@ from helpers import (
     _get_loan_status, _apply_overdue_to_schedule, _add_months, _loan_query_for_user,
     create_journal_entry_internal, _get_system_heads, _make_head_line, book_loan_disbursement
 )
-from models import LoanCreate, LoanStatusUpdate, PaymentCreate, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest, YearEndUndoRequest
+from models import LoanCreate, LoanStatusUpdate, PaymentCreate, PaymentEdit, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest, YearEndUndoRequest
 
 router = APIRouter()
 
@@ -58,6 +58,7 @@ async def _book_emi_collection(loan_doc: dict, payment: dict, user_id: str, user
             misal_name=loan_doc.get("misal_name", ""),
             client_name=loan_doc.get("client_name", ""),
             loan_number=loan_doc.get("loan_number", ""),
+            emi_month=emi_month,
         )
     except Exception as e:
         import logging
@@ -322,6 +323,99 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     )
     await db.payments.delete_one({"loan_id": loan_id, "emi_month": emi_month})
     return {"message": f"EMI for {emi_month} uncollected"}
+
+
+@router.patch("/loans/{loan_id}/payments/{emi_month}")
+async def edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, request: Request):
+    """Edit a paid EMI entry: update amount and/or payment date.
+    Muneem/Sipahi: current month only.
+    Admin/Maalik: any month not locked by year-end closing.
+    """
+    current_user = await get_current_user(request)
+    try:
+        oid = ObjectId(loan_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid loan ID")
+
+    today = date_type.today()
+    current_ym = f"{today.year}-{today.month:02d}"
+
+    doc = await db.loans.find_one({"_id": oid})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    # Role-based time restriction
+    if current_user["role"] in ["muneem", "sipahi"]:
+        if emi_month != current_ym:
+            raise HTTPException(status_code=403, detail="Muneem/Sipahi can only edit entries for the current month")
+    elif current_user["role"] in ["admin", "maalik"]:
+        # Block entries locked by year-end closing
+        latest_gyal = await db.loans.find_one(
+            {"illaka_id": doc["illaka_id"], "is_gyal": True, "gyal_since": {"$exists": True, "$ne": ""}},
+            sort=[("gyal_since", -1)]
+        )
+        if latest_gyal and latest_gyal.get("gyal_since"):
+            closing_ym = latest_gyal["gyal_since"][:7]
+            if emi_month <= closing_ym:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"This entry is locked by year-end closing ({latest_gyal['gyal_since']}). Undo the closing first."
+                )
+
+    schedule = doc.get("emi_schedule", [])
+    emi_item = next((e for e in schedule if e.get("due_month") == emi_month), None)
+    if not emi_item:
+        raise HTTPException(status_code=404, detail=f"EMI month {emi_month} not found in schedule")
+    if emi_item.get("status") != "paid":
+        raise HTTPException(status_code=400, detail="Only paid EMI entries can be edited")
+
+    old_amount = float(emi_item.get("paid_amount") or emi_item.get("amount") or 0)
+    old_date = emi_item.get("paid_date") or ""
+    new_amount = float(data.amount) if data.amount is not None else old_amount
+    new_date = data.payment_date if data.payment_date else old_date
+
+    # Delete the old journal entry for this specific EMI collection
+    # Try by explicit emi_month field (stored on newer entries)
+    old_entry = await db.journal_entries.find_one({
+        "entry_type": "emi_collection",
+        "reference_id": loan_id,
+        "emi_month": emi_month,
+    })
+    if not old_entry and old_date:
+        # Fallback: match by reference_id + entry_type + old paid_date
+        old_entry = await db.journal_entries.find_one({
+            "entry_type": "emi_collection",
+            "reference_id": loan_id,
+            "date": old_date,
+        })
+    if old_entry:
+        await db.journal_entries.delete_one({"_id": old_entry["_id"]})
+
+    # Update EMI schedule
+    now = datetime.now(timezone.utc).isoformat()
+    emi_item["paid_amount"] = new_amount
+    emi_item["paid_date"] = new_date
+    emi_item["edited_by_id"] = current_user["id"]
+    emi_item["edited_by_name"] = current_user["name"]
+
+    total_paid = sum(float(e.get("paid_amount") or 0) for e in schedule if e.get("status") == "paid")
+    await db.loans.update_one(
+        {"_id": oid},
+        {"$set": {"emi_schedule": schedule, "total_paid": total_paid, "updated_at": now}}
+    )
+
+    # Update payments record
+    await db.payments.update_one(
+        {"loan_id": loan_id, "emi_month": emi_month},
+        {"$set": {"amount": new_amount, "payment_date": new_date, "updated_at": now}}
+    )
+
+    # Book new journal entry with corrected values
+    updated_loan = await db.loans.find_one({"_id": oid})
+    payment_record = {"amount": new_amount, "payment_date": new_date, "emi_month": emi_month}
+    await _book_emi_collection(updated_loan, payment_record, current_user["id"], current_user["name"])
+
+    return _doc(updated_loan)
 
 
 @router.patch("/loans/{loan_id}/emi-note")

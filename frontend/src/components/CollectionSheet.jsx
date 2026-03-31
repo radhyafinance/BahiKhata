@@ -6,7 +6,7 @@ import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
-  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock
+  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -190,7 +190,96 @@ function NoteModal({ row, onClose, onSaved }) {
   );
 }
 
-function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
+function EditEmiModal({ row, onClose, onEdited }) {
+  const [amount, setAmount] = useState(row.emi_paid_amount || row.emi_amount);
+  const [date, setDate] = useState(row.emi_paid_date || new Date().toISOString().split("T")[0]);
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await axios.patch(
+        `${API}/loans/${row.loan_db_id}/payments/${row.emi_month}`,
+        { amount: Number(amount), payment_date: date },
+        { withCredentials: true }
+      );
+      toast.success(`Entry updated for ${row.client_name}`);
+      onEdited(row.loan_db_id, row.emi_month, Number(amount), date, res.data);
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to update entry");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="edit-emi-modal">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <div className="relative bg-card rounded-xl shadow-2xl w-full max-w-sm border border-border">
+        <div className="flex items-center justify-between p-4 border-b border-border">
+          <div>
+            <p className="font-bold text-base font-['Outfit']">{row.client_name}</p>
+            <p className="text-xs text-muted-foreground">
+              {row.loan_number} · {fmtMonth(row.emi_month)} · Edit Entry
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted">
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="p-4 space-y-4">
+          <div>
+            <label className="bk-label">
+              <span className="bk-label-en">Amount (₹) *</span>
+              <span className="bk-label-hi">राशि</span>
+            </label>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              className="bk-input"
+              min="1"
+              required
+              data-testid="edit-emi-amount-input"
+            />
+          </div>
+          <div>
+            <label className="bk-label">
+              <span className="bk-label-en">Collection Date *</span>
+              <span className="bk-label-hi">तारीख</span>
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="bk-input"
+              required
+              data-testid="edit-emi-date-input"
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={loading}
+            className="bk-btn-primary flex items-center justify-center gap-2 w-full"
+            data-testid="confirm-edit-emi-btn"
+          >
+            {loading ? <Loader2 size={18} className="animate-spin" /> : <Edit3 size={18} />}
+            Update Entry / बदलाव सहेजें
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+
+function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, onCollect, onNote, onEdit }) {
   const [expanded, setExpanded] = useState(true);
   const navigate = useNavigate();
 
@@ -206,6 +295,17 @@ function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
     const clientName = row.client_name_hindi || row.client_name || "—";
     const husbandName = row.relative_name_hindi || row.relative_name || "";
     const guarantorName = row.guarantor_name_hindi || row.guarantor_name || "";
+
+    // Edit permission: paid rows only
+    const canEditRow = isPaid && (() => {
+      if (userRole === "muneem" || userRole === "sipahi") {
+        return row.emi_month === currentMonth;
+      }
+      if (userRole === "admin" || userRole === "maalik") {
+        return !latestClosingYm || row.emi_month > latestClosingYm;
+      }
+      return false;
+    })();
 
     return (
       <div
@@ -262,7 +362,19 @@ function MisalSection({ misal, month, isFrozen, onCollect, onNote }) {
           {/* Action */}
           <div className="flex flex-col items-center gap-1 pt-0.5">
             {isPaid ? (
-              <CheckCircle size={20} className={isGyal ? "text-gray-400" : "text-green-500"} />
+              <div className="flex flex-col items-center gap-1">
+                <CheckCircle size={20} className={isGyal ? "text-gray-400" : "text-green-500"} />
+                {canEditRow && (
+                  <button
+                    onClick={() => onEdit(row)}
+                    className="flex items-center justify-center gap-0.5 text-[10px] w-full py-1 rounded border border-dashed border-primary/40 text-primary hover:bg-primary/10 transition-colors"
+                    data-testid={`edit-emi-btn-${row.loan_db_id}`}
+                  >
+                    <Edit3 size={9} />
+                    Edit
+                  </button>
+                )}
+              </div>
             ) : isFrozen ? (
               <div className="flex flex-col items-center gap-0.5">
                 <Lock size={14} className="text-muted-foreground" />
@@ -381,6 +493,7 @@ export default function CollectionSheet() {
   const [loading, setLoading] = useState(true);
   const [collectingRow, setCollectingRow] = useState(null);
   const [notingRow, setNotingRow] = useState(null);
+  const [editingRow, setEditingRow] = useState(null);
 
   const fetchSheet = useCallback(async () => {
     setLoading(true);
@@ -431,6 +544,24 @@ export default function CollectionSheet() {
           for (const row of m.rows) {
             if (row.loan_db_id === loanDbId && row.emi_month === emiMonth) {
               row.emi_note = note;
+            }
+          }
+        }
+      }
+      return updated;
+    });
+  };
+
+  const handleEdited = (loanDbId, emiMonth, newAmount, newDate) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const updated = JSON.parse(JSON.stringify(prev));
+      for (const il of updated.illakas) {
+        for (const m of il.misals) {
+          for (const row of m.rows) {
+            if (row.loan_db_id === loanDbId && row.emi_month === emiMonth) {
+              row.emi_paid_amount = newAmount;
+              row.emi_paid_date = newDate;
             }
           }
         }
@@ -519,8 +650,12 @@ export default function CollectionSheet() {
                       (user?.role === "muneem" || user?.role === "sipahi") &&
                       month < defaultMonth
                     }
+                    userRole={user?.role}
+                    currentMonth={defaultMonth}
+                    latestClosingYm={illaka.latest_closing_ym || ""}
                     onCollect={setCollectingRow}
                     onNote={setNotingRow}
+                    onEdit={setEditingRow}
                   />
                 ))}
               </div>
@@ -542,6 +677,14 @@ export default function CollectionSheet() {
           row={notingRow}
           onClose={() => setNotingRow(null)}
           onSaved={handleNoteSaved}
+        />
+      )}
+
+      {editingRow && (
+        <EditEmiModal
+          row={editingRow}
+          onClose={() => setEditingRow(null)}
+          onEdited={handleEdited}
         />
       )}
     </div>

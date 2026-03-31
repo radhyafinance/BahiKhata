@@ -117,6 +117,11 @@ class PaymentCreate(BaseModel):
     notes: Optional[str] = None
 
 
+class PaymentEdit(BaseModel):
+    amount: Optional[float] = None
+    payment_date: Optional[str] = None
+
+
 class EmiNoteUpdate(BaseModel):
     emi_month: str
     note: str
