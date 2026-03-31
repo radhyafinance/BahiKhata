@@ -478,11 +478,27 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                     Edit
                   </button>
                 )}
+                <button
+                  onClick={() => navigate(`/loans/${row.loan_db_id}`)}
+                  className="p-1 rounded hover:bg-muted text-muted-foreground"
+                  title="View"
+                  data-testid={`view-loan-btn-paid-${row.loan_db_id}`}
+                >
+                  <ExternalLink size={12} />
+                </button>
               </div>
             ) : isFrozen ? (
-              <div className="flex flex-col items-center gap-0.5">
+              <div className="flex flex-col items-center gap-1">
                 <Lock size={14} className="text-muted-foreground" />
                 <span className="text-[9px] text-muted-foreground">Locked</span>
+                <button
+                  onClick={() => navigate(`/loans/${row.loan_db_id}`)}
+                  className="p-1 rounded hover:bg-muted text-muted-foreground"
+                  title="View"
+                  data-testid={`view-loan-btn-frozen-${row.loan_db_id}`}
+                >
+                  <ExternalLink size={12} />
+                </button>
               </div>
             ) : (
               <>
