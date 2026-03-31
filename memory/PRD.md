@@ -115,7 +115,6 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 - **journal_entries**: {date, illaka_id, narration, entry_type (manual/expense_voucher/loan_disbursement/emi_collection/**gyal_writeoff**), reference_id, lines [{account_head_id, account_head_name, group_name, group_type, debit, credit}], total_amount, created_by_id, created_by_name}
 - **account_groups**: {name, type (equity/liability/asset/income/expense), nature (debit/credit), display_order}
 - **account_heads**: {name, group_id, group_name, group_type, is_system, system_key, is_active, created_by}
-- **journal_entries**: {date, illaka_id, narration, entry_type (manual/expense_voucher/loan_disbursement/emi_collection), reference_id, lines [{account_head_id, account_head_name, group_name, group_type, debit, credit}], total_amount, created_by_id, created_by_name}
 
 ## 3rd Party Integrations
 - **Emergent Object Storage** — profile photos, Aadhaar scans
@@ -134,14 +133,20 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 | GET | /api/loans/{id} | Get loan with EMI schedule |
 | POST | /api/loans/{id}/payments | Record EMI payment |
 | DELETE | /api/loans/{id}/payments/{emi_month} | Undo payment |
+| PATCH | /api/loans/{id}/payments/{emi_month} | Edit EMI payment (Admin/Maalik: any; Muneem/Sipahi: current month only) |
 | POST | /api/loans/{id}/reloan | Create re-loan (with optional net-off) |
-| GET | /api/collections/sheet | Vasuli collection sheet |
+| GET | /api/collections/sheet | Vasuli collection sheet (includes emi_year_data for FY strip) |
 | GET | /api/dashboard/stats | Dashboard statistics |
 | POST | /api/upload | Upload file to object storage |
 | GET | /api/files/{path} | Serve stored file |
 | POST | /api/ocr/aadhaar | OCR Aadhaar front |
 | POST | /api/ocr/aadhaar-back | OCR Aadhaar back |
 | POST | /api/transliterate | Transliterate to Hindi |
+| GET | /api/accounts/bid | Monthly Bid (P&L aggregate) |
+| GET | /api/accounts/trial-balance | Trial Balance |
+| GET | /api/accounts/balance-sheet | Balance Sheet |
+| GET,POST,DELETE | /api/accounts/opening-balance | Opening Balances |
+| GET | /api/accounts/closing-balances | Closing balances for copy-forward |
 
 ## What's Been Implemented
 See CHANGELOG.md for full history.
@@ -169,20 +174,30 @@ See CHANGELOG.md for full history.
 
 ### P1 (High) — All Done ✓
 - [x] Code Refactoring (backend server.py → core/ + routes/, frontend KYCForm.jsx → kyc/)
-- [x] **AccountsModule Refactoring (2026-03-31)**: Split 1399-line AccountsModule.jsx into 10 focused files under `accounts/` subfolder. Main file reduced to 214 lines (orchestrator only).
+- [x] **AccountsModule Refactoring (2026-03-31)**: Split 1399-line AccountsModule.jsx into 10 focused files under `accounts/` subfolder.
 - [x] Unique Aadhaar + mobile validation
 - [x] Live photo with back camera + auto-GPS
 - [x] Re-Loan with Net-Off (all roles, active + closed loans, optional phone/co-borrower/guarantor edit)
-- [x] Login with Mobile Number instead of Email (phone is now the login identifier for all roles)
+- [x] Login with Mobile Number instead of Email
 - [x] Illaka Selection after login (global context, persists in sessionStorage, switcher in top-right)
 - [x] Accounts Module (Cash Book, P&L Summary, Account Heads management, auto journal entries on loan disbursement & EMI collection)
-- [x] Enhanced Accounts Module: Full Journal Entry (Admin/Maalik), Expense Sheet per Illaka (Muneem monthly form, Admin template editor), Two-column Cashbook (Dr left/Cr right, EMIs by Misal), "Bid" monthly aggregate tab
-- [x] Admin/Maalik Edit & Delete journal entries; Admin/Maalik Unlock submitted Expense Sheets
-- [x] **Gyal (Bad Debt) Feature** — Manual Year-End Closing per Illaka (Admin/Maalik), marks 36+ month loans as Gyal, creates Bad Debt write-off journal entries, Gyal Wasool (Bad Debt Recovery) income account for EMI collections on Gyal loans, Collection Sheet shows Gyal rows at bottom with grey/muted separator, LoanDetail shows Gyal badge and Gyal-since date. **Undo Year-End Closing**: most recent closing can be undone (reverts loans + deletes write-off entries); blocked if next year's closing exists (added 2026-03-30)
-- [x] **Interest Income Accounting Fix** (2026-03-30): Changed model from "recognize all interest upfront at disbursement" to "recognize interest monthly on EMI collection". Disbursement = 2-line (Dr: Loans Portfolio = principal, Cr: Cash = principal). EMI collection = 3-line (Dr: Cash = emi, Cr: Loans Portfolio = principal/12, Cr: Interest Income = emi - principal/12) — only for NEW loans (new-style disbursement). Legacy loans (no disbursement entry) and old-style loans (disbursement with pre-booked interest) continue to use 2-line EMI to prevent double-counting. Bid enhanced to back-calculate interest income from loan principal data for old/legacy EMI entries (batch-fetch) and display correctly on Dr/Receipts side. Fixed negative-interest edge case (Jyoti Rani: EMI < principal/12 → treat as pure principal recovery). Bid contra aggregation bug fixed (uses actual debit amounts, not full cash_cr). Bid now always balances: sum of Dr items = total cash receipts.
+- [x] Enhanced Accounts Module: Full Journal Entry, Expense Sheet per Illaka, Two-column Cashbook, "Bid" monthly aggregate tab
+- [x] Admin/Maalik Edit & Delete journal entries
+- [x] **Gyal (Bad Debt) Feature** — Manual Year-End Closing per Illaka, marks 36+ month loans as Gyal, Gyal Wasool income
+- [x] **Interest Income Accounting Fix (2026-03-30)**
+- [x] **12-Month FY Strip on Collection Sheet Desktop (2026-03-31)**: April→March strip, boxy grid, current month highlighted
+- [x] **EMI Edit on Vasuli (2026-03-31)**: Muneem/Sipahi edit current month only; Admin/Maalik edit before year closing
+- [x] **Copy Opening Balance from Closing (2026-03-31)**: Pre-fill opening balances from last year's closing
+
+### Collection Sheet UI Fixes (2026-03-31) ✓
+- [x] FY strip shows full numbers (1,500) instead of compact format (1.5K)
+- [x] Gyal rows text shown in black (foreground) — background remains grey
+- [x] Real-time state update after Collect/Edit — FY strip updates immediately without page refresh
 
 ### P2 (Backlog)
-- [ ] Days Overdue badge on Collection Sheet EMI rows (P1)
+- [ ] **Days Overdue badge** on Collection Sheet EMI rows (P1)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
-- [x] **12-Month FY Strip on Collection Sheet Desktop (2026-03-31)**: Added April→March financial year strip between client name and balance on desktop (lg+). Each cell shows paid amount with ✓ or note indicator. Current month highlighted. Mobile unaffected. Backend adds `emi_year_data` (12 items) per row.
+- [ ] Forgot Password OTP Flow (Twilio/Paid Gateway)
+- [ ] Misal-level Filtering dropdown on Vasuli
+- [ ] Gyal Summary Dashboard Card (NPA overview)

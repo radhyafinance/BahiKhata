@@ -16,12 +16,10 @@ const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct",
 const fmt = (n) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n || 0);
 
-// Compact amount: 2500 → "2.5K", 3000 → "3K", 500 → "500"
+// Full amount: 2500 → "2,500", 3000 → "3,000"
 const fmtK = (n) => {
   if (!n) return "";
-  if (n >= 10000) return `${Math.round(n / 1000)}K`;
-  if (n >= 1000) return `${+(n / 1000).toFixed(1)}K`;
-  return String(Math.round(n));
+  return new Intl.NumberFormat("en-IN").format(Math.round(n));
 };
 
 // Returns the 12 YYYY-MM strings for the financial year containing `ym` (April → March)
@@ -75,7 +73,7 @@ function CollectModal({ row, onClose, onCollected }) {
         { withCredentials: true }
       );
       toast.success(`Collected from ${row.client_name} / किस्त जमा हुई`);
-      onCollected(row.loan_db_id, res.data);
+      onCollected(row.loan_db_id, res.data, row.emi_month, Number(amount));
       onClose();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to collect");
@@ -335,7 +333,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         key={row.loan_db_id}
         className={`transition-colors ${
           isGyal
-            ? "bg-gray-100/70 opacity-75"
+            ? "bg-gray-100/70"
             : isPaid
             ? "bg-green-50/50"
             : row.emi_status === "overdue"
@@ -347,26 +345,26 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,180px)_1fr_72px_68px] gap-0 items-stretch text-sm">
           {/* EMI Amount */}
           <div className="text-right pr-2 pl-3 py-3 flex flex-col justify-center flex-shrink-0">
-            <p className={`font-bold text-sm leading-tight ${isGyal ? "text-gray-400" : "text-foreground"}`}>
+            <p className={`font-bold text-sm leading-tight text-foreground`}>
               {new Intl.NumberFormat("en-IN").format(row.emi_amount)}
             </p>
             <div className="inline-flex items-center justify-center mt-1 w-full">
-              <StatusIcon size={12} className={isGyal ? "text-gray-400" : status.iconCls} />
+              <StatusIcon size={12} className={status.iconCls} />
             </div>
           </div>
 
           {/* Names column */}
           <div className="pl-2 pr-2 py-2.5 min-w-0 flex flex-col justify-center">
-            <p className={`font-semibold text-sm leading-snug break-words ${isGyal ? "text-gray-400" : "text-foreground"}`} data-testid={`client-name-${row.loan_db_id}`}>
+            <p className={`font-semibold text-sm leading-snug break-words text-foreground`} data-testid={`client-name-${row.loan_db_id}`}>
               {clientName}
             </p>
             {husbandName && (
-              <p className={`text-xs leading-snug break-words mt-0.5 ${isGyal ? "text-gray-400" : "text-muted-foreground"}`} data-testid={`husband-name-${row.loan_db_id}`}>
+              <p className={`text-xs leading-snug break-words mt-0.5 text-muted-foreground`} data-testid={`husband-name-${row.loan_db_id}`}>
                 {husbandName}
               </p>
             )}
             {guarantorName && (
-              <p className={`text-xs leading-snug break-words mt-0.5 ${isGyal ? "text-gray-400" : "text-blue-600"}`} data-testid={`guarantor-name-${row.loan_db_id}`}>
+              <p className={`text-xs leading-snug break-words mt-0.5 text-blue-600`} data-testid={`guarantor-name-${row.loan_db_id}`}>
                 {guarantorName}
               </p>
             )}
@@ -426,10 +424,10 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
 
           {/* Balance */}
           <div className="text-right pr-3 pl-1 py-2.5 flex flex-col justify-center">
-            <p className={`font-semibold text-sm leading-tight tabular-nums ${isGyal ? "text-gray-400" : "text-foreground"}`}>
+            <p className={`font-semibold text-sm leading-tight tabular-nums text-foreground`}>
               {fmt(row.outstanding_balance)}
             </p>
-            <p className={`text-[11px] leading-tight mt-0.5 whitespace-nowrap ${isGyal ? "text-gray-400" : "text-muted-foreground"}`}>
+            <p className={`text-[11px] leading-tight mt-0.5 whitespace-nowrap text-muted-foreground`}>
               {fmtLoanDate(row.loan_date)}
             </p>
           </div>
@@ -438,7 +436,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
           <div className="flex flex-col items-center justify-center gap-1 py-2.5 px-1">
             {isPaid ? (
               <div className="flex flex-col items-center gap-1">
-                <CheckCircle size={20} className={isGyal ? "text-gray-400" : "text-green-500"} />
+                <CheckCircle size={20} className="text-green-500" />
                 {canEditRow && (
                   <button
                     onClick={() => onEdit(row)}
@@ -600,11 +598,11 @@ export default function CollectionSheet() {
 
   useEffect(() => { fetchSheet(); }, [fetchSheet]);
 
-  const handleCollected = (loanDbId, updatedLoan) => {
+  const handleCollected = (loanDbId, updatedLoan, emiMonth, collectedAmount) => {
     // Update the row's EMI status in local state
     setData((prev) => {
       if (!prev) return prev;
-      const updated = { ...prev };
+      const updated = JSON.parse(JSON.stringify(prev));
       for (const il of updated.illakas) {
         for (const m of il.misals) {
           for (const row of m.rows) {
@@ -613,11 +611,19 @@ export default function CollectionSheet() {
               const newPaid = (updatedLoan.total_paid || 0);
               const totalRep = updatedLoan.total_repayable || (updatedLoan.emi_amount * 12);
               row.outstanding_balance = totalRep - newPaid;
+              // Update the FY strip entry for this month
+              if (row.emi_year_data && emiMonth) {
+                const ydEntry = row.emi_year_data.find(yd => yd.month === emiMonth);
+                if (ydEntry) {
+                  ydEntry.status = "paid";
+                  ydEntry.paid_amount = collectedAmount;
+                }
+              }
             }
           }
         }
       }
-      updated.collected = prev.illakas.reduce(
+      updated.collected = updated.illakas.reduce(
         (acc, il) => acc + il.misals.reduce((a, m) => a + m.rows.filter((r) => r.emi_status === "paid").length, 0), 0
       );
       return { ...updated };
@@ -651,6 +657,14 @@ export default function CollectionSheet() {
             if (row.loan_db_id === loanDbId && row.emi_month === emiMonth) {
               row.emi_paid_amount = newAmount;
               row.emi_paid_date = newDate;
+              // Update the FY strip entry for this month
+              if (row.emi_year_data) {
+                const ydEntry = row.emi_year_data.find(yd => yd.month === emiMonth);
+                if (ydEntry) {
+                  ydEntry.paid_amount = newAmount;
+                  ydEntry.paid_date = newDate;
+                }
+              }
             }
           }
         }
