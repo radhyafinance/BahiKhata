@@ -34,6 +34,26 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         [("illaka_id", 1), ("misal_id", 1), ("created_at", 1)]
     ).to_list(5000)
 
+    # Bulk-fetch live illaka & misal names (source of truth)
+    unique_illaka_ids = list({loan.get("illaka_id") for loan in loans if loan.get("illaka_id")})
+    unique_misal_ids = list({loan.get("misal_id") for loan in loans if loan.get("misal_id")})
+    illaka_name_map: dict = {}
+    misal_name_map: dict = {}
+    if unique_illaka_ids:
+        try:
+            oids = [ObjectId(i) for i in unique_illaka_ids]
+            raw_illakas = await db.illakas.find({"_id": {"$in": oids}}, {"_id": 1, "name": 1}).to_list(500)
+            illaka_name_map = {str(d["_id"]): d["name"] for d in raw_illakas}
+        except Exception:
+            pass
+    if unique_misal_ids:
+        try:
+            oids = [ObjectId(i) for i in unique_misal_ids]
+            raw_misals = await db.misals.find({"_id": {"$in": oids}}, {"_id": 1, "name": 1}).to_list(500)
+            misal_name_map = {str(d["_id"]): d["name"] for d in raw_misals}
+        except Exception:
+            pass
+
     # Bulk-fetch KYC data for relative_name / guarantor
     kyc_ids = [loan.get("kyc_id") for loan in loans if loan.get("kyc_id")]
     valid_oids = []
@@ -96,9 +116,9 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                 continue
 
         loan_illaka_id = loan.get("illaka_id", "unknown")
-        illaka_name = loan.get("illaka_name", "Unknown Illaka")
+        illaka_name = illaka_name_map.get(loan_illaka_id) or loan.get("illaka_name", "Unknown Illaka")
         misal_id = loan.get("misal_id", "unknown")
-        misal_name = loan.get("misal_name", "Unknown Misal")
+        misal_name = misal_name_map.get(misal_id) or loan.get("misal_name", "Unknown Misal")
         kyc_id = loan.get("kyc_id", "")
 
         kyc = kyc_map.get(kyc_id, {})

@@ -56,6 +56,11 @@ async def update_illaka(illaka_id: str, data: IllakaCreate, request: Request):
     doc = await db.illakas.find_one({"_id": ObjectId(illaka_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Illaka not found")
+    # Propagate renamed illaka to all denormalized collections
+    name_update = {"$set": {"illaka_name": data.name}}
+    await db.loans.update_many({"illaka_id": illaka_id}, name_update)
+    await db.kycs.update_many({"illaka_id": illaka_id}, name_update)
+    await db.expense_templates.update_many({"illaka_id": illaka_id}, name_update)
     return _doc(doc)
 
 
@@ -101,6 +106,10 @@ async def update_misal(misal_id: str, data: MisalCreate, request: Request):
     updates = {"name": data.name, "illaka_id": data.illaka_id, "description": data.description}
     await db.misals.update_one({"_id": ObjectId(misal_id)}, {"$set": updates})
     doc = await db.misals.find_one({"_id": ObjectId(misal_id)})
+    # Propagate renamed misal to all denormalized collections
+    name_update = {"$set": {"misal_name": data.name}}
+    await db.loans.update_many({"misal_id": misal_id}, name_update)
+    await db.kycs.update_many({"misal_id": misal_id}, name_update)
     return _doc(doc)
 
 
