@@ -457,7 +457,20 @@ async def get_bid(
     illaka_id: Optional[str] = None,
     month: Optional[str] = None,
 ):
-    """Monthly aggregate cashbook — one total row per category/head."""
+    """Monthly aggregate Bahi Khata (Bid) — MFI format.
+
+    Jama (Dr / Left):
+      - EMI Collections: full amount received, grouped by Misal
+      - Interest Income: interest booked from loans disbursed THIS month (recognised at disbursement)
+      - Other cash receipts
+
+    Kharch (Cr / Right):
+      - Loans Portfolio: total outstanding (Principal + Interest) of loans disbursed this month
+      - Other expenses / payments
+
+    Closing balance = Opening + Jama total - Kharch total
+    (equivalent to actual cash position because the interest maths cancel out)
+    """
     current_user = await get_current_user(request)
     if not month:
         today = date_type.today()
@@ -469,7 +482,7 @@ async def get_bid(
     cash_head = await db.account_heads.find_one({"system_key": "cash_in_hand"})
     cash_head_id = str(cash_head["_id"]) if cash_head else None
 
-    # Opening balance
+    # Opening balance (cumulative cash position before this month)
     opening_query = dict(query)
     opening_query["date"] = {"$lt": f"{month}-01"}
     prev_entries = await db.journal_entries.find(opening_query).to_list(10000)
@@ -482,123 +495,82 @@ async def get_bid(
 
     entries = await db.journal_entries.find(query).to_list(2000)
 
-    # ── Pre-fetch loan data for old-style (2-line) EMI entries ─────────────
-    # Old entries have no interest income contra line; we calculate it from the loan.
-    old_emi_loan_ids = set()
-    for _e in entries:
-        if _e.get("entry_type") == "emi_collection" and not _e.get("is_gyal"):
-            _has_interest = any(
-                _l.get("account_head_id") != (cash_head_id or "")
-                and _l.get("group_type") == "income"
-                and float(_l.get("credit", 0)) > 0
-                for _l in _e.get("lines", [])
-            )
-            if not _has_interest and _e.get("reference_id"):
-                old_emi_loan_ids.add(_e["reference_id"])
-
-    old_loan_data: dict = {}
-    interest_income_head_fallback: dict = {}
-    if old_emi_loan_ids:
-        try:
-            _loan_docs = await db.loans.find(
-                {"_id": {"$in": [ObjectId(lid) for lid in old_emi_loan_ids if lid]}},
-                {"_id": 1, "principal_amount": 1, "emi_amount": 1},
-            ).to_list(5000)
-            old_loan_data = {str(ld["_id"]): ld for ld in _loan_docs}
-        except Exception:
-            pass
-        _ih = await db.account_heads.find_one({"system_key": "interest_income"})
-        if _ih:
-            interest_income_head_fallback = {
-                "id": str(_ih["_id"]),
-                "name": _ih.get("name", "Interest Income on Loans"),
-            }
-    # ────────────────────────────────────────────────────────────────────────
-
-    # Collect all cash movements
     emi_misal_map: dict = {}
     emi_misal_order: list = []
-    dr_head_map: dict = {}  # non-EMI income -> grouped by account head
-    cr_head_map: dict = {}  # expenses
-    total_dr = 0.0
-    total_cr = 0.0
+    dr_head_map: dict = {}   # non-EMI dr items (interest income, other receipts)
+    cr_head_map: dict = {}   # loans portfolio + expenses
 
     for entry in entries:
-        for line in entry.get("lines", []):
-            if line.get("account_head_id") != cash_head_id:
-                continue
-            cash_dr = float(line.get("debit", 0))
-            cash_cr = float(line.get("credit", 0))
+        entry_type = entry.get("entry_type", "manual")
+        lines = entry.get("lines", [])
+
+        # ── EMI Collections ──────────────────────────────────────────────────
+        if entry_type == "emi_collection":
+            cash_dr = sum(
+                float(l.get("debit", 0))
+                for l in lines if l.get("account_head_id") == cash_head_id
+            )
+            if cash_dr > 0:
+                mid = entry.get("misal_id") or "no_misal"
+                mname = entry.get("misal_name") or "Unknown Misal"
+                if mid not in emi_misal_map:
+                    emi_misal_map[mid] = {"misal_id": mid, "misal_name": mname, "total": 0.0}
+                    emi_misal_order.append(mid)
+                emi_misal_map[mid]["total"] = round(emi_misal_map[mid]["total"] + cash_dr, 2)
+
+        # ── Loan Disbursements ───────────────────────────────────────────────
+        elif entry_type == "loan_disbursement":
+            for line in lines:
+                if line.get("account_head_id") == cash_head_id:
+                    continue  # Skip cash line
+                hid = line.get("account_head_id", "")
+                hname = line.get("account_head_name", "")
+                gname = line.get("group_name", "")
+                gtype = line.get("group_type", "")
+                line_dr = float(line.get("debit", 0))
+                line_cr = float(line.get("credit", 0))
+
+                if line_dr > 0:
+                    # Loans Portfolio (asset Dr) → Kharch/Credit side of Bid
+                    if hid not in cr_head_map:
+                        cr_head_map[hid] = {"account_head_name": hname, "group_name": gname, "total": 0.0}
+                    cr_head_map[hid]["total"] = round(cr_head_map[hid]["total"] + line_dr, 2)
+
+                if line_cr > 0 and gtype == "income":
+                    # Interest Income (income Cr) → Jama/Debit side of Bid
+                    if hid not in dr_head_map:
+                        dr_head_map[hid] = {"account_head_name": hname, "total": 0.0}
+                    dr_head_map[hid]["total"] = round(dr_head_map[hid]["total"] + line_cr, 2)
+
+        # ── All Other Entries (expenses, manual, expense_sheet, gyal_writeoff…) ─
+        else:
+            cash_dr = sum(float(l.get("debit", 0)) for l in lines if l.get("account_head_id") == cash_head_id)
+            cash_cr = sum(float(l.get("credit", 0)) for l in lines if l.get("account_head_id") == cash_head_id)
 
             if cash_dr > 0:
-                total_dr += cash_dr
-                if entry.get("entry_type") == "emi_collection":
-                    mid = entry.get("misal_id") or "no_misal"
-                    mname = entry.get("misal_name") or "Unknown Misal"
-                    if mid not in emi_misal_map:
-                        emi_misal_map[mid] = {"misal_id": mid, "misal_name": mname, "total": 0.0}
-                        emi_misal_order.append(mid)
-
-                    # Step 1: try to read interest from the entry lines (new-style 3-line entries)
-                    emi_interest = 0.0
-                    for c in entry["lines"]:
-                        if (c.get("account_head_id") != cash_head_id
-                                and c.get("group_type") == "income"
-                                and float(c.get("credit", 0)) > 0):
-                            emi_interest += float(c.get("credit", 0))
-                            hid = c.get("account_head_id", "")
-                            hname = c.get("account_head_name", "Interest Income")
-                            if hid not in dr_head_map:
-                                dr_head_map[hid] = {"account_head_name": hname, "total": 0.0}
-                            dr_head_map[hid]["total"] = round(
-                                dr_head_map[hid]["total"] + float(c.get("credit", 0)), 2
-                            )
-
-                    # Step 2: if no interest line found (old-style entry), calculate from loan data
-                    if emi_interest == 0.0 and interest_income_head_fallback and entry.get("reference_id"):
-                        loan_for_emi = old_loan_data.get(entry["reference_id"])
-                        if loan_for_emi:
-                            principal = float(loan_for_emi.get("principal_amount", 0))
-                            if principal > 0:
-                                calculated_interest = round(cash_dr - (principal / 12), 2)
-                                if calculated_interest > 0:
-                                    emi_interest = calculated_interest
-                                    hid = interest_income_head_fallback["id"]
-                                    hname = interest_income_head_fallback["name"]
-                                    if hid not in dr_head_map:
-                                        dr_head_map[hid] = {"account_head_name": hname, "total": 0.0}
-                                    dr_head_map[hid]["total"] = round(
-                                        dr_head_map[hid]["total"] + emi_interest, 2
-                                    )
-                                # else: EMI < principal/12 (underpayment) — treat full EMI as principal recovery
-
-                    principal_recovery = round(cash_dr - emi_interest, 2)
-                    emi_misal_map[mid]["total"] = round(emi_misal_map[mid]["total"] + principal_recovery, 2)
-                else:
-                    # Other income receipts — group by contra account head
-                    contra = [l for l in entry["lines"] if l.get("account_head_id") != cash_head_id]
-                    for c in contra:
-                        hid = c.get("account_head_id", "")
-                        hname = c.get("account_head_name", "Other Income")
-                        if hid not in dr_head_map:
-                            dr_head_map[hid] = {"account_head_name": hname, "total": 0.0}
-                        dr_head_map[hid]["total"] = round(dr_head_map[hid]["total"] + cash_dr, 2)
+                # Cash received → Jama/Debit side (group by contra head)
+                contra = [l for l in lines if l.get("account_head_id") != cash_head_id]
+                for c in contra:
+                    hid = c.get("account_head_id", "")
+                    hname = c.get("account_head_name", "Other Income")
+                    if hid not in dr_head_map:
+                        dr_head_map[hid] = {"account_head_name": hname, "total": 0.0}
+                    dr_head_map[hid]["total"] = round(dr_head_map[hid]["total"] + cash_dr, 2)
 
             if cash_cr > 0:
-                total_cr += cash_cr
-                contra = [l for l in entry["lines"] if l.get("account_head_id") != cash_head_id]
+                # Cash paid → Kharch/Credit side (use debit of contra for multi-line entries)
+                contra = [l for l in lines if l.get("account_head_id") != cash_head_id]
                 for c in contra:
                     hid = c.get("account_head_id", "")
                     hname = c.get("account_head_name", "Other Expense")
                     gname = c.get("group_name", "")
                     if hid not in cr_head_map:
                         cr_head_map[hid] = {"account_head_name": hname, "group_name": gname, "total": 0.0}
-                    # Use actual debit amount of each contra line (not cash_cr) so multi-line entries are correct
                     cr_head_map[hid]["total"] = round(
                         cr_head_map[hid]["total"] + float(c.get("debit", 0)), 2
                     )
 
-    # Build dr_totals
+    # ── Build response ──────────────────────────────────────────────────────
     dr_totals = []
     if emi_misal_map:
         dr_totals.append({
@@ -608,21 +580,25 @@ async def get_bid(
             "misal_breakdown": [emi_misal_map[m] for m in emi_misal_order],
         })
     for h in dr_head_map.values():
-        dr_totals.append({"type": "income", "label": h["account_head_name"], "total": h["total"]})
+        if h["total"] > 0:
+            dr_totals.append({"type": "income", "label": h["account_head_name"], "total": h["total"]})
 
     cr_totals = sorted(
         [h for h in cr_head_map.values() if h["total"] > 0],
         key=lambda x: x["group_name"]
     )
 
+    total_dr = round(sum(item["total"] for item in dr_totals), 2)
+    total_cr = round(sum(h["total"] for h in cr_totals), 2)
     closing = round(opening_balance + total_dr - total_cr, 2)
+
     return {
         "month": month,
         "opening_balance": round(opening_balance, 2),
         "dr_totals": dr_totals,
         "cr_totals": list(cr_totals),
-        "total_dr": round(total_dr, 2),
-        "total_cr": round(total_cr, 2),
+        "total_dr": total_dr,
+        "total_cr": total_cr,
         "closing_balance": closing,
     }
 

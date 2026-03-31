@@ -1,0 +1,70 @@
+{
+  "summary": "Iteration 18: Tested P0 accounting logic fix for Bahi Khata MFI — disbursement journal entry (3-line), EMI collection journal entry (2-line), Bid (monthly aggregate cashbook) structure and balance. All 26 backend tests pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "feature_tests": {
+    "disbursement_entry_exists": "PASS — loan_disbursement journal entry created on loan creation with reference_id = loan_id",
+    "disbursement_entry_has_3_lines": "PASS — disbursement entry has exactly 3 lines (Dr Loans Portfolio, Cr Cash, Cr Interest Income)",
+    "disbursement_loans_portfolio_dr": "PASS — Loans Portfolio Dr = P + round(P*17/103, 2). For P=10000: Dr=11650.49",
+    "disbursement_cash_cr": "PASS — Cash Cr = P (principal only). For P=10000: Cr=10000.0",
+    "disbursement_interest_income_cr": "PASS — Interest Income Cr = round(P*17/103, 2). For P=10000: Cr=1650.49",
+    "disbursement_entry_balanced": "PASS — Total Dr = Total Cr in all disbursement entries",
+    "emi_entry_exists": "PASS — emi_collection journal entry created on EMI collection",
+    "emi_entry_has_2_lines": "PASS — EMI entry has exactly 2 lines (no interest split / old 3-line format eliminated)",
+    "emi_cash_dr_equals_full_emi": "PASS — Cash Dr = full EMI amount (not just principal portion)",
+    "emi_loans_portfolio_cr_equals_full_emi": "PASS — Loans Portfolio Cr = full EMI amount",
+    "emi_no_interest_income_line": "PASS — EMI entry contains NO Interest Income line",
+    "bid_returns_200": "PASS — GET /api/accounts/bid returns 200 with illaka_id + month params",
+    "bid_has_required_fields": "PASS — Response has month, opening_balance, dr_totals, cr_totals, total_dr, total_cr, closing_balance",
+    "bid_emi_collections_in_dr": "PASS — dr_totals contains emi_total section with positive total",
+    "bid_emi_collections_at_full_cash_amount": "PASS — EMI Collections misal breakdown shows full cash received amounts",
+    "bid_interest_income_in_dr_from_disbursements": "PASS — Interest Income in Dr side comes from loan_disbursement entries only",
+    "bid_loans_portfolio_in_cr": "PASS — Loans Portfolio in cr_totals = P+I for loans disbursed this month",
+    "bid_balance_equation": "PASS — closing_balance = opening_balance + total_dr - total_cr (to 2 decimal places)",
+    "old_3line_emi_entries_at_full_cash_dr": "PASS — Existing 3-line EMI entries appear at full cash_dr amount in Bid (backward compatibility)",
+    "emi_entries_no_contribution_to_interest_income": "PASS — EMI collection entries do not add to Interest Income in Bid Dr side",
+    "formula_6000": "PASS — round(6000 * 17/103, 2) = 990.29",
+    "formula_10000": "PASS — round(10000 * 17/103, 2) = 1650.49",
+    "formula_15000": "PASS — round(15000 * 17/103, 2) = 2475.73",
+    "formula_20000": "PASS — round(20000 * 17/103, 2) = 3300.97",
+    "formula_100000": "PASS — round(100000 * 17/103, 2) = 16504.85",
+    "test_loan_interest_matches_formula": "PASS — Actual interest in disbursement entry matches formula for test loan (P=10000, I=1650.49)"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_accounting_p0_fix.py",
+    "/app/test_reports/pytest/accounting_p0_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OK: helpers.py book_loan_disbursement correctly implements 3-line entry: Dr Loans Portfolio (P+I), Cr Cash (P), Cr Interest Income (round(P*17/103, 2))",
+    "OK: loans.py _book_emi_collection correctly implements 2-line entry for non-Gyal loans: Dr Cash (full EMI), Cr Loans Portfolio (full EMI). No interest split.",
+    "OK: accounts.py get_bid correctly picks cash_dr from emi_collection entries (full amount, not split), interest from loan_disbursement credit lines only, Loans Portfolio from loan_disbursement debit lines",
+    "OK: Bid balance equation closing = opening + total_dr - total_cr is mathematically correct — interest terms cancel out giving real cash position",
+    "OK: Backward-compat handled — old 3-line EMI entries (if any) still use cash_dr for Bid EMI Collections total",
+    "NOTE: routes/loans.py is 627 lines, routes/accounts.py is 922 lines — accounts.py is well over 700 line limit; could be split into accounts_bid.py, accounts_entries.py, accounts_expense.py modules"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_accounting_p0_fix.py"
+  ],
+  "success_rate": {
+    "backend": "100% (26/26 tests pass)",
+    "frontend": "N/A — backend only testing requested"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "sipahi": "phone=8888888888 / Test@1234",
+    "muneem": "phone=7777000001 / Test@1234"
+  },
+  "seed_data_creation": "Created TEST_Accounting_Customer KYC + 1 loan (principal=10000, illaka=Delhi) with 1 EMI collected. These are in the current month (2026-02). Loan ID is in the DB.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 18: All P0 accounting logic tests pass (26/26). Key verified facts: (1) New disbursement entries are 3-line with interest=round(P*17/103,2). (2) New EMI entries are 2-line with full cash amount. (3) Bid Dr shows EMI Collections at full cash_dr and Interest Income from disbursements only. (4) Bid Cr shows Loans Portfolio at P+I. (5) Balance equation holds. Test file: /app/backend/tests/test_accounting_p0_fix.py. Seed data: TEST_Accounting_Customer loan in Delhi illaka, Feb 2026, P=10000, I=1650.49, EMI1 collected.",
+  "rca_of_issue": null
+}

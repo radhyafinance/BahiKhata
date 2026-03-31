@@ -16,7 +16,11 @@ router = APIRouter()
 
 
 async def _book_emi_collection(loan_doc: dict, payment: dict, user_id: str, user_name: str):
-    """Auto-create journal entry on EMI collection."""
+    """Auto-create journal entry on EMI collection.
+    MFI rule: Interest is already recognised at disbursement.
+    EMI entry is always a plain 2-line: Dr Cash | Cr Loans Portfolio (full amount, no split).
+    Gyal loans credit Gyal Wasool instead.
+    """
     try:
         is_gyal = loan_doc.get("is_gyal", False)
         amount = float(payment["amount"])
@@ -36,52 +40,11 @@ async def _book_emi_collection(loan_doc: dict, payment: dict, user_id: str, user
             sys_heads = await _get_system_heads()
             if "cash_in_hand" not in sys_heads or "loans_portfolio" not in sys_heads:
                 return
-
-            # Determine whether to add interest income to this EMI entry.
-            # Three cases:
-            #  1. Legacy loan  — no disbursement journal entry at all → 2-line EMI (no double-counting)
-            #  2. Old-style    — disbursement entry had Cr: Interest Income → 2-line EMI (no double-counting)
-            #  3. New-style    — disbursement entry exists, no interest line → 3-line EMI (monthly recognition)
-            loan_id_str = str(loan_doc["_id"])
-            disbursement_entry = await db.journal_entries.find_one({
-                "entry_type": "loan_disbursement",
-                "reference_id": loan_id_str,
-            })
-
-            if disbursement_entry is None:
-                # Case 1: Legacy loan — created before accounting module
-                use_interest_split = False
-            else:
-                # Check if disbursement had interest pre-booked (old-style)
-                has_interest_in_disbursement = any(
-                    line.get("group_type") == "income"
-                    for line in disbursement_entry.get("lines", [])
-                )
-                use_interest_split = not has_interest_in_disbursement  # Case 2 or 3
-
-            if not use_interest_split:
-                # Old / legacy loan — plain 2-line EMI
-                lines = [
-                    _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
-                    _make_head_line(sys_heads["loans_portfolio"], 0.0, amount),
-                ]
-            else:
-                # New-style loan — recognize interest monthly on collection
-                principal_amount = float(loan_doc.get("principal_amount", 0))
-                interest_per_emi = round(amount - (principal_amount / 12), 2)
-                loans_portfolio_amount = round(amount - interest_per_emi, 2)
-
-                if "interest_income" in sys_heads and interest_per_emi > 0:
-                    lines = [
-                        _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
-                        _make_head_line(sys_heads["loans_portfolio"], 0.0, loans_portfolio_amount),
-                        _make_head_line(sys_heads["interest_income"], 0.0, interest_per_emi),
-                    ]
-                else:
-                    lines = [
-                        _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
-                        _make_head_line(sys_heads["loans_portfolio"], 0.0, amount),
-                    ]
+            # Plain 2-line: interest was already booked at disbursement
+            lines = [
+                _make_head_line(sys_heads["cash_in_hand"], amount, 0.0),
+                _make_head_line(sys_heads["loans_portfolio"], 0.0, amount),
+            ]
             narration = f"EMI collected from {loan_doc['client_name']} | {emi_month} | Loan# {loan_doc.get('loan_number', '')}"
 
         await create_journal_entry_internal(
