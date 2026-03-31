@@ -200,3 +200,15 @@ class YearEndClosingRequest(BaseModel):
 class YearEndUndoRequest(BaseModel):
     illaka_id: str
     closing_date: str
+
+
+class OpeningBalanceLine(BaseModel):
+    account_head_id: str
+    debit: float = 0.0
+    credit: float = 0.0
+
+
+class OpeningBalanceCreate(BaseModel):
+    illaka_id: str
+    date: str  # "YYYY-MM-DD"
+    lines: List[OpeningBalanceLine]

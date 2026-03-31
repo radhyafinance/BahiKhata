@@ -154,6 +154,7 @@ See CHANGELOG.md for full history.
 ### P0 (Balance Sheet & Trial Balance — Done 2026-02) ✓
 - [x] Trial Balance: cumulative, grouped by type, balanced indicator
 - [x] Balance Sheet: Assets vs Capital & Liabilities, balancing plug for opening capital
+- [x] Opening Balance: modal to enter asset/liability/equity starting balances; auto-calculates Opening Capital plug; supports update/delete
 
 ### P1 (High) — All Done ✓
 - [x] Code Refactoring (backend server.py → core/ + routes/, frontend KYCForm.jsx → kyc/)

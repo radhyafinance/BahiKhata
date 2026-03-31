@@ -9,6 +9,7 @@ from helpers import _doc, create_journal_entry_internal
 from models import (
     AccountHeadCreate, AccountHeadUpdate, JournalEntryCreate, SimpleEntryCreate,
     ExpenseTemplateCreate, ExpenseTemplateField, ExpenseSubmissionCreate,
+    OpeningBalanceLine, OpeningBalanceCreate,
 )
 
 router = APIRouter()
@@ -544,6 +545,9 @@ async def get_bid(
 
         # ── All Other Entries (expenses, manual, expense_sheet, gyal_writeoff…) ─
         else:
+            # Skip opening_balance entries — they belong to BS/TB, not the Bid
+            if entry_type == "opening_balance":
+                continue
             cash_dr = sum(float(l.get("debit", 0)) for l in lines if l.get("account_head_id") == cash_head_id)
             cash_cr = sum(float(l.get("credit", 0)) for l in lines if l.get("account_head_id") == cash_head_id)
 
@@ -769,6 +773,127 @@ async def get_balance_sheet(
         "total_capital_side": total_capital_side,
         "is_balanced": abs(total_assets - total_capital_side) < 0.01,
     }
+
+
+# ── Opening Balance ────────────────────────────────────────────────────────────
+
+
+@router.get("/accounts/opening-balance")
+async def get_opening_balance(
+    request: Request,
+    illaka_id: Optional[str] = None,
+):
+    """Return the opening balance journal entry for an illaka, if it exists."""
+    await get_current_user(request)
+    query: dict = {"entry_type": "opening_balance"}
+    if illaka_id:
+        query["illaka_id"] = illaka_id
+    entry = await db.journal_entries.find_one(query)
+    if not entry:
+        return {"entry": None}
+    return {"entry": _doc(entry)}
+
+
+@router.post("/accounts/opening-balance")
+async def create_opening_balance(data: OpeningBalanceCreate, request: Request):
+    """Create (or overwrite) the opening balance for an illaka.
+    Any non-zero line is included; the difference is auto-posted to Opening Capital.
+    """
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Only admin or maalik can set opening balances")
+
+    # Delete previous opening balance for this illaka (allow re-entry)
+    await db.journal_entries.delete_one({
+        "entry_type": "opening_balance",
+        "illaka_id": data.illaka_id,
+    })
+
+    # Ensure Opening Capital equity head exists
+    capital_head = await db.account_heads.find_one({"system_key": "opening_capital"})
+    if not capital_head:
+        group = await db.account_groups.find_one({"group_type": "equity"})
+        doc = {
+            "name": "Opening Capital",
+            "group_name": group["name"] if group else "Owner's Capital",
+            "group_type": "equity",
+            "system_key": "opening_capital",
+            "is_active": True,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }
+        res = await db.account_heads.insert_one(doc)
+        capital_head = await db.account_heads.find_one({"_id": res.inserted_id})
+
+    lines = []
+    total_dr = 0.0
+    total_cr = 0.0
+
+    for line in data.lines:
+        dr = round(float(line.debit), 2)
+        cr = round(float(line.credit), 2)
+        if dr == 0.0 and cr == 0.0:
+            continue
+        try:
+            head = await db.account_heads.find_one({"_id": ObjectId(line.account_head_id)})
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"Invalid account head: {line.account_head_id}")
+        if not head:
+            raise HTTPException(status_code=404, detail=f"Account head not found: {line.account_head_id}")
+        lines.append({
+            "account_head_id": str(head["_id"]),
+            "account_head_name": head["name"],
+            "group_name": head.get("group_name", ""),
+            "group_type": head.get("group_type", ""),
+            "debit": dr,
+            "credit": cr,
+        })
+        total_dr += dr
+        total_cr += cr
+
+    if not lines:
+        raise HTTPException(status_code=400, detail="No non-zero lines provided")
+
+    # Auto-balance via Opening Capital
+    diff = round(total_dr - total_cr, 2)
+    if abs(diff) > 0.01:
+        lines.append({
+            "account_head_id": str(capital_head["_id"]),
+            "account_head_name": capital_head["name"],
+            "group_name": capital_head.get("group_name", "Owner's Capital"),
+            "group_type": capital_head.get("group_type", "equity"),
+            "debit": 0.0 if diff > 0 else abs(diff),
+            "credit": diff if diff > 0 else 0.0,
+        })
+
+    await create_journal_entry_internal(
+        illaka_id=data.illaka_id,
+        date=data.date,
+        narration="Opening Balance",
+        lines=lines,
+        entry_type="opening_balance",
+        reference_id=None,
+        created_by_id=current_user["id"],
+        created_by_name=current_user.get("name", ""),
+    )
+    return {"message": "Opening balance saved"}
+
+
+@router.delete("/accounts/opening-balance")
+async def delete_opening_balance(
+    request: Request,
+    illaka_id: str,
+):
+    """Delete the opening balance for an illaka."""
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Only admin or maalik can delete opening balances")
+    result = await db.journal_entries.delete_one({
+        "entry_type": "opening_balance",
+        "illaka_id": illaka_id,
+    })
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="No opening balance found for this illaka")
+    return {"message": "Opening balance deleted"}
 
 
 # ── Expense Templates (per Illaka, admin-managed) ─────────────────────────────
