@@ -9,7 +9,7 @@ from starlette.middleware.cors import CORSMiddleware
 from core.database import client, db
 from core.auth import hash_password, verify_password
 from core.storage import init_storage
-from routes import auth, users, illakas, kycs, loans, ocr, collections, dashboard, accounts
+from routes import auth, users, illakas, kycs, loans, ocr, collections, dashboard, accounts, passkeys
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -27,6 +27,7 @@ api_router.include_router(ocr.router)
 api_router.include_router(collections.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(accounts.router)
+api_router.include_router(passkeys.router)
 
 app.include_router(api_router)
 
@@ -71,6 +72,9 @@ async def startup():
     await db.loans.create_index("status")
     await db.loans.create_index([("loan_date", -1)])
     await db.payments.create_index("loan_id")
+    await db.webauthn_challenges.create_index("session_id", unique=True)
+    # Auto-expire challenges after 10 minutes
+    await db.webauthn_challenges.create_index("created_at", expireAfterSeconds=600)
 
     admin_email = os.environ.get("ADMIN_EMAIL")
     admin_phone = os.environ.get("ADMIN_PHONE")

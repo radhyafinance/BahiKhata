@@ -32,6 +32,10 @@ def _user_from_doc(doc: dict) -> dict:
     d = dict(doc)
     d["id"] = str(d.pop("_id"))
     d.pop("password_hash", None)
+    # Passkey fields: expose only a boolean flag, never raw credential data
+    d["has_passkeys"] = len(d.pop("passkeys", [])) > 0
+    d.pop("webauthn_reg_challenge", None)
+    d.pop("webauthn_reg_challenge_at", None)
     return d
 
 
