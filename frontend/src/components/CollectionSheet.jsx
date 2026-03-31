@@ -48,26 +48,6 @@ function getFyLabel(fyStart) {
 
 // Active month to send to the API for a given FY start year
 function getApiMonthForFy(fyStart) {
-  const curFyStart = getCurrentFyStart();
-  if (fyStart === curFyStart) {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  }
-  // Past FY: use March of the end year so the backend computes the right FY range
-  return `${fyStart + 1}-03`;
-}
-
-// Returns how many days overdue an EMI is (0 if not yet overdue).
-// emi_month is "YYYY-MM"; due date = last day of that month.
-function getDaysOverdue(emiMonth) {
-  if (!emiMonth) return 0;
-  const [y, m] = emiMonth.split("-").map(Number);
-  const dueDate = new Date(y, m, 0); // last day of emiMonth
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const diff = Math.floor((today - dueDate) / 86400000);
-  return diff > 0 ? diff : 0;
-}
 
 const fmtMonth = (ym) => {
   if (!ym) return "—";
@@ -388,17 +368,6 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             <div className="inline-flex items-center justify-center mt-1 w-full">
               <StatusIcon size={12} className={status.iconCls} />
             </div>
-            {row.emi_status === "overdue" && (() => {
-              const days = getDaysOverdue(row.emi_month);
-              return days > 0 ? (
-                <span
-                  className="mt-1 text-[9px] font-bold leading-none text-red-600 bg-red-50 border border-red-200 rounded px-1 py-0.5 text-center whitespace-nowrap"
-                  data-testid={`overdue-days-${row.loan_db_id}`}
-                >
-                  {days}d
-                </span>
-              ) : null;
-            })()}
           </div>
 
           {/* Names column */}
