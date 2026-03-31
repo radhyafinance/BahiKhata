@@ -119,6 +119,7 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 ## 3rd Party Integrations
 - **Emergent Object Storage** — profile photos, Aadhaar scans
 - **Google Gemini (via Emergent LLM Key)** — Aadhaar OCR + Hindi transliteration (gemini-2.5-flash)
+- **WebAuthn / Passkeys (py_webauthn 2.7.1)** — Optional biometric login (fingerprint / FaceID) for field agents
 
 ## Key API Endpoints
 | Method | Path | Description |
@@ -171,6 +172,14 @@ See CHANGELOG.md for full history.
 - [x] Trial Balance: cumulative, grouped by type, balanced indicator
 - [x] Balance Sheet: Assets vs Capital & Liabilities, balancing plug for opening capital
 - [x] Opening Balance: modal to enter asset/liability/equity starting balances; auto-calculates Opening Capital plug; supports update/delete
+
+### P0 — Passkey / WebAuthn Authentication (2026-03-31) ✓
+- [x] Optional biometric login (fingerprint / FaceID) via WebAuthn / Passkeys standard
+- [x] Backend: 5 new endpoints under `/api/auth/passkey/*` (auth-options, register-options, register-verify, auth-verify, list, delete)
+- [x] Frontend: "Sign in with Passkey" button on Login page; registration prompt after first password login
+- [x] `_user_from_doc` strips raw passkey data, exposes only `has_passkeys` boolean
+- [x] webauthn_challenges collection with 10-min TTL auto-expiry
+- [x] `py_webauthn 2.7.1` library integrated via pip
 
 ### P1 (High) — All Done ✓
 - [x] Code Refactoring (backend server.py → core/ + routes/, frontend KYCForm.jsx → kyc/)

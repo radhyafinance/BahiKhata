@@ -68,10 +68,12 @@ export function AuthProvider({ children }) {
     try {
       assertion = await navigator.credentials.get({ publicKey });
     } catch (err) {
-      if (err.name === "NotAllowedError") throw new Error("Passkey authentication was cancelled.");
-      throw err;
+      if (err.name === "NotAllowedError") throw new Error("Passkey login was cancelled or timed out.");
+      if (err.name === "NotSupportedError" || err.name === "SecurityError")
+        throw new Error("Passkey not supported on this device/browser. Please use your password.");
+      throw new Error("Passkey login failed. Please use your password instead.");
     }
-    if (!assertion) throw new Error("Passkey authentication cancelled.");
+    if (!assertion) throw new Error("Passkey login cancelled.");
 
     // 4. Encode response back to base64url for the backend
     const credential = {
