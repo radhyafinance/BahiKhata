@@ -147,6 +147,9 @@ See CHANGELOG.md for full history.
 - [x] Loan Passbook tab on ClientDetail
 - [x] EMI Notes feature across all views
 
+### P0 (Critical Accounting Fix — Done 2026-02) ✓
+- [x] **Bid & Disbursement Accounting Fix**: MFI-specific rules implemented. Interest = `Principal × 17/103` recognised UPFRONT at disbursement. 3-line disbursement entry: Dr Loans Portfolio (P+I), Cr Cash (P), Cr Interest Income (I). EMI collection = simple 2-line (Dr Cash, Cr Loans Portfolio — no split). Bid Jama/Dr = EMI Collections (full amount by Misal) + Interest Income (from disbursements only). Bid Kharch/Cr = Loans Portfolio (P+I per loan) + expenses. Balance equation verified: Opening + Dr - Cr = Closing.
+
 ### P1 (High) — All Done ✓
 - [x] Code Refactoring (backend server.py → core/ + routes/, frontend KYCForm.jsx → kyc/)
 - [x] Unique Aadhaar + mobile validation
@@ -161,6 +164,6 @@ See CHANGELOG.md for full history.
 - [x] **Interest Income Accounting Fix** (2026-03-30): Changed model from "recognize all interest upfront at disbursement" to "recognize interest monthly on EMI collection". Disbursement = 2-line (Dr: Loans Portfolio = principal, Cr: Cash = principal). EMI collection = 3-line (Dr: Cash = emi, Cr: Loans Portfolio = principal/12, Cr: Interest Income = emi - principal/12) — only for NEW loans (new-style disbursement). Legacy loans (no disbursement entry) and old-style loans (disbursement with pre-booked interest) continue to use 2-line EMI to prevent double-counting. Bid enhanced to back-calculate interest income from loan principal data for old/legacy EMI entries (batch-fetch) and display correctly on Dr/Receipts side. Fixed negative-interest edge case (Jyoti Rani: EMI < principal/12 → treat as pure principal recovery). Bid contra aggregation bug fixed (uses actual debit amounts, not full cash_cr). Bid now always balances: sum of Dr items = total cash receipts.
 
 ### P2 (Backlog)
-- [ ] Days Overdue badge on Collection Sheet EMI rows
+- [ ] Days Overdue badge on Collection Sheet EMI rows (P1)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
