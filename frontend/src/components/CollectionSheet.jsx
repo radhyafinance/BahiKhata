@@ -596,38 +596,20 @@ export default function CollectionSheet() {
     }
   }, [month, selectedIllaka]);
 
+  // Silent background re-fetch — no loading spinner, just syncs data with server
+  const silentFetch = useCallback(async () => {
+    try {
+      const params = new URLSearchParams({ month });
+      if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
+      const res = await axios.get(`${API}/collections/sheet?${params}`, { withCredentials: true });
+      setData(res.data);
+    } catch (_) {}
+  }, [month, selectedIllaka]);
+
   useEffect(() => { fetchSheet(); }, [fetchSheet]);
 
-  const handleCollected = (loanDbId, updatedLoan, emiMonth, collectedAmount) => {
-    // Update the row's EMI status in local state
-    setData((prev) => {
-      if (!prev) return prev;
-      const updated = JSON.parse(JSON.stringify(prev));
-      for (const il of updated.illakas) {
-        for (const m of il.misals) {
-          for (const row of m.rows) {
-            if (row.loan_db_id === loanDbId) {
-              row.emi_status = "paid";
-              const newPaid = (updatedLoan.total_paid || 0);
-              const totalRep = updatedLoan.total_repayable || (updatedLoan.emi_amount * 12);
-              row.outstanding_balance = totalRep - newPaid;
-              // Update the FY strip entry for this month
-              if (row.emi_year_data && emiMonth) {
-                const ydEntry = row.emi_year_data.find(yd => yd.month === emiMonth);
-                if (ydEntry) {
-                  ydEntry.status = "paid";
-                  ydEntry.paid_amount = collectedAmount;
-                }
-              }
-            }
-          }
-        }
-      }
-      updated.collected = updated.illakas.reduce(
-        (acc, il) => acc + il.misals.reduce((a, m) => a + m.rows.filter((r) => r.emi_status === "paid").length, 0), 0
-      );
-      return { ...updated };
-    });
+  const handleCollected = (_loanDbId, _updatedLoan, _emiMonth, _collectedAmount) => {
+    silentFetch();
   };
 
   const handleNoteSaved = (loanDbId, emiMonth, note) => {
@@ -647,30 +629,8 @@ export default function CollectionSheet() {
     });
   };
 
-  const handleEdited = (loanDbId, emiMonth, newAmount, newDate) => {
-    setData((prev) => {
-      if (!prev) return prev;
-      const updated = JSON.parse(JSON.stringify(prev));
-      for (const il of updated.illakas) {
-        for (const m of il.misals) {
-          for (const row of m.rows) {
-            if (row.loan_db_id === loanDbId && row.emi_month === emiMonth) {
-              row.emi_paid_amount = newAmount;
-              row.emi_paid_date = newDate;
-              // Update the FY strip entry for this month
-              if (row.emi_year_data) {
-                const ydEntry = row.emi_year_data.find(yd => yd.month === emiMonth);
-                if (ydEntry) {
-                  ydEntry.paid_amount = newAmount;
-                  ydEntry.paid_date = newDate;
-                }
-              }
-            }
-          }
-        }
-      }
-      return updated;
-    });
+  const handleEdited = (_loanDbId, _emiMonth, _newAmount, _newDate) => {
+    silentFetch();
   };
 
   const totalRows = data?.total || 0;
