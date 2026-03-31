@@ -185,4 +185,4 @@ See CHANGELOG.md for full history.
 - [ ] Days Overdue badge on Collection Sheet EMI rows (P1)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
-- [x] **Copy Opening Balance from Year-End Closing (2026-03-31)**: New `GET /api/accounts/closing-balances` endpoint; OpeningBalanceModal shows a "Year-End Closing found" banner with "Copy as Opening" button only when a closing exists for the Illaka; pre-fills all account amounts and sets date to April 1 of next FY.
+- [x] **Edit EMI Entry on Collection Sheet (2026-03-31)**: PATCH `/loans/{id}/payments/{emi_month}` endpoint. Muneem/Sipahi can edit current-month paid entries only. Admin/Maalik can edit any entry not locked by year-end closing. EditEmiModal pre-fills paid amount + date. Old journal entry is deleted and replaced atomically.
