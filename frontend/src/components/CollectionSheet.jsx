@@ -344,9 +344,9 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         }`}
         data-testid={`collection-row-${row.loan_db_id}`}
       >
-        <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,1fr)_432px_72px_68px] gap-0 items-start px-3 py-2.5 text-sm">
+        <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,180px)_1fr_72px_68px] gap-0 items-stretch text-sm">
           {/* EMI Amount */}
-          <div className="text-right pr-2 pt-0.5 flex-shrink-0">
+          <div className="text-right pr-2 pl-3 py-3 flex flex-col justify-center flex-shrink-0">
             <p className={`font-bold text-sm leading-tight ${isGyal ? "text-gray-400" : "text-foreground"}`}>
               {new Intl.NumberFormat("en-IN").format(row.emi_amount)}
             </p>
@@ -356,7 +356,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
           </div>
 
           {/* Names column */}
-          <div className="pl-1 min-w-0">
+          <div className="pl-2 pr-2 py-2.5 min-w-0 flex flex-col justify-center">
             <p className={`font-semibold text-sm leading-snug break-words ${isGyal ? "text-gray-400" : "text-foreground"}`} data-testid={`client-name-${row.loan_db_id}`}>
               {clientName}
             </p>
@@ -372,15 +372,14 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             )}
           </div>
 
-          {/* 12-month FY strip — desktop only */}
-          <div className="hidden lg:flex items-center self-center gap-0">
+          {/* 12-month FY strip — desktop only, expands to fill all available space */}
+          <div className="hidden lg:flex self-stretch border-x border-border divide-x divide-border/50">
             {(row.emi_year_data || []).map((yd) => {
               const isCurr = yd.month === month;
-              const ringCls = isCurr ? "ring-1 ring-inset ring-primary/60" : "";
 
               if (yd.status === "na") {
                 return (
-                  <div key={yd.month} className={`w-9 h-7 ${ringCls} rounded`} />
+                  <div key={yd.month} className={`flex-1 ${isCurr ? "bg-primary/5" : "bg-muted/10"}`} />
                 );
               }
               if (yd.status === "paid") {
@@ -389,11 +388,11 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                   <div
                     key={yd.month}
                     title={hasNote ? `₹${yd.paid_amount} — ${yd.note}` : `Paid ₹${yd.paid_amount}`}
-                    className={`w-9 h-7 flex flex-col items-center justify-center rounded ${isCurr ? "bg-green-200" : "bg-green-100"} ${ringCls}`}
+                    className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${isCurr ? "bg-green-200" : "bg-green-100"}`}
                   >
-                    <span className="text-green-800 text-[9px] font-bold leading-none">✓</span>
-                    <span className="text-green-700 text-[8px] leading-none mt-px">{fmtK(yd.paid_amount)}</span>
-                    {hasNote && <span className="absolute w-1.5 h-1.5 rounded-full bg-amber-400 -top-0.5 -right-0.5" />}
+                    <span className="text-green-800 text-sm font-bold leading-none">✓</span>
+                    <span className="text-green-700 text-xs font-bold leading-none">{fmtK(yd.paid_amount)}</span>
+                    {hasNote && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
                   </div>
                 );
               }
@@ -402,30 +401,31 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                   <div
                     key={yd.month}
                     title={yd.note}
-                    className={`w-9 h-7 flex items-center justify-center rounded bg-amber-50 ${ringCls}`}
+                    className={`flex-1 flex flex-col items-center justify-center gap-1 px-1 ${isCurr ? "bg-amber-100" : "bg-amber-50/70"}`}
                   >
-                    <Pencil size={9} className="text-amber-600" />
+                    <Pencil size={11} className="text-amber-600 shrink-0" />
+                    <span className="text-amber-700 text-[9px] font-semibold leading-tight text-center line-clamp-2">{yd.note}</span>
                   </div>
                 );
               }
               if (yd.status === "overdue") {
                 return (
-                  <div key={yd.month} className={`w-9 h-7 flex items-center justify-center rounded ${isCurr ? "bg-red-100" : ""} ${ringCls}`}>
-                    <span className="text-red-400 text-[10px] font-bold">!</span>
+                  <div key={yd.month} className={`flex-1 flex items-center justify-center ${isCurr ? "bg-red-100" : ""}`}>
+                    <span className="text-red-400 text-base font-bold">!</span>
                   </div>
                 );
               }
               // pending
               return (
-                <div key={yd.month} className={`w-9 h-7 flex items-center justify-center ${ringCls} rounded`}>
-                  <span className="text-muted-foreground/25 text-base leading-none">·</span>
+                <div key={yd.month} className={`flex-1 flex items-center justify-center ${isCurr ? "bg-primary/5" : ""}`}>
+                  <span className="text-muted-foreground/20 text-xl leading-none">·</span>
                 </div>
               );
             })}
           </div>
 
           {/* Balance */}
-          <div className="text-right pr-2 pt-0.5">
+          <div className="text-right pr-3 pl-1 py-2.5 flex flex-col justify-center">
             <p className={`font-semibold text-sm leading-tight tabular-nums ${isGyal ? "text-gray-400" : "text-foreground"}`}>
               {fmt(row.outstanding_balance)}
             </p>
@@ -435,7 +435,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
           </div>
 
           {/* Action */}
-          <div className="flex flex-col items-center gap-1 pt-0.5">
+          <div className="flex flex-col items-center justify-center gap-1 py-2.5 px-1">
             {isPaid ? (
               <div className="flex flex-col items-center gap-1">
                 <CheckCircle size={20} className={isGyal ? "text-gray-400" : "text-green-500"} />
@@ -529,23 +529,23 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {expanded && (
         <div className="divide-y divide-border/60">
           {/* Column Header */}
-          <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,1fr)_432px_72px_68px] gap-0 px-3 py-1.5 bg-muted/20 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
-            <span className="text-right pr-2">EMI</span>
-            <span className="pl-1">नाम</span>
-            {/* 12-month headers — desktop only */}
-            <div className="hidden lg:flex items-center">
+          <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,180px)_1fr_72px_68px] gap-0 items-stretch bg-muted/40 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+            <span className="text-right pr-2 pl-3 py-2 self-center">EMI</span>
+            <span className="pl-2 py-2 self-center">नाम / Name</span>
+            {/* 12-month headers — desktop only, boxy */}
+            <div className="hidden lg:flex self-stretch border-x border-border divide-x divide-border/50 bg-muted/20">
               {fyMonths.map(ym => {
                 const mo = parseInt(ym.split("-")[1], 10);
                 const isCurr = ym === month;
                 return (
-                  <div key={ym} className={`w-9 text-center text-[9px] font-bold ${isCurr ? "text-primary" : "text-muted-foreground/50"}`}>
+                  <div key={ym} className={`flex-1 flex items-center justify-center py-2 text-[11px] font-bold tracking-wide ${isCurr ? "text-primary bg-primary/8" : "text-muted-foreground/60"}`}>
                     {MONTH_ABBR[mo - 1]}
                   </div>
                 );
               })}
             </div>
-            <span className="text-right pr-2">शेष राशि</span>
-            <span className="text-center">Action</span>
+            <span className="text-right pr-3 pl-1 py-2 self-center">शेष / Bal</span>
+            <span className="text-center py-2 self-center">Action</span>
           </div>
 
           {/* Regular rows */}
