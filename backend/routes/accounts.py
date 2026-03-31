@@ -603,6 +603,174 @@ async def get_bid(
     }
 
 
+# ── Trial Balance ──────────────────────────────────────────────────────────────
+
+@router.get("/accounts/trial-balance")
+async def get_trial_balance(
+    request: Request,
+    illaka_id: Optional[str] = None,
+    month: Optional[str] = None,
+):
+    """Cumulative trial balance as of the last day of the selected month.
+    Aggregates ALL journal entries from inception up to end of `month`.
+    """
+    current_user = await get_current_user(request)
+    if not month:
+        today = date_type.today()
+        month = f"{today.year}-{today.month:02d}"
+
+    query = await _illaka_filter_for_user(current_user, illaka_id)
+
+    # Include everything up to (but not including) the first day of the NEXT month
+    y, m = map(int, month.split("-"))
+    next_y, next_m = (y + 1, 1) if m == 12 else (y, m + 1)
+    next_month_start = f"{next_y}-{next_m:02d}-01"
+    query["date"] = {"$lt": next_month_start}
+
+    entries = await db.journal_entries.find(query).to_list(50000)
+
+    head_totals: dict = {}
+    for entry in entries:
+        for line in entry.get("lines", []):
+            hid = line.get("account_head_id")
+            if not hid:
+                continue
+            if hid not in head_totals:
+                head_totals[hid] = {
+                    "account_head_id": hid,
+                    "account_head_name": line.get("account_head_name", ""),
+                    "group_name": line.get("group_name", ""),
+                    "group_type": line.get("group_type", ""),
+                    "total_debit": 0.0,
+                    "total_credit": 0.0,
+                }
+            head_totals[hid]["total_debit"] += float(line.get("debit", 0))
+            head_totals[hid]["total_credit"] += float(line.get("credit", 0))
+
+    type_order = {"asset": 0, "liability": 1, "equity": 2, "income": 3, "expense": 4}
+    rows = sorted(
+        head_totals.values(),
+        key=lambda x: (type_order.get(x["group_type"], 9), x["group_name"], x["account_head_name"])
+    )
+    for row in rows:
+        row["total_debit"] = round(row["total_debit"], 2)
+        row["total_credit"] = round(row["total_credit"], 2)
+        row["net_balance"] = round(row["total_debit"] - row["total_credit"], 2)
+
+    total_dr = round(sum(r["total_debit"] for r in rows), 2)
+    total_cr = round(sum(r["total_credit"] for r in rows), 2)
+
+    return {
+        "month": month,
+        "rows": list(rows),
+        "total_debit": total_dr,
+        "total_credit": total_cr,
+        "is_balanced": abs(total_dr - total_cr) < 0.01,
+    }
+
+
+# ── Balance Sheet ───────────────────────────────────────────────────────────────
+
+@router.get("/accounts/balance-sheet")
+async def get_balance_sheet(
+    request: Request,
+    illaka_id: Optional[str] = None,
+    month: Optional[str] = None,
+):
+    """Balance Sheet as of the last day of the selected month.
+    Assets = Liabilities + Capital + Net Profit.
+    Opening/Unrecorded Capital is derived as the balancing figure.
+    """
+    current_user = await get_current_user(request)
+    if not month:
+        today = date_type.today()
+        month = f"{today.year}-{today.month:02d}"
+
+    query = await _illaka_filter_for_user(current_user, illaka_id)
+    y, m = map(int, month.split("-"))
+    next_y, next_m = (y + 1, 1) if m == 12 else (y, m + 1)
+    next_month_start = f"{next_y}-{next_m:02d}-01"
+    query["date"] = {"$lt": next_month_start}
+
+    entries = await db.journal_entries.find(query).to_list(50000)
+
+    head_totals: dict = {}
+    for entry in entries:
+        for line in entry.get("lines", []):
+            hid = line.get("account_head_id")
+            if not hid:
+                continue
+            if hid not in head_totals:
+                head_totals[hid] = {
+                    "account_head_name": line.get("account_head_name", ""),
+                    "group_name": line.get("group_name", ""),
+                    "group_type": line.get("group_type", ""),
+                    "total_debit": 0.0,
+                    "total_credit": 0.0,
+                }
+            head_totals[hid]["total_debit"] += float(line.get("debit", 0))
+            head_totals[hid]["total_credit"] += float(line.get("credit", 0))
+
+    assets, liabilities, equity_items = [], [], []
+    income_total = 0.0
+    expense_total = 0.0
+
+    for h in head_totals.values():
+        dr = round(h["total_debit"], 2)
+        cr = round(h["total_credit"], 2)
+        gtype = h["group_type"]
+        if gtype == "asset":
+            assets.append({
+                "account_head_name": h["account_head_name"],
+                "group_name": h["group_name"],
+                "amount": round(dr - cr, 2),
+            })
+        elif gtype == "liability":
+            liabilities.append({
+                "account_head_name": h["account_head_name"],
+                "group_name": h["group_name"],
+                "amount": round(cr - dr, 2),
+            })
+        elif gtype == "equity":
+            equity_items.append({
+                "account_head_name": h["account_head_name"],
+                "group_name": h["group_name"],
+                "amount": round(cr - dr, 2),
+            })
+        elif gtype == "income":
+            income_total += round(cr - dr, 2)
+        elif gtype == "expense":
+            expense_total += round(dr - cr, 2)
+
+    net_profit = round(income_total - expense_total, 2)
+    total_assets = round(sum(a["amount"] for a in assets), 2)
+    total_liabilities = round(sum(l["amount"] for l in liabilities), 2)
+    total_equity = round(sum(e["amount"] for e in equity_items), 2)
+
+    # Opening/Unrecorded Capital = balancing figure
+    opening_capital = round(total_assets - total_liabilities - total_equity - net_profit, 2)
+
+    assets.sort(key=lambda x: x["group_name"])
+    liabilities.sort(key=lambda x: x["group_name"])
+    equity_items.sort(key=lambda x: x["group_name"])
+
+    total_capital_side = round(total_liabilities + total_equity + net_profit + opening_capital, 2)
+
+    return {
+        "month": month,
+        "assets": assets,
+        "liabilities": liabilities,
+        "equity_items": equity_items,
+        "net_profit": net_profit,
+        "opening_capital": opening_capital,
+        "total_assets": total_assets,
+        "total_liabilities": total_liabilities,
+        "total_equity": total_equity,
+        "total_capital_side": total_capital_side,
+        "is_balanced": abs(total_assets - total_capital_side) < 0.01,
+    }
+
+
 # ── Expense Templates (per Illaka, admin-managed) ─────────────────────────────
 
 @router.get("/accounts/expense-templates")

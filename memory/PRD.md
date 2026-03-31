@@ -148,7 +148,12 @@ See CHANGELOG.md for full history.
 - [x] EMI Notes feature across all views
 
 ### P0 (Critical Accounting Fix — Done 2026-02) ✓
-- [x] **Bid & Disbursement Accounting Fix**: MFI-specific rules implemented. Interest = `Principal × 17/103` recognised UPFRONT at disbursement. 3-line disbursement entry: Dr Loans Portfolio (P+I), Cr Cash (P), Cr Interest Income (I). EMI collection = simple 2-line (Dr Cash, Cr Loans Portfolio — no split). Bid Jama/Dr = EMI Collections (full amount by Misal) + Interest Income (from disbursements only). Bid Kharch/Cr = Loans Portfolio (P+I per loan) + expenses. Balance equation verified: Opening + Dr - Cr = Closing.
+- [x] Bid & Disbursement Accounting Fix (interest = principal × 17/103, upfront recognition)
+- [x] Interest formula corrected throughout: `_build_emi_schedule`, `ReviewSection.jsx`, `LoanForm.jsx`
+
+### P0 (Balance Sheet & Trial Balance — Done 2026-02) ✓
+- [x] Trial Balance: cumulative, grouped by type, balanced indicator
+- [x] Balance Sheet: Assets vs Capital & Liabilities, balancing plug for opening capital
 
 ### P1 (High) — All Done ✓
 - [x] Code Refactoring (backend server.py → core/ + routes/, frontend KYCForm.jsx → kyc/)

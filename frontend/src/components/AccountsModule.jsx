@@ -6,7 +6,7 @@ import {
   BookOpen, TrendingUp, TrendingDown, Plus, Trash2,
   ChevronLeft, ChevronRight, Lock, Zap, Settings, RefreshCw,
   ArrowUpCircle, ArrowDownCircle, BarChart3, IndianRupee,
-  FileText, Edit3,
+  FileText, Edit3, Scale, Table,
 } from "lucide-react";
 import FullJournalEntryModal from "./FullJournalEntryModal";
 import ExpenseSheet from "./ExpenseSheet";
@@ -713,6 +713,251 @@ function PLSummary({ month, illakaId, refresh }) {
   );
 }
 
+// ── Trial Balance ──────────────────────────────────────────────────────────────
+function TrialBalance({ month, illakaId, refresh }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [y, m] = month.split("-").map(Number);
+  const label = `${MONTHS[m - 1]} ${y}`;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ month });
+      if (illakaId) params.set("illaka_id", illakaId);
+      const res = await fetch(`${API}/api/accounts/trial-balance?${params}`, { credentials: "include" });
+      setData(await res.json());
+    } catch { toast.error("Failed to load Trial Balance"); }
+    finally { setLoading(false); }
+  }, [month, illakaId, refresh]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+
+  const rows = data?.rows || [];
+  const typeLabel = { asset: "Assets", liability: "Liabilities", equity: "Equity / Capital", income: "Income", expense: "Expenses" };
+  const typeColor = { asset: "text-blue-700", liability: "text-orange-700", equity: "text-purple-700", income: "text-green-700", expense: "text-red-700" };
+  const typeBg = { asset: "bg-blue-50/60", liability: "bg-orange-50/60", equity: "bg-purple-50/60", income: "bg-green-50/60", expense: "bg-red-50/60" };
+
+  // Group rows by type
+  const grouped = rows.reduce((acc, r) => {
+    const t = r.group_type || "other";
+    if (!acc[t]) acc[t] = [];
+    acc[t].push(r);
+    return acc;
+  }, {});
+  const typeOrder = ["asset", "liability", "equity", "income", "expense"];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold">Trial Balance</h2>
+          <p className="text-sm text-muted-foreground">Cumulative as of {label}</p>
+        </div>
+        {data && (
+          <span className={`text-xs font-bold px-3 py-1 rounded-full ${data.is_balanced ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
+            {data.is_balanced ? "✓ Balanced" : "⚠ Out of Balance"}
+          </span>
+        )}
+      </div>
+
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        {/* Header */}
+        <div className="grid grid-cols-12 text-xs font-bold text-muted-foreground uppercase tracking-wide px-4 py-2.5 bg-muted/50 border-b border-border">
+          <div className="col-span-5">Account Head</div>
+          <div className="col-span-3 text-center">Group</div>
+          <div className="col-span-2 text-right">Debit</div>
+          <div className="col-span-2 text-right">Credit</div>
+        </div>
+
+        {rows.length === 0 ? (
+          <p className="text-center text-sm text-muted-foreground py-10">No entries found</p>
+        ) : (
+          typeOrder.filter(t => grouped[t]?.length).map(t => (
+            <div key={t}>
+              {/* Group header */}
+              <div className={`px-4 py-2 ${typeBg[t]} border-b border-border`}>
+                <span className={`text-xs font-bold uppercase tracking-wide ${typeColor[t]}`}>{typeLabel[t]}</span>
+              </div>
+              {grouped[t].map((row, i) => (
+                <div key={i} className="grid grid-cols-12 px-4 py-2.5 border-b border-border hover:bg-muted/20 text-sm">
+                  <div className="col-span-5 font-medium truncate">{row.account_head_name}</div>
+                  <div className="col-span-3 text-center text-xs text-muted-foreground truncate">{row.group_name}</div>
+                  <div className="col-span-2 text-right text-blue-700 font-mono">
+                    {row.total_debit > 0 ? fmt(row.total_debit) : "—"}
+                  </div>
+                  <div className="col-span-2 text-right text-red-700 font-mono">
+                    {row.total_credit > 0 ? fmt(row.total_credit) : "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          ))
+        )}
+
+        {/* Totals footer */}
+        {rows.length > 0 && (
+          <div className="grid grid-cols-12 px-4 py-3 bg-muted/70 border-t-2 border-border font-bold text-sm">
+            <div className="col-span-8">TOTAL</div>
+            <div className="col-span-2 text-right text-blue-800">{fmt(data?.total_debit)}</div>
+            <div className="col-span-2 text-right text-red-800">{fmt(data?.total_credit)}</div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Balance Sheet ──────────────────────────────────────────────────────────────
+function BalanceSheet({ month, illakaId, refresh }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [y, m] = month.split("-").map(Number);
+  const label = `${MONTHS[m - 1]} ${y}`;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({ month });
+      if (illakaId) params.set("illaka_id", illakaId);
+      const res = await fetch(`${API}/api/accounts/balance-sheet?${params}`, { credentials: "include" });
+      setData(await res.json());
+    } catch { toast.error("Failed to load Balance Sheet"); }
+    finally { setLoading(false); }
+  }, [month, illakaId, refresh]);
+
+  useEffect(() => { load(); }, [load]);
+
+  if (loading) return <div className="flex items-center justify-center py-20"><div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" /></div>;
+
+  const assets = data?.assets || [];
+  const liabilities = data?.liabilities || [];
+  const equityItems = data?.equity_items || [];
+  const netProfit = data?.net_profit || 0;
+  const openingCapital = data?.opening_capital || 0;
+
+  function SideSection({ title, color, items, footer }) {
+    return (
+      <div className="bg-card border border-border rounded-xl overflow-hidden">
+        <div className={`px-4 py-3 ${color} border-b border-border`}>
+          <span className="font-bold text-sm">{title}</span>
+        </div>
+        <table className="w-full text-sm">
+          <tbody>
+            {items.map((item, i) => (
+              <tr key={i} className="border-b border-border hover:bg-muted/20">
+                <td className="px-4 py-2.5">
+                  <div className="font-medium">{item.account_head_name}</div>
+                  <div className="text-xs text-muted-foreground">{item.group_name}</div>
+                </td>
+                <td className={`px-4 py-2.5 text-right font-bold font-mono ${item.amount < 0 ? "text-red-600" : ""}`}>
+                  {fmt(Math.abs(item.amount))}
+                  {item.amount < 0 && <span className="text-xs ml-1">(Dr)</span>}
+                </td>
+              </tr>
+            ))}
+            {items.length === 0 && <tr><td colSpan={2} className="px-4 py-6 text-center text-muted-foreground text-xs">Nil</td></tr>}
+          </tbody>
+        </table>
+        {footer}
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold">Balance Sheet</h2>
+          <p className="text-sm text-muted-foreground">As of {label}</p>
+        </div>
+        {data && (
+          <span className={`text-xs font-bold px-3 py-1 rounded-full ${data.is_balanced ? "bg-green-100 text-green-700" : "bg-amber-100 text-amber-700"}`}>
+            {data.is_balanced ? "✓ Balanced" : "✓ Balanced (with capital plug)"}
+          </span>
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-5">
+        {/* LEFT: Capital & Liabilities */}
+        <div className="space-y-4">
+          {/* Owner's Capital */}
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <div className="px-4 py-3 bg-purple-50 border-b border-border">
+              <span className="font-bold text-sm text-purple-800">Capital & Reserves</span>
+            </div>
+            <table className="w-full text-sm">
+              <tbody>
+                {equityItems.map((e, i) => (
+                  <tr key={i} className="border-b border-border hover:bg-muted/20">
+                    <td className="px-4 py-2.5 font-medium">{e.account_head_name}</td>
+                    <td className="px-4 py-2.5 text-right font-bold font-mono">{fmt(e.amount)}</td>
+                  </tr>
+                ))}
+                {openingCapital !== 0 && (
+                  <tr className="border-b border-border hover:bg-muted/20">
+                    <td className="px-4 py-2.5 font-medium">
+                      Opening / Owner's Capital
+                      <div className="text-xs text-muted-foreground">Balancing figure</div>
+                    </td>
+                    <td className="px-4 py-2.5 text-right font-bold font-mono">{fmt(Math.abs(openingCapital))}</td>
+                  </tr>
+                )}
+                <tr className="border-b border-border bg-green-50/40">
+                  <td className="px-4 py-2.5 font-medium">
+                    {netProfit >= 0 ? "Net Profit (Current Period)" : "Net Loss (Current Period)"}
+                  </td>
+                  <td className={`px-4 py-2.5 text-right font-bold font-mono ${netProfit < 0 ? "text-red-600" : "text-green-700"}`}>
+                    {fmt(Math.abs(netProfit))}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+            <div className="px-4 py-2.5 bg-purple-50/50 border-t border-border flex justify-between font-bold text-sm">
+              <span>Total Capital</span>
+              <span className="font-mono">{fmt((data?.total_equity || 0) + openingCapital + netProfit)}</span>
+            </div>
+          </div>
+
+          {/* Liabilities */}
+          <SideSection
+            title="Liabilities"
+            color="bg-orange-50"
+            items={liabilities}
+            footer={
+              <div className="px-4 py-2.5 bg-orange-50/50 border-t border-border flex justify-between font-bold text-sm">
+                <span>Total Liabilities</span>
+                <span className="font-mono">{fmt(data?.total_liabilities)}</span>
+              </div>
+            }
+          />
+
+          <div className="px-5 py-3 bg-muted rounded-xl flex justify-between font-bold">
+            <span>Total Capital &amp; Liabilities</span>
+            <span className="text-lg font-mono">{fmt(data?.total_capital_side)}</span>
+          </div>
+        </div>
+
+        {/* RIGHT: Assets */}
+        <div className="space-y-4">
+          <SideSection
+            title="Assets"
+            color="bg-blue-50"
+            items={assets}
+            footer={null}
+          />
+          <div className="px-5 py-3 bg-muted rounded-xl flex justify-between font-bold">
+            <span>Total Assets</span>
+            <span className="text-lg font-mono">{fmt(data?.total_assets)}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ─────────────────────────────────────────────────────────────
 export default function AccountsModule() {
   const { user } = useAuth();
@@ -784,6 +1029,8 @@ export default function AccountsModule() {
     { key: "cashbook", label: "Cash Book", icon: BookOpen },
     { key: "bid", label: "Bid", icon: BarChart3 },
     { key: "summary", label: "P&L Summary", icon: TrendingUp },
+    { key: "trial", label: "Trial Balance", icon: Scale },
+    { key: "balancesheet", label: "Balance Sheet", icon: Table },
     { key: "expense", label: "Expense Sheet", icon: FileText },
   ];
 
@@ -850,6 +1097,8 @@ export default function AccountsModule() {
       {activeTab === "cashbook" && <CashBook month={month} illakaId={illakaId} refresh={refreshKey} user={user} onDelete={handleDeleteEntry} onEdit={handleEditEntry} />}
       {activeTab === "bid" && <Bid month={month} illakaId={illakaId} refresh={refreshKey} />}
       {activeTab === "summary" && <PLSummary month={month} illakaId={illakaId} refresh={refreshKey} />}
+      {activeTab === "trial" && <TrialBalance month={month} illakaId={illakaId} refresh={refreshKey} />}
+      {activeTab === "balancesheet" && <BalanceSheet month={month} illakaId={illakaId} refresh={refreshKey} />}
       {activeTab === "expense" && (
         <ExpenseSheet
           illakaId={illakaId}
