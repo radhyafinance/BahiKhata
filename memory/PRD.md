@@ -90,7 +90,18 @@ Build a software solution for an NBFC-MFI app named "Bahi Khata" transitioning t
 │           ├── LoanList.jsx
 │           ├── LoanDetail.jsx       # EMI grid + Re-Loan button + netoff display
 │           ├── CollectionSheet.jsx  # Vasuli view grouped by Illaka → Misal
-│           ├── AccountsModule.jsx   # Cash Book + P&L Summary + Manage Heads
+│           ├── AccountsModule.jsx   # Slim orchestrator — imports from accounts/
+│           ├── accounts/
+│           │   ├── utils.js           # fmt, MONTHS, API constant
+│           │   ├── MonthNav.jsx
+│           │   ├── SimpleEntryModal.jsx
+│           │   ├── ManageHeadsModal.jsx
+│           │   ├── CashBook.jsx
+│           │   ├── Bid.jsx
+│           │   ├── PLSummary.jsx
+│           │   ├── OpeningBalanceModal.jsx
+│           │   ├── TrialBalance.jsx
+│           │   └── BalanceSheet.jsx
 │           ├── IllakaContext.jsx    # Global Illaka state (selectedIllaka, eligibleIllakas)
 │           └── IllakaSelector.jsx  # Illaka picker post-login
 ```
@@ -158,6 +169,7 @@ See CHANGELOG.md for full history.
 
 ### P1 (High) — All Done ✓
 - [x] Code Refactoring (backend server.py → core/ + routes/, frontend KYCForm.jsx → kyc/)
+- [x] **AccountsModule Refactoring (2026-03-31)**: Split 1399-line AccountsModule.jsx into 10 focused files under `accounts/` subfolder. Main file reduced to 214 lines (orchestrator only).
 - [x] Unique Aadhaar + mobile validation
 - [x] Live photo with back camera + auto-GPS
 - [x] Re-Loan with Net-Off (all roles, active + closed loans, optional phone/co-borrower/guarantor edit)
