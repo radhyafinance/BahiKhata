@@ -531,9 +531,9 @@ async def get_bid(
                 line_cr = float(line.get("credit", 0))
 
                 if line_dr > 0:
-                    # Loans Portfolio (asset Dr) → Kharch/Credit side of Bid
+                    # Loans Portfolio (asset Dr) → Kharch/Credit side of Bid (sort_order=0 → always first)
                     if hid not in cr_head_map:
-                        cr_head_map[hid] = {"account_head_name": hname, "group_name": gname, "total": 0.0}
+                        cr_head_map[hid] = {"account_head_name": hname, "group_name": gname, "total": 0.0, "sort_order": 0}
                     cr_head_map[hid]["total"] = round(cr_head_map[hid]["total"] + line_dr, 2)
 
                 if line_cr > 0 and gtype == "income":
@@ -565,7 +565,7 @@ async def get_bid(
                     hname = c.get("account_head_name", "Other Expense")
                     gname = c.get("group_name", "")
                     if hid not in cr_head_map:
-                        cr_head_map[hid] = {"account_head_name": hname, "group_name": gname, "total": 0.0}
+                        cr_head_map[hid] = {"account_head_name": hname, "group_name": gname, "total": 0.0, "sort_order": 1}
                     cr_head_map[hid]["total"] = round(
                         cr_head_map[hid]["total"] + float(c.get("debit", 0)), 2
                     )
@@ -585,7 +585,7 @@ async def get_bid(
 
     cr_totals = sorted(
         [h for h in cr_head_map.values() if h["total"] > 0],
-        key=lambda x: x["group_name"]
+        key=lambda x: (x.get("sort_order", 1), x["group_name"])
     )
 
     total_dr = round(sum(item["total"] for item in dr_totals), 2)
