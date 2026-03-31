@@ -115,7 +115,26 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                     "paid_date": gyal_payment.get("payment_date", "") if gyal_payment else "",
                 }
             elif not emi:
-                continue
+                # Non-gyal loan with no EMI for this specific month.
+                # If the loan has at least one EMI within the current FY, keep it on the
+                # sheet using its LAST scheduled EMI as the representative entry.
+                # This covers overdue loans whose 12-month tenure ended before the view month,
+                # and closed loans that are still within the current FY.
+                loan_has_fy_emi = any(e.get("due_month") in fy_months for e in schedule)
+                if not loan_has_fy_emi:
+                    continue  # Loan is entirely outside the current FY — skip
+                # Use the last EMI in the schedule as the representative (most recent)
+                if not schedule:
+                    continue
+                last_emi = schedule[-1]
+                emi = {
+                    "due_month": last_emi.get("due_month", month),
+                    "amount": last_emi.get("amount", 0),
+                    "status": last_emi.get("status", "pending"),
+                    "note": last_emi.get("note", ""),
+                    "paid_amount": float(last_emi.get("paid_amount") or 0),
+                    "paid_date": last_emi.get("paid_date", ""),
+                }
 
         loan_illaka_id = loan.get("illaka_id", "unknown")
         illaka_name = illaka_name_map.get(loan_illaka_id) or loan.get("illaka_name", "Unknown Illaka")

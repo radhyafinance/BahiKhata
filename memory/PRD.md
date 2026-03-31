@@ -205,9 +205,9 @@ See CHANGELOG.md for full history.
 
 ### Collection Sheet — Closed Loans Persistence (2026-03-31) ✓
 - [x] Closed loans now stay on the Collection Sheet until their 12-month EMI schedule ends naturally (end of FY/last scheduled month), not when marked closed
-- [x] Removed `status != "closed"` filter from `/api/collections/sheet` backend query
+- [x] Overdue loans whose 12-month tenure has ended now remain on the sheet for the entire FY, showing the last scheduled EMI as the representative entry (so the agent can still collect/action it)
+- [x] Logic: if a loan has ANY EMI in the current FY months, it is always shown; if no EMI matches the view month, the last scheduled EMI is used as display entry
 - [x] Added `netoff` EMI status styling (blue, ↩ icon) in the FY strip and action column
-- [x] Netoff rows shown as "Net-off" in the action column (not editable, no "Collect" button)
 
 ### P2 (Backlog)
 - [ ] **Days Overdue badge** on Collection Sheet EMI rows (P1)
