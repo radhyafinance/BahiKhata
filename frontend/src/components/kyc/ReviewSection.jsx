@@ -42,7 +42,7 @@ export function ReviewSection({ formData, illaka, misal, includeCoBorrower, incl
           </div>
           {disbursementAmount && !isNaN(parseFloat(disbursementAmount)) && parseFloat(disbursementAmount) > 0 && (() => {
             const p = parseFloat(disbursementAmount);
-            const emi = Math.round(p * 1.17 / 12 / 100) * 100;
+            const emi = Math.round(p * 120 / 103 / 12 / 100) * 100;
             const total = emi * 12;
             const interest = total - p;
             return (
@@ -53,7 +53,7 @@ export function ReviewSection({ formData, illaka, misal, includeCoBorrower, incl
                   <p className="text-xs text-muted-foreground">× 12 months</p>
                 </div>
                 <div className="text-center">
-                  <p className="text-xs text-muted-foreground">Interest (17%)</p>
+                  <p className="text-xs text-muted-foreground">Interest (17/103)</p>
                   <p className="text-lg font-bold font-['Outfit']">₹{interest.toLocaleString("en-IN")}</p>
                 </div>
                 <div className="text-center">
