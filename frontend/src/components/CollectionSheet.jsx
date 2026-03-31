@@ -410,9 +410,11 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                 {showPrev ? (
                   <>
                     <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(prevAmount)}</p>
-                    {!row.is_netoff_combined && (
-                      <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
-                    )}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {row.is_netoff_combined
+                        ? fmtLoanDate(row.prev_loan_date)
+                        : fmtLoanDate(row.loan_date)}
+                    </p>
                   </>
                 ) : null}
               </div>

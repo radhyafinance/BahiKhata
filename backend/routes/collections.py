@@ -281,6 +281,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                 row["emi_year_data"] = merged_strip
                 row["is_netoff_combined"] = True
                 row["prev_opening_balance"] = float(parent_row.get("opening_balance") or 0)
+                row["prev_loan_date"] = parent_row.get("loan_date") or ""
                 to_remove_ids.add(parent_id)
 
             illakas_map[il_id]["misals"][m_id]["rows"] = [
