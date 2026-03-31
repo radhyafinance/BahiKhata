@@ -246,10 +246,10 @@ async def passkey_auth_verify(request: Request, response: Response):
     except Exception as exc:
         raise HTTPException(status_code=401, detail=f"Passkey verification failed: {exc}")
 
-    # Update sign count
+    # Update sign count (py_webauthn 2.x uses new_sign_count on VerifiedAuthentication)
     await db.users.update_one(
         {"_id": user_doc["_id"], "passkeys.credential_id": credential_id},
-        {"$set": {"passkeys.$.sign_count": verification.sign_count}},
+        {"$set": {"passkeys.$.sign_count": verification.new_sign_count}},
     )
     await db.webauthn_challenges.delete_one({"_id": challenge_doc["_id"]})
     response.delete_cookie("wauthn_session", path="/")
