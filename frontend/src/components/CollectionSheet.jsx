@@ -405,7 +405,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
                 {isOldLoan ? (
                   <>
-                    <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.total_repayable)}</p>
+                    <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.outstanding_balance)}</p>
                     <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
                   </>
                 ) : null}
