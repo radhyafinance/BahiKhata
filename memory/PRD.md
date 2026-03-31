@@ -210,7 +210,10 @@ See CHANGELOG.md for full history.
 - [x] Active month (used for Collect button, highlighting, and edit permissions): today's month for current FY, March for past FYs
 - [x] All loans with any EMI in the selected FY are shown (not filtered by a single month)
 
-### P2 (Backlog)
+### Collection Sheet — Days Overdue Badge (2026-03-31) ✓
+- [x] Red "Xd" badge shown below the overdue icon in the EMI amount column for all overdue rows
+- [x] Calculated purely on frontend: today − last day of `emi_month`
+- [x] Only shown when days > 0; zero-day or future overdue rows show no badge
 - [ ] **Days Overdue badge** on Collection Sheet EMI rows (P1)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail

@@ -119,13 +119,16 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                 # Keep if any of these are true:
                 #   (a) loan has at least one EMI in the current FY
                 #   (b) loan was disbursed in the current FY (first EMI may be next FY)
-                #   (c) loan is still active/overdue — must stay visible until closed or Gyal
+                #   (c) loan is still active/overdue AND was disbursed before the FY ended
+                #       (overdue debt that spans into/beyond this FY must remain visible)
                 loan_has_fy_emi = any(e.get("due_month") in fy_months for e in schedule)
                 loan_date_ym = (loan.get("loan_date") or "")[:7]
                 loan_disbursed_in_fy = loan_date_ym in fy_months
+                # Loan existed during this FY only if it was disbursed before the FY ended
+                loan_existed_by_fy_end = bool(loan_date_ym) and loan_date_ym <= fy_months[-1]
                 loan_has_outstanding = loan.get("status") in ("active", "overdue")
-                if not loan_has_fy_emi and not loan_disbursed_in_fy and not loan_has_outstanding:
-                    continue  # Closed loan entirely outside the current FY — skip
+                if not loan_has_fy_emi and not loan_disbursed_in_fy and not (loan_has_outstanding and loan_existed_by_fy_end):
+                    continue  # Loan is outside this FY — skip
                 if not schedule:
                     continue
                 # For newly disbursed loans (first EMI in next FY): use the FIRST EMI
