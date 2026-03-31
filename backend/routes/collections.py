@@ -33,7 +33,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         query["illaka_id"] = illaka_id
 
     loans = await db.loans.find(query).sort(
-        [("illaka_id", 1), ("misal_id", 1), ("created_at", 1)]
+        [("illaka_id", 1), ("misal_id", 1), ("loan_date", 1)]
     ).to_list(5000)
 
     # Bulk-fetch live illaka & misal names (source of truth)
