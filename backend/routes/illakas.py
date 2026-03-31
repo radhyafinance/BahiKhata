@@ -110,6 +110,7 @@ async def update_misal(misal_id: str, data: MisalCreate, request: Request):
     name_update = {"$set": {"misal_name": data.name}}
     await db.loans.update_many({"misal_id": misal_id}, name_update)
     await db.kycs.update_many({"misal_id": misal_id}, name_update)
+    await db.journal_entries.update_many({"misal_id": misal_id}, name_update)
     return _doc(doc)
 
 

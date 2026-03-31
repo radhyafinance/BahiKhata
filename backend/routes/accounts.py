@@ -377,6 +377,18 @@ async def get_cashbook(
                 opening_balance += float(line.get("debit", 0)) - float(line.get("credit", 0))
 
     entries = await db.journal_entries.find(query).sort("date", 1).to_list(2000)
+
+    # Live misal name lookup to reflect any renames
+    _unique_misal_ids = list({e.get("misal_id") for e in entries if e.get("misal_id")})
+    _misal_name_map: dict = {}
+    if _unique_misal_ids:
+        try:
+            _moids = [ObjectId(i) for i in _unique_misal_ids]
+            _raw = await db.misals.find({"_id": {"$in": _moids}}, {"_id": 1, "name": 1}).to_list(500)
+            _misal_name_map = {str(d["_id"]): d["name"] for d in _raw}
+        except Exception:
+            pass
+
     dr_raw = []
     cr_raw = []
     running = opening_balance
@@ -387,6 +399,7 @@ async def get_cashbook(
                 cash_dr = float(line.get("debit", 0))
                 cash_cr = float(line.get("credit", 0))
                 running += cash_dr - cash_cr
+                _mid = entry.get("misal_id", "")
                 if cash_dr > 0:
                     dr_raw.append({
                         "entry_id": str(entry["_id"]),
@@ -395,8 +408,8 @@ async def get_cashbook(
                         "entry_type": entry.get("entry_type", "manual"),
                         "amount": cash_dr,
                         "balance": round(running, 2),
-                        "misal_id": entry.get("misal_id", ""),
-                        "misal_name": entry.get("misal_name", ""),
+                        "misal_id": _mid,
+                        "misal_name": _misal_name_map.get(_mid) or entry.get("misal_name", ""),
                         "client_name": entry.get("client_name", ""),
                         "loan_number": entry.get("loan_number", ""),
                     })
@@ -496,6 +509,17 @@ async def get_bid(
 
     entries = await db.journal_entries.find(query).to_list(2000)
 
+    # Live misal name lookup to reflect any renames
+    _unique_misal_ids_bid = list({e.get("misal_id") for e in entries if e.get("misal_id")})
+    _misal_name_map_bid: dict = {}
+    if _unique_misal_ids_bid:
+        try:
+            _moids = [ObjectId(i) for i in _unique_misal_ids_bid]
+            _raw = await db.misals.find({"_id": {"$in": _moids}}, {"_id": 1, "name": 1}).to_list(500)
+            _misal_name_map_bid = {str(d["_id"]): d["name"] for d in _raw}
+        except Exception:
+            pass
+
     emi_misal_map: dict = {}
     emi_misal_order: list = []
     dr_head_map: dict = {}   # non-EMI dr items (interest income, other receipts)
@@ -513,7 +537,7 @@ async def get_bid(
             )
             if cash_dr > 0:
                 mid = entry.get("misal_id") or "no_misal"
-                mname = entry.get("misal_name") or "Unknown Misal"
+                mname = _misal_name_map_bid.get(mid) or entry.get("misal_name") or "Unknown Misal"
                 if mid not in emi_misal_map:
                     emi_misal_map[mid] = {"misal_id": mid, "misal_name": mname, "total": 0.0}
                     emi_misal_order.append(mid)
