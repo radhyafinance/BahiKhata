@@ -203,6 +203,12 @@ See CHANGELOG.md for full history.
 - [x] Renaming an Illaka or Misal propagates to all denormalized fields across `loans`, `kycs`, `expense_templates` collections via `update_many`
 - [x] `collections.py` now does a live bulk lookup of illaka/misal names from source collections as the primary source of truth, with stored name as fallback
 
+### Collection Sheet — Closed Loans Persistence (2026-03-31) ✓
+- [x] Closed loans now stay on the Collection Sheet until their 12-month EMI schedule ends naturally (end of FY/last scheduled month), not when marked closed
+- [x] Removed `status != "closed"` filter from `/api/collections/sheet` backend query
+- [x] Added `netoff` EMI status styling (blue, ↩ icon) in the FY strip and action column
+- [x] Netoff rows shown as "Net-off" in the action column (not editable, no "Collect" button)
+
 ### P2 (Backlog)
 - [ ] **Days Overdue badge** on Collection Sheet EMI rows (P1)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli

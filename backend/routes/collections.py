@@ -26,7 +26,9 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         fy_months.append(f"{fy_y}-{fm:02d}")
 
     query = await _loan_query_for_user(current_user)
-    query["status"] = {"$ne": "closed"}
+    # No status filter here — closed loans must remain on the sheet until their EMI
+    # schedule ends (end of FY or year-end closing). The EMI schedule lookup below
+    # (`emi = next(...)`) naturally hides them for months outside their schedule.
     if illaka_id:
         query["illaka_id"] = illaka_id
 

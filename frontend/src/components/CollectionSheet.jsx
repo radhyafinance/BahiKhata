@@ -50,6 +50,7 @@ const fmtLoanDate = (dateStr) => {
 
 const EMI_STATUS = {
   paid: { cls: "bg-green-100 text-green-800", label: "Collected", icon: CheckCircle, iconCls: "text-green-600" },
+  netoff: { cls: "bg-blue-50 text-blue-700", label: "Net-off", icon: CheckCircle, iconCls: "text-blue-500" },
   overdue: { cls: "bg-red-100 text-red-700", label: "Overdue", icon: AlertCircle, iconCls: "text-red-600" },
   pending: { cls: "bg-gray-100 text-gray-600", label: "Pending", icon: Clock, iconCls: "text-gray-400" },
 };
@@ -312,13 +313,13 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
   const renderRow = (row, isGyal) => {
     const status = EMI_STATUS[row.emi_status] || EMI_STATUS.pending;
     const StatusIcon = status.icon;
-    const isPaid = row.emi_status === "paid";
+    const isPaid = row.emi_status === "paid" || row.emi_status === "netoff";
     const clientName = row.client_name_hindi || row.client_name || "—";
     const husbandName = row.relative_name_hindi || row.relative_name || "";
     const guarantorName = row.guarantor_name_hindi || row.guarantor_name || "";
 
-    // Edit permission: paid rows only
-    const canEditRow = isPaid && (() => {
+    // Edit permission: paid rows only (not netoff — those were closed via re-loan)
+    const canEditRow = row.emi_status === "paid" && (() => {
       if (userRole === "muneem" || userRole === "sipahi") {
         return row.emi_month === currentMonth;
       }
@@ -334,6 +335,8 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         className={`transition-colors ${
           isGyal
             ? "bg-gray-100/70"
+            : isPaid && row.emi_status === "netoff"
+            ? "bg-blue-50/40"
             : isPaid
             ? "bg-green-50/50"
             : row.emi_status === "overdue"
@@ -428,6 +431,17 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                   </div>
                 );
               }
+              if (yd.status === "netoff") {
+                return (
+                  <div
+                    key={yd.month}
+                    title="Net-off (closed via re-loan)"
+                    className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${isCurr ? "bg-blue-100" : "bg-blue-50/60"}`}
+                  >
+                    <span className="text-blue-600 text-xs font-bold leading-none">↩</span>
+                  </div>
+                );
+              }
               if (yd.note) {
                 return (
                   <div
@@ -467,8 +481,10 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
           <div className="flex flex-col items-center justify-center gap-1 py-2.5 px-1">
             {isPaid ? (
               <div className="flex flex-col items-center gap-1">
-                <CheckCircle size={20} className="text-green-500" />
-                {canEditRow && (
+                <CheckCircle size={20} className={row.emi_status === "netoff" ? "text-blue-400" : "text-green-500"} />
+                {row.emi_status === "netoff" ? (
+                  <span className="text-[9px] text-blue-500 font-semibold">Net-off</span>
+                ) : canEditRow ? (
                   <button
                     onClick={() => onEdit(row)}
                     className="flex items-center justify-center gap-0.5 text-[10px] w-full py-1 rounded border border-dashed border-primary/40 text-primary hover:bg-primary/10 transition-colors"
@@ -477,7 +493,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                     <Edit3 size={9} />
                     Edit
                   </button>
-                )}
+                ) : null}
                 <button
                   onClick={() => navigate(`/loans/${row.loan_db_id}`)}
                   className="p-1 rounded hover:bg-muted text-muted-foreground"
