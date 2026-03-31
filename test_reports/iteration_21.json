@@ -1,0 +1,65 @@
+{
+  "summary": "Iteration 21: Tested 12-month FY strip on Collection Sheet desktop view. 19/19 backend tests PASS + full frontend E2E verification on desktop (1440px) and mobile (375px). The FY strip shows Apr-Mar months with correct highlighting, paid cells, and is correctly hidden on mobile.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "feature_tests": {
+    "sheet_returns_200": "PASS — GET /api/collections/sheet returns 200",
+    "emi_year_data_12_items": "PASS — All rows have exactly 12 items in emi_year_data",
+    "emi_year_data_first_is_april": "PASS — First emi_year_data item month ends with -04 (April) for 2026-03 FY",
+    "emi_year_data_last_is_march": "PASS — Last emi_year_data item month ends with -03 (March)",
+    "fy_month_order_apr_to_mar": "PASS — Month order 4,5,6,7,8,9,10,11,12,1,2,3 (Apr→Mar)",
+    "fy_year_boundaries_correct": "PASS — 2025-04 through 2026-03 for month=2026-03",
+    "emi_year_data_required_keys": "PASS — All items have month, status, paid_amount, note",
+    "status_values_valid": "PASS — All status values are: paid/pending/overdue/na",
+    "paid_months_have_positive_paid_amount": "PASS — All paid months have paid_amount > 0",
+    "gyal_customer2_paid_950": "PASS — TEST_Gyal_Customer2 has paid_amount=950 in 2026-03",
+    "current_month_in_emi_year_data": "PASS — 2026-03 appears in all rows' emi_year_data",
+    "illakas_have_latest_closing_ym": "PASS — All illakas have latest_closing_ym field",
+    "delhi_latest_closing_ym_2024_03": "PASS — Delhi latest_closing_ym = '2024-03'",
+    "october_fy_starts_april": "PASS — Oct 2025 → FY 2025-04 to 2026-03",
+    "april_fy_starts_april": "PASS — Apr 2025 → FY 2025-04 to 2026-03",
+    "desktop_12_month_headers_visible": "PASS — 12 month header divs (APR-MAR) visible at 1440px (hidden lg:flex = display:flex)",
+    "mar_header_uses_text_primary": "PASS — MAR header has text-primary class (color=rgb(18,110,73)), others use text-muted-foreground/50",
+    "current_month_cells_have_ring": "PASS — 13 ring-1 ring-inset ring-primary/60 cells found in MAR column",
+    "paid_cell_checkmark_and_amount": "PASS — TEST_Gyal_Customer2 MAR cell shows '✓950' with bg-green-200 and ring-1",
+    "pending_cells_show_muted_dot": "PASS — Pending cells show '·' with text-muted-foreground/25",
+    "na_cells_are_empty": "PASS — NA status cells are empty divs (w-9 h-7 with no content)",
+    "mobile_375px_strip_hidden": "PASS — All 14 hidden lg:flex elements with 12 children are display:none on mobile",
+    "mobile_no_month_abbrs_visible": "PASS — Zero month abbreviations visible on 375px viewport"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_collection_sheet_fy_strip.py",
+    "/app/test_reports/pytest/fy_strip_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "getFyMonths() in CollectionSheet.jsx correctly computes 12 FY months using ((3+i)%12)+1 formula starting from April",
+    "Backend fy_months computed identically: ((3+i)%12)+1 for i in range(12)",
+    "MONTH_ABBR indexed correctly: MONTH_ABBR[mo-1] where mo=parseInt(ym.split('-')[1])",
+    "ring-1 ring-inset ring-primary/60 correctly applied to current month cells via isCurr = yd.month === month check",
+    "fmtK() correctly formats: 950 → '950', 1000 → '1K', 2500 → '2.5K'",
+    "Note: The paid cell for TEST_Gyal_Customer2 also has a tiny ✓ and 950 correctly rendered at text-[9px] and text-[8px] font sizes"
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_collection_sheet_fy_strip.py"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 tests pass)",
+    "frontend": "100% — all E2E checks pass on desktop 1440px and mobile 375px"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123"
+  },
+  "seed_data_creation": "No new seed data created. Used existing TEST_Gyal_Customer2 (paid EMI 950 in 2026-03).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 21: Fully verified 12-month FY strip on Collection Sheet. Key findings: (1) Desktop 1440px shows all 12 month headers (APR-MAR) in column header row via hidden lg:flex. (2) Each row has emi_year_data with 12 items ordered Apr→Mar. (3) Current month (MAR) header uses text-primary, cells use ring-1 ring-inset ring-primary/60. (4) Paid cells show ✓+amount (e.g., ✓950) with bg-green-200. (5) Mobile 375px: all 12-month strips are display:none. Backend test: /app/backend/tests/test_collection_sheet_fy_strip.py (19 tests). Delhi illaka id=69c78cf96781e1fb0d95f0dd, latest_closing_ym=2024-03. TEST_Gyal_Customer2 loan paid 950 in 2026-03.",
+  "rca_of_issue": null
+}

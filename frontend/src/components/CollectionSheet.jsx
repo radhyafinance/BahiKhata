@@ -11,8 +11,31 @@ import {
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
+const MONTH_ABBR = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
 const fmt = (n) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n || 0);
+
+// Compact amount: 2500 → "2.5K", 3000 → "3K", 500 → "500"
+const fmtK = (n) => {
+  if (!n) return "";
+  if (n >= 10000) return `${Math.round(n / 1000)}K`;
+  if (n >= 1000) return `${+(n / 1000).toFixed(1)}K`;
+  return String(Math.round(n));
+};
+
+// Returns the 12 YYYY-MM strings for the financial year containing `ym` (April → March)
+function getFyMonths(ym) {
+  const [y, m] = ym.split("-").map(Number);
+  const fyStart = m >= 4 ? y : y - 1;
+  const result = [];
+  for (let i = 0; i < 12; i++) {
+    const fm = ((3 + i) % 12) + 1;
+    const fy = fm >= 4 ? fyStart : fyStart + 1;
+    result.push(`${fy}-${String(fm).padStart(2, "0")}`);
+  }
+  return result;
+}
 
 const fmtMonth = (ym) => {
   if (!ym) return "—";
@@ -279,7 +302,7 @@ function EditEmiModal({ row, onClose, onEdited }) {
 }
 
 
-function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, onCollect, onNote, onEdit }) {
+function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, fyMonths, onCollect, onNote, onEdit }) {
   const [expanded, setExpanded] = useState(true);
   const navigate = useNavigate();
 
@@ -321,7 +344,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         }`}
         data-testid={`collection-row-${row.loan_db_id}`}
       >
-        <div className="grid grid-cols-[52px_1fr_72px_68px] gap-0 items-start px-3 py-2.5 text-sm">
+        <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,1fr)_432px_72px_68px] gap-0 items-start px-3 py-2.5 text-sm">
           {/* EMI Amount */}
           <div className="text-right pr-2 pt-0.5 flex-shrink-0">
             <p className={`font-bold text-sm leading-tight ${isGyal ? "text-gray-400" : "text-foreground"}`}>
@@ -347,6 +370,58 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                 {guarantorName}
               </p>
             )}
+          </div>
+
+          {/* 12-month FY strip — desktop only */}
+          <div className="hidden lg:flex items-center self-center gap-0">
+            {(row.emi_year_data || []).map((yd) => {
+              const isCurr = yd.month === month;
+              const ringCls = isCurr ? "ring-1 ring-inset ring-primary/60" : "";
+
+              if (yd.status === "na") {
+                return (
+                  <div key={yd.month} className={`w-9 h-7 ${ringCls} rounded`} />
+                );
+              }
+              if (yd.status === "paid") {
+                const hasNote = !!yd.note;
+                return (
+                  <div
+                    key={yd.month}
+                    title={hasNote ? `₹${yd.paid_amount} — ${yd.note}` : `Paid ₹${yd.paid_amount}`}
+                    className={`w-9 h-7 flex flex-col items-center justify-center rounded ${isCurr ? "bg-green-200" : "bg-green-100"} ${ringCls}`}
+                  >
+                    <span className="text-green-800 text-[9px] font-bold leading-none">✓</span>
+                    <span className="text-green-700 text-[8px] leading-none mt-px">{fmtK(yd.paid_amount)}</span>
+                    {hasNote && <span className="absolute w-1.5 h-1.5 rounded-full bg-amber-400 -top-0.5 -right-0.5" />}
+                  </div>
+                );
+              }
+              if (yd.note) {
+                return (
+                  <div
+                    key={yd.month}
+                    title={yd.note}
+                    className={`w-9 h-7 flex items-center justify-center rounded bg-amber-50 ${ringCls}`}
+                  >
+                    <Pencil size={9} className="text-amber-600" />
+                  </div>
+                );
+              }
+              if (yd.status === "overdue") {
+                return (
+                  <div key={yd.month} className={`w-9 h-7 flex items-center justify-center rounded ${isCurr ? "bg-red-100" : ""} ${ringCls}`}>
+                    <span className="text-red-400 text-[10px] font-bold">!</span>
+                  </div>
+                );
+              }
+              // pending
+              return (
+                <div key={yd.month} className={`w-9 h-7 flex items-center justify-center ${ringCls} rounded`}>
+                  <span className="text-muted-foreground/25 text-base leading-none">·</span>
+                </div>
+              );
+            })}
           </div>
 
           {/* Balance */}
@@ -454,9 +529,21 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {expanded && (
         <div className="divide-y divide-border/60">
           {/* Column Header */}
-          <div className="grid grid-cols-[52px_1fr_72px_68px] gap-0 px-3 py-1.5 bg-muted/20 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+          <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,1fr)_432px_72px_68px] gap-0 px-3 py-1.5 bg-muted/20 text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
             <span className="text-right pr-2">EMI</span>
             <span className="pl-1">नाम</span>
+            {/* 12-month headers — desktop only */}
+            <div className="hidden lg:flex items-center">
+              {fyMonths.map(ym => {
+                const mo = parseInt(ym.split("-")[1], 10);
+                const isCurr = ym === month;
+                return (
+                  <div key={ym} className={`w-9 text-center text-[9px] font-bold ${isCurr ? "text-primary" : "text-muted-foreground/50"}`}>
+                    {MONTH_ABBR[mo - 1]}
+                  </div>
+                );
+              })}
+            </div>
             <span className="text-right pr-2">शेष राशि</span>
             <span className="text-center">Action</span>
           </div>
@@ -494,6 +581,8 @@ export default function CollectionSheet() {
   const [collectingRow, setCollectingRow] = useState(null);
   const [notingRow, setNotingRow] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
+
+  const fyMonths = getFyMonths(month);
 
   const fetchSheet = useCallback(async () => {
     setLoading(true);
@@ -653,6 +742,7 @@ export default function CollectionSheet() {
                     userRole={user?.role}
                     currentMonth={defaultMonth}
                     latestClosingYm={illaka.latest_closing_ym || ""}
+                    fyMonths={fyMonths}
                     onCollect={setCollectingRow}
                     onNote={setNotingRow}
                     onEdit={setEditingRow}

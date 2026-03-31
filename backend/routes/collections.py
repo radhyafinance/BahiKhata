@@ -16,6 +16,15 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         today = date_type.today()
         month = f"{today.year}-{today.month:02d}"
 
+    # Compute financial year months (April → March) for the selected month
+    year_n, mo_n = map(int, month.split("-"))
+    fy_start_year = year_n if mo_n >= 4 else year_n - 1
+    fy_months = []
+    for i in range(12):
+        fm = ((3 + i) % 12) + 1   # 4, 5, 6, ..., 12, 1, 2, 3
+        fy_y = fy_start_year if fm >= 4 else fy_start_year + 1
+        fy_months.append(f"{fy_y}-{fm:02d}")
+
     query = await _loan_query_for_user(current_user)
     query["status"] = {"$ne": "closed"}
     if illaka_id:
@@ -25,7 +34,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         [("illaka_id", 1), ("misal_id", 1), ("created_at", 1)]
     ).to_list(5000)
 
-    # Bulk-fetch KYC data for relative_name
+    # Bulk-fetch KYC data for relative_name / guarantor
     kyc_ids = [loan.get("kyc_id") for loan in loans if loan.get("kyc_id")]
     valid_oids = []
     for kid in kyc_ids:
@@ -42,14 +51,23 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         ).to_list(5000)
         kyc_map = {str(k["_id"]): k for k in raw_kycs}
 
-    # Bulk-fetch payments for Gyal loans in the selected month (to show Gyal-Wasool collections)
+    # Bulk-fetch payments for Gyal loans across the full FY (for 12-month strip)
     gyal_loan_ids = [str(loan["_id"]) for loan in loans if loan.get("is_gyal")]
-    gyal_payment_map: dict = {}
+    gyal_payment_map: dict = {}   # {loan_id: payment_for_current_month}
+    gyal_year_map: dict = {}      # {loan_id: {emi_month: payment}}
     if gyal_loan_ids:
-        gyal_payments = await db.payments.find(
-            {"loan_id": {"$in": gyal_loan_ids}, "emi_month": month}
+        gyal_payments_fy = await db.payments.find(
+            {"loan_id": {"$in": gyal_loan_ids}, "emi_month": {"$in": fy_months}}
         ).to_list(5000)
-        gyal_payment_map = {p["loan_id"]: p for p in gyal_payments}
+        for p in gyal_payments_fy:
+            lid = p["loan_id"]
+            if lid not in gyal_year_map:
+                gyal_year_map[lid] = {}
+            gyal_year_map[lid][p["emi_month"]] = p
+        # Derive current-month map for the emi object
+        for lid, months_data in gyal_year_map.items():
+            if month in months_data:
+                gyal_payment_map[lid] = months_data[month]
 
     # Group by illaka → misal
     illakas_map = {}
@@ -58,12 +76,13 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
 
     for loan in loans:
         schedule = loan.get("emi_schedule", [])
+        loan_id_str = str(loan["_id"])
         emi = next((e for e in schedule if e.get("due_month") == month), None)
 
-        # Gyal loans always appear regardless of month — payment record is source of truth
+        # Gyal loans always appear regardless of selected month
         if not emi or emi.get("is_gyal_entry"):
             if loan.get("is_gyal"):
-                gyal_payment = gyal_payment_map.get(str(loan["_id"]))
+                gyal_payment = gyal_payment_map.get(loan_id_str)
                 preserved_note = emi.get("note", "") if emi else ""
                 emi = {
                     "due_month": month,
@@ -76,7 +95,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             elif not emi:
                 continue
 
-        illaka_id = loan.get("illaka_id", "unknown")
+        loan_illaka_id = loan.get("illaka_id", "unknown")
         illaka_name = loan.get("illaka_name", "Unknown Illaka")
         misal_id = loan.get("misal_id", "unknown")
         misal_name = loan.get("misal_name", "Unknown Misal")
@@ -92,8 +111,42 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         total_repayable = loan.get("total_repayable") or ((loan.get("emi_amount") or 0) * 12)
         outstanding = total_repayable - (loan.get("total_paid") or 0)
 
+        # Build 12-month year data for the FY strip
+        is_gyal = loan.get("is_gyal", False)
+        loan_gyal_year = gyal_year_map.get(loan_id_str, {})
+        emi_year_data = []
+        for fy_m in fy_months:
+            sched_item = next(
+                (e for e in schedule if e.get("due_month") == fy_m and not e.get("is_gyal_entry")),
+                None
+            )
+            if is_gyal:
+                gyal_pmt = loan_gyal_year.get(fy_m)
+                if gyal_pmt:
+                    emi_year_data.append({
+                        "month": fy_m, "status": "paid",
+                        "paid_amount": float(gyal_pmt.get("amount") or 0), "note": "",
+                    })
+                elif sched_item:
+                    emi_year_data.append({
+                        "month": fy_m, "status": sched_item.get("status", "pending"),
+                        "paid_amount": float(sched_item.get("paid_amount") or 0),
+                        "note": sched_item.get("note") or "",
+                    })
+                else:
+                    emi_year_data.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
+            else:
+                if sched_item:
+                    emi_year_data.append({
+                        "month": fy_m, "status": sched_item.get("status", "pending"),
+                        "paid_amount": float(sched_item.get("paid_amount") or 0),
+                        "note": sched_item.get("note") or "",
+                    })
+                else:
+                    emi_year_data.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
+
         row = {
-            "loan_db_id": str(loan["_id"]),
+            "loan_db_id": loan_id_str,
             "loan_number": loan.get("loan_number") or "—",
             "customer_id": customer_id,
             "client_name": loan.get("client_name") or "",
@@ -110,18 +163,19 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             "emi_paid_date": emi.get("paid_date") or "",
             "outstanding_balance": outstanding,
             "loan_date": loan.get("loan_date") or "",
-            "is_gyal": loan.get("is_gyal", False),
+            "is_gyal": is_gyal,
             "gyal_since": loan.get("gyal_since") or "",
+            "emi_year_data": emi_year_data,
         }
 
-        if illaka_id not in illakas_map:
-            illakas_map[illaka_id] = {"illaka_id": illaka_id, "illaka_name": illaka_name, "misals": {}}
-            illaka_order.append(illaka_id)
-            misal_order[illaka_id] = []
-        if misal_id not in illakas_map[illaka_id]["misals"]:
-            illakas_map[illaka_id]["misals"][misal_id] = {"misal_id": misal_id, "misal_name": misal_name, "rows": []}
-            misal_order[illaka_id].append(misal_id)
-        illakas_map[illaka_id]["misals"][misal_id]["rows"].append(row)
+        if loan_illaka_id not in illakas_map:
+            illakas_map[loan_illaka_id] = {"illaka_id": loan_illaka_id, "illaka_name": illaka_name, "misals": {}}
+            illaka_order.append(loan_illaka_id)
+            misal_order[loan_illaka_id] = []
+        if misal_id not in illakas_map[loan_illaka_id]["misals"]:
+            illakas_map[loan_illaka_id]["misals"][misal_id] = {"misal_id": misal_id, "misal_name": misal_name, "rows": []}
+            misal_order[loan_illaka_id].append(misal_id)
+        illakas_map[loan_illaka_id]["misals"][misal_id]["rows"].append(row)
 
     result = []
     for il_id in illaka_order:
@@ -129,7 +183,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         misals_list = [il["misals"][m_id] for m_id in misal_order[il_id]]
         result.append({"illaka_id": il["illaka_id"], "illaka_name": il["illaka_name"], "misals": misals_list})
 
-    # Attach the latest year-end closing YYYY-MM per illaka (for frontend permission checks)
+    # Attach the latest year-end closing YYYY-MM per illaka (for edit permission checks)
     result_illaka_ids = [il["illaka_id"] for il in result]
     latest_closings: dict = {}
     if result_illaka_ids:
