@@ -666,7 +666,11 @@ export default function CollectionSheet() {
   // Derive the "active month" for API calls and Collect button from the selected FY
   const month = getApiMonthForFy(selectedFyStart);
   const currentFyStart = getCurrentFyStart();
-  const availableFys = [currentFyStart, currentFyStart - 1, currentFyStart - 2];
+  // All FYs from 2019-20 up to the current FY (newest first)
+  const availableFys = Array.from(
+    { length: currentFyStart - 2019 + 1 },
+    (_, i) => currentFyStart - i
+  );
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -760,30 +764,21 @@ export default function CollectionSheet() {
             FY {getFyLabel(selectedFyStart)} &nbsp;·&nbsp; Apr {selectedFyStart} → Mar {selectedFyStart + 1}
           </p>
         </div>
-        {/* FY Selector */}
+        {/* FY Selector — dropdown so any year can be reached */}
         <div className="flex items-center gap-2" data-testid="fy-selector">
           <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Financial Year:</span>
-          <div className="flex rounded-lg border border-border overflow-hidden">
+          <select
+            value={selectedFyStart}
+            onChange={(e) => setSelectedFyStart(Number(e.target.value))}
+            className="bk-input py-1.5 pr-8 text-sm font-semibold"
+            data-testid="fy-select"
+          >
             {availableFys.map((fy) => (
-              <button
-                key={fy}
-                onClick={() => setSelectedFyStart(fy)}
-                data-testid={`fy-btn-${fy}`}
-                className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
-                  selectedFyStart === fy
-                    ? "bg-primary text-white"
-                    : "bg-card text-muted-foreground hover:bg-muted"
-                }`}
-              >
-                {getFyLabel(fy)}
-                {fy === currentFyStart && (
-                  <span className={`ml-1 text-[10px] ${selectedFyStart === fy ? "text-white/70" : "text-primary"}`}>
-                    ●
-                  </span>
-                )}
-              </button>
+              <option key={fy} value={fy}>
+                {getFyLabel(fy)}{fy === currentFyStart ? " (Current)" : ""}
+              </option>
             ))}
-          </div>
+          </select>
         </div>
       </div>
 
