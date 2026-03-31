@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { Landmark, Trash2 } from "lucide-react";
+import { Landmark, Trash2, Copy } from "lucide-react";
 import { API, fmt } from "./utils";
 
 export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
@@ -9,6 +9,8 @@ export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
   const [loadingHeads, setLoadingHeads] = useState(true);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [copying, setCopying] = useState(false);
+  const [latestClosing, setLatestClosing] = useState(null);
   const [date, setDate] = useState(() => {
     const now = new Date();
     const fy = now.getMonth() < 3 ? now.getFullYear() - 1 : now.getFullYear();
@@ -46,6 +48,17 @@ export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
           }
           setAmounts(prefill);
           if (eData.entry.date) setDate(eData.entry.date);
+        }
+
+        // Check if a year-end closing exists for this illaka
+        if (illakaId) {
+          try {
+            const hRes = await fetch(`${API}/api/loans/year-end-closing/history?illaka_id=${illakaId}`, { credentials: "include" });
+            const hData = await hRes.json();
+            if (hData.closings?.length > 0) {
+              setLatestClosing(hData.closings[0].closing_date);
+            }
+          } catch { /* silent — not critical */ }
         }
       } catch { toast.error("Failed to load account heads"); }
       finally { setLoadingHeads(false); }
@@ -107,6 +120,36 @@ export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
     finally { setDeleting(false); }
   }
 
+  async function handleCopyFromClosing() {
+    if (!illakaId || !latestClosing) return;
+    setCopying(true);
+    try {
+      const res = await fetch(
+        `${API}/api/accounts/closing-balances?illaka_id=${illakaId}&closing_date=${latestClosing}`,
+        { credentials: "include" }
+      );
+      const data = await res.json();
+      if (!res.ok) { toast.error(data.detail || "Failed to copy closing balances"); return; }
+
+      // Pre-fill amounts by account_head_id
+      const newAmounts = {};
+      for (const item of data.items || []) {
+        if (item.balance > 0) {
+          newAmounts[item.account_head_id] = item.balance;
+        }
+      }
+      setAmounts(newAmounts);
+
+      // Set date to the day after the closing (April 1 of next FY)
+      const closingDateObj = new Date(latestClosing + "T00:00:00");
+      closingDateObj.setDate(closingDateObj.getDate() + 1);
+      setDate(closingDateObj.toISOString().split("T")[0]);
+
+      toast.success(`Copied balances from ${latestClosing} closing`);
+    } catch { toast.error("Failed to copy closing balances"); }
+    finally { setCopying(false); }
+  }
+
   const typeOrder = ["asset", "liability", "equity"];
   const grouped = heads.reduce((acc, h) => {
     const t = h.group_type;
@@ -150,6 +193,26 @@ export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
                   data-testid="ob-date-input"
                 />
               </div>
+
+              {/* Copy from Year-End Closing — only shown after a closing exists */}
+              {latestClosing && (
+                <div className="flex items-center justify-between rounded-xl border border-primary/30 bg-primary/5 px-4 py-3">
+                  <div>
+                    <p className="text-xs font-bold text-primary">Year-End Closing found</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{latestClosing}</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopyFromClosing}
+                    disabled={copying}
+                    className="flex items-center gap-2 text-xs font-semibold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-60"
+                    data-testid="ob-copy-closing-btn"
+                  >
+                    <Copy size={13} />
+                    {copying ? "Copying…" : "Copy as Opening"}
+                  </button>
+                </div>
+              )}
 
               {typeOrder.filter(t => grouped[t]?.length).map(t => (
                 <div key={t}>

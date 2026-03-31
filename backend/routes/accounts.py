@@ -896,6 +896,78 @@ async def delete_opening_balance(
     return {"message": "Opening balance deleted"}
 
 
+@router.get("/accounts/closing-balances")
+async def get_closing_balances(
+    request: Request,
+    illaka_id: str,
+    closing_date: str,
+):
+    """Return per-account closing balances (with head IDs) as of closing_date.
+    Only succeeds when a year-end closing exists for this illaka.
+    Used to pre-fill opening balances for the next fiscal year.
+    Income/expense accounts and the auto-calculated Opening Capital are excluded.
+    """
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Only admin or maalik can copy closing balances")
+
+    # Verify a year-end closing actually exists for this illaka on this date
+    gyal_loan = await db.loans.find_one({"illaka_id": illaka_id, "is_gyal": True, "gyal_since": closing_date})
+    if not gyal_loan:
+        raise HTTPException(status_code=404, detail="No year-end closing found for this date and illaka")
+
+    # Build system_key lookup to skip opening_capital
+    all_heads = await db.account_heads.find({}, {"_id": 1, "system_key": 1}).to_list(1000)
+    system_key_map = {str(h["_id"]): h.get("system_key", "") for h in all_heads}
+
+    # All journal entries for this illaka up to and including the closing date
+    entries = await db.journal_entries.find(
+        {"illaka_id": illaka_id, "date": {"$lte": closing_date}}
+    ).to_list(50000)
+
+    head_totals: dict = {}
+    for entry in entries:
+        for line in entry.get("lines", []):
+            hid = line.get("account_head_id")
+            if not hid:
+                continue
+            if hid not in head_totals:
+                head_totals[hid] = {
+                    "account_head_id": hid,
+                    "account_head_name": line.get("account_head_name", ""),
+                    "group_name": line.get("group_name", ""),
+                    "group_type": line.get("group_type", ""),
+                    "total_debit": 0.0,
+                    "total_credit": 0.0,
+                }
+            head_totals[hid]["total_debit"] += float(line.get("debit", 0))
+            head_totals[hid]["total_credit"] += float(line.get("credit", 0))
+
+    items = []
+    for hid, h in head_totals.items():
+        gtype = h["group_type"]
+        # Skip income & expense — closed at year-end; skip auto-calculated capital plug
+        if gtype in ("income", "expense"):
+            continue
+        if system_key_map.get(hid) == "opening_capital":
+            continue
+        dr = round(h["total_debit"], 2)
+        cr = round(h["total_credit"], 2)
+        # balance = natural side: Dr for assets, Cr for liabilities/equity
+        balance = round(dr - cr, 2) if gtype == "asset" else round(cr - dr, 2)
+        if abs(balance) < 0.01:
+            continue  # skip zero-balance heads
+        items.append({
+            "account_head_id": hid,
+            "account_head_name": h["account_head_name"],
+            "group_name": h["group_name"],
+            "group_type": gtype,
+            "balance": balance,
+        })
+
+    return {"closing_date": closing_date, "items": items}
+
+
 # ── Expense Templates (per Illaka, admin-managed) ─────────────────────────────
 
 @router.get("/accounts/expense-templates")
