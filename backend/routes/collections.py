@@ -229,6 +229,14 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             "is_gyal": is_gyal,
             "gyal_since": loan.get("gyal_since") or "",
             "emi_year_data": emi_year_data,
+            # Net-off merge metadata
+            "_is_reloan": loan.get("is_reloan", False),
+            "_parent_loan_id": str(loan.get("parent_loan_id") or ""),
+            "_netoff_closed": loan.get("netoff_closed", False),
+            "_reloan_id": str(loan.get("reloan_id") or ""),
+            # Combined fields (filled during post-processing)
+            "is_netoff_combined": False,
+            "prev_opening_balance": 0.0,
         }
 
         if loan_illaka_id not in illakas_map:
@@ -240,9 +248,53 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             misal_order[loan_illaka_id].append(misal_id)
         illakas_map[loan_illaka_id]["misals"][misal_id]["rows"].append(row)
 
+    # ── Net-off merge pass ────────────────────────────────────────────────
+    # For net-off pairs (L1 netoff-closed → L2 re-loan), merge both into ONE row.
+    # L2 is the primary row (active, Collect button targets it).
+    # L1's FY strip fills months where L2 has no data ("na").
+    # Combined row shows L1's opening balance in पिछली बाक़ी and L2's amount in किस्त हाल.
+    for il_id in illaka_order:
+        for m_id in misal_order[il_id]:
+            rows = illakas_map[il_id]["misals"][m_id]["rows"]
+            row_by_loan_id = {r["loan_db_id"]: r for r in rows}
+            to_remove_ids = set()
+
+            for row in rows:
+                if not row.get("_is_reloan") or not row.get("_parent_loan_id"):
+                    continue
+                parent_id = row["_parent_loan_id"]
+                parent_row = row_by_loan_id.get(parent_id)
+                if not parent_row or not parent_row.get("_netoff_closed"):
+                    continue
+
+                # Merge parent (L1) FY strip into child (L2): L2 takes priority
+                parent_strip = {e["month"]: e for e in parent_row["emi_year_data"]}
+                merged_strip = []
+                for entry in row["emi_year_data"]:
+                    if entry["status"] != "na":
+                        merged_strip.append(entry)
+                    elif entry["month"] in parent_strip:
+                        merged_strip.append(parent_strip[entry["month"]])
+                    else:
+                        merged_strip.append(entry)
+
+                row["emi_year_data"] = merged_strip
+                row["is_netoff_combined"] = True
+                row["prev_opening_balance"] = float(parent_row.get("opening_balance") or 0)
+                to_remove_ids.add(parent_id)
+
+            illakas_map[il_id]["misals"][m_id]["rows"] = [
+                r for r in rows if r["loan_db_id"] not in to_remove_ids
+            ]
+
     result = []
     for il_id in illaka_order:
         il = illakas_map[il_id]
+        # Strip internal metadata fields before output
+        for m in il["misals"].values():
+            for r in m["rows"]:
+                for k in ("_is_reloan", "_parent_loan_id", "_netoff_closed", "_reloan_id"):
+                    r.pop(k, None)
         misals_list = [il["misals"][m_id] for m_id in misal_order[il_id]]
         result.append({"illaka_id": il["illaka_id"], "illaka_name": il["illaka_name"], "misals": misals_list})
 

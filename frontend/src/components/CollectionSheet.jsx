@@ -396,32 +396,47 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             <p className="lg:hidden text-[10px] text-muted-foreground/70 mt-0.5">{fmtLoanDate(row.loan_date)}</p>
           </div>
 
-          {/* पिछली बाक़ी — desktop only: loan from a PREVIOUS FY */}
+          {/* पिछली बाक़ी — desktop only: loan from a PREVIOUS FY (or L1 opening balance for net-off combined) */}
           {(() => {
             const loanYm = row.loan_date ? row.loan_date.substring(0, 7) : null;
             const isOldLoan = loanYm && loanYm < fyMonths[0];
+            // For net-off combined rows: always show L1's opening balance in this column
+            const showPrev = row.is_netoff_combined
+              ? (row.prev_opening_balance > 0)
+              : isOldLoan;
+            const prevAmount = row.is_netoff_combined ? row.prev_opening_balance : row.opening_balance;
             return (
               <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
-                {isOldLoan ? (
+                {showPrev ? (
                   <>
-                    <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.opening_balance)}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
+                    <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(prevAmount)}</p>
+                    {!row.is_netoff_combined && (
+                      <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
+                    )}
                   </>
                 ) : null}
               </div>
             );
           })()}
 
-          {/* किस्त हाल — desktop only: loan disbursed in CURRENT FY */}
+          {/* किस्त हाल — desktop only: new loan in current FY, or always for net-off combined */}
           {(() => {
             const loanYm = row.loan_date ? row.loan_date.substring(0, 7) : null;
             const isNewLoan = loanYm && loanYm >= fyMonths[0];
+            // For net-off combined rows: always show new loan (L2) amount here
+            const showNew = row.is_netoff_combined || isNewLoan;
             return (
               <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
-                {isNewLoan ? (
+                {showNew ? (
                   <>
                     <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.total_repayable)}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {row.is_netoff_combined ? (
+                        <span className="text-blue-600">↩ {fmtLoanDate(row.loan_date)}</span>
+                      ) : (
+                        fmtLoanDate(row.loan_date)
+                      )}
+                    </p>
                   </>
                 ) : null}
               </div>
