@@ -156,6 +156,15 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         total_repayable = loan.get("total_repayable") or ((loan.get("emi_amount") or 0) * 12)
         outstanding = total_repayable - (loan.get("total_paid") or 0)
 
+        # Opening balance at the START of the viewed FY (पिछली बाक़ी).
+        # = total_repayable minus EMIs that were paid BEFORE the FY began.
+        paid_before_fy = sum(
+            float(e.get("paid_amount") or 0)
+            for e in schedule
+            if e.get("status") == "paid" and (e.get("due_month") or "") < fy_months[0]
+        )
+        opening_balance = max(0.0, total_repayable - paid_before_fy)
+
         # Build 12-month year data for the FY strip
         is_gyal = loan.get("is_gyal", False)
         loan_gyal_year = gyal_year_map.get(loan_id_str, {})
@@ -207,6 +216,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             "emi_paid_amount": float(emi.get("paid_amount") or 0) if emi.get("status") == "paid" else 0,
             "emi_paid_date": emi.get("paid_date") or "",
             "outstanding_balance": outstanding,
+            "opening_balance": opening_balance,
             "loan_date": loan.get("loan_date") or "",
             "total_repayable": float(loan.get("total_repayable") or 0),
             "netoff_amount": float(loan.get("netoff_amount") or 0),
