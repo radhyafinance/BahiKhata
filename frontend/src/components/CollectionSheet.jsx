@@ -369,7 +369,12 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch text-sm">
           {/* EMI Amount */}
           <div className="text-right pr-2 pl-3 py-3 flex flex-col justify-center flex-shrink-0">
-            <p className={`font-bold text-sm leading-tight text-foreground`}>
+            {row.is_netoff_combined && row.prev_emi_amount > 0 && (
+              <p className="text-[11px] tabular-nums text-muted-foreground line-through mb-0.5">
+                {new Intl.NumberFormat("en-IN").format(row.prev_emi_amount)}
+              </p>
+            )}
+            <p className="font-bold text-sm leading-tight text-foreground">
               {new Intl.NumberFormat("en-IN").format(row.emi_amount)}
             </p>
             <div className="inline-flex items-center justify-center mt-1 w-full">
