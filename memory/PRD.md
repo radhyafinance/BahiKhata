@@ -185,4 +185,4 @@ See CHANGELOG.md for full history.
 - [ ] Days Overdue badge on Collection Sheet EMI rows (P1)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
-- [x] **Edit EMI Entry on Collection Sheet (2026-03-31)**: PATCH `/loans/{id}/payments/{emi_month}` endpoint. Muneem/Sipahi can edit current-month paid entries only. Admin/Maalik can edit any entry not locked by year-end closing. EditEmiModal pre-fills paid amount + date. Old journal entry is deleted and replaced atomically.
+- [x] **12-Month FY Strip on Collection Sheet Desktop (2026-03-31)**: Added April→March financial year strip between client name and balance on desktop (lg+). Each cell shows paid amount with ✓ or note indicator. Current month highlighted. Mobile unaffected. Backend adds `emi_year_data` (12 items) per row.
