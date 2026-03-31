@@ -48,6 +48,13 @@ function getFyLabel(fyStart) {
 
 // Active month to send to the API for a given FY start year
 function getApiMonthForFy(fyStart) {
+  const curFyStart = getCurrentFyStart();
+  if (fyStart === curFyStart) {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return `${fyStart + 1}-03`;
+}
 
 const fmtMonth = (ym) => {
   if (!ym) return "—";
