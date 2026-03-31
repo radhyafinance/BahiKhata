@@ -210,10 +210,16 @@ See CHANGELOG.md for full history.
 - [x] Active month (used for Collect button, highlighting, and edit permissions): today's month for current FY, March for past FYs
 - [x] All loans with any EMI in the selected FY are shown (not filtered by a single month)
 
-### Collection Sheet — Days Overdue Badge (2026-03-31) ✓
-- [x] Red "Xd" badge shown below the overdue icon in the EMI amount column for all overdue rows
-- [x] Calculated purely on frontend: today − last day of `emi_month`
-- [x] Only shown when days > 0; zero-day or future overdue rows show no badge
+### Collection Sheet — Days Overdue Badge (2026-03-31) — REMOVED per user request
+
+### Collection Sheet — Net-off Combined Row (2026-03-31) ✓
+- [x] Net-off loan pairs (L1 netoff-closed + L2 re-loan) merged into ONE row on the sheet
+- [x] FY strip shows L1's netoff EMIs + L2's paid/pending EMIs continuously in the same row
+- [x] पिछली बाक़ी shows L1's opening balance + L1's loan date for combined rows
+- [x] किस्त हाल always shows L2's total_repayable + "↩ {month/year}" for combined rows
+- [x] EMI column shows old EMI (strikethrough) on top and new EMI in bold below
+- [x] Works even when L1 has no EMIs in the viewed FY (looks up L1 directly from loans collection)
+- [x] Seed data: 10 net-off re-loans created for RA0021–RA0030 in Rampur Testing
 - [ ] **Days Overdue badge** on Collection Sheet EMI rows (P1)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
