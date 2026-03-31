@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect } from "react";
+import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
 
@@ -12,6 +12,13 @@ export function IllakaProvider({ children }) {
   // undefined = not selected yet, null = "All Illakas", {id,name} = specific
   const [selectedIllaka, setSelectedIllakaState] = useState(undefined);
   const [eligibleIllakas, setEligibleIllakas] = useState([]);
+
+  const fetchIllakas = useCallback(() => {
+    axios
+      .get(`${API}/illakas`, { withCredentials: true })
+      .then((r) => setEligibleIllakas(r.data || []))
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     // Wait for auth to finish loading before touching sessionStorage
@@ -40,11 +47,8 @@ export function IllakaProvider({ children }) {
       setSelectedIllakaState(undefined);
     }
     // Fetch eligible illakas
-    axios
-      .get(`${API}/illakas`, { withCredentials: true })
-      .then((r) => setEligibleIllakas(r.data || []))
-      .catch(() => {});
-  }, [user?.id, loading]);
+    fetchIllakas();
+  }, [user?.id, loading, fetchIllakas]);
 
   const setSelectedIllaka = (illaka) => {
     setSelectedIllakaState(illaka);
@@ -56,6 +60,8 @@ export function IllakaProvider({ children }) {
   const resetIllaka = () => {
     sessionStorage.removeItem(STORAGE_KEY);
     setSelectedIllakaState(undefined);
+    // Re-fetch the illaka list so any newly created illakas appear
+    fetchIllakas();
   };
 
   return (
