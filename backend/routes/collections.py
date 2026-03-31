@@ -253,6 +253,8 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
     # L2 is the primary row (active, Collect button targets it).
     # L1's FY strip fills months where L2 has no data ("na").
     # Combined row shows L1's opening balance in पिछली बाक़ी and L2's amount in किस्त हाल.
+    all_loans_by_id = {str(l["_id"]): l for l in loans}
+
     for il_id in illaka_order:
         for m_id in misal_order[il_id]:
             rows = illakas_map[il_id]["misals"][m_id]["rows"]
@@ -264,26 +266,55 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                     continue
                 parent_id = row["_parent_loan_id"]
                 parent_row = row_by_loan_id.get(parent_id)
-                if not parent_row or not parent_row.get("_netoff_closed"):
+
+                # Case A: parent also appears as a row in this FY
+                if parent_row and parent_row.get("_netoff_closed"):
+                    parent_strip = {e["month"]: e for e in parent_row["emi_year_data"]}
+                    parent_opening = float(parent_row.get("opening_balance") or 0)
+                    parent_loan_date = parent_row.get("loan_date") or ""
+                    parent_emi_amount = float(parent_row.get("emi_amount") or 0)
+                    to_remove_ids.add(parent_id)
+
+                # Case B: parent is netoff-closed but NOT in this FY's rows
+                #         (e.g. L1 schedule ended before this FY)
+                elif not parent_row:
+                    parent_loan = all_loans_by_id.get(parent_id)
+                    if not parent_loan or not parent_loan.get("netoff_closed"):
+                        continue
+                    parent_sched = parent_loan.get("emi_schedule", [])
+                    parent_repayable = float(parent_loan.get("total_repayable") or 0)
+                    parent_paid_before_fy = sum(
+                        float(e.get("paid_amount") or 0)
+                        for e in parent_sched
+                        if e.get("status") == "paid" and (e.get("due_month") or "") < fy_months[0]
+                    )
+                    parent_opening = max(0.0, parent_repayable - parent_paid_before_fy)
+                    parent_loan_date = parent_loan.get("loan_date") or ""
+                    parent_emi_amount = float(parent_loan.get("emi_amount") or 0)
+                    # Build parent FY strip from its schedule
+                    parent_strip = {}
+                    for ym in fy_months:
+                        yd = next((e for e in parent_sched if e.get("due_month") == ym), None)
+                        if yd:
+                            parent_strip[ym] = {"month": ym, "status": yd["status"], "paid_amount": float(yd.get("paid_amount") or 0), "note": yd.get("note", "")}
+                else:
                     continue
 
-                # Merge parent (L1) FY strip into child (L2): L2 takes priority
-                parent_strip = {e["month"]: e for e in parent_row["emi_year_data"]}
+                # Merge parent strip into child (L2 takes priority for non-na months)
                 merged_strip = []
                 for entry in row["emi_year_data"]:
                     if entry["status"] != "na":
                         merged_strip.append(entry)
-                    elif entry["month"] in parent_strip:
+                    elif entry["month"] in parent_strip and parent_strip[entry["month"]]["status"] != "na":
                         merged_strip.append(parent_strip[entry["month"]])
                     else:
                         merged_strip.append(entry)
 
                 row["emi_year_data"] = merged_strip
                 row["is_netoff_combined"] = True
-                row["prev_opening_balance"] = float(parent_row.get("opening_balance") or 0)
-                row["prev_loan_date"] = parent_row.get("loan_date") or ""
-                row["prev_emi_amount"] = float(parent_row.get("emi_amount") or 0)
-                to_remove_ids.add(parent_id)
+                row["prev_opening_balance"] = parent_opening
+                row["prev_loan_date"] = parent_loan_date
+                row["prev_emi_amount"] = parent_emi_amount
 
             illakas_map[il_id]["misals"][m_id]["rows"] = [
                 r for r in rows if r["loan_db_id"] not in to_remove_ids
