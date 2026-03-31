@@ -189,7 +189,12 @@ See CHANGELOG.md for full history.
 - [x] **EMI Edit on Vasuli (2026-03-31)**: Muneem/Sipahi edit current month only; Admin/Maalik edit before year closing
 - [x] **Copy Opening Balance from Closing (2026-03-31)**: Pre-fill opening balances from last year's closing
 
-### Collection Sheet UI Fixes (2026-03-31) ✓
+### Collection Sheet — Two New Columns (2026-03-31) ✓
+- [x] Added **पिछली बाक़ी** column (previous outstanding/netoff_amount) with loan month/year — desktop only
+- [x] Added **किस्त हाल** column (total_repayable = principal + interest) with loan month/year — desktop only
+- [x] Removed date from **शेष/Bal** column (date moved to new columns)
+- [x] Table widened to `max-w-full` to use all available horizontal space
+- [x] Mobile shows loan date below the name instead
 - [x] FY strip shows full numbers (1,500) instead of compact format (1.5K)
 - [x] Gyal rows text shown in black (foreground) — background remains grey
 - [x] Real-time state update after Collect/Edit — FY strip updates immediately without page refresh

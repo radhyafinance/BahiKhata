@@ -183,6 +183,8 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             "emi_paid_date": emi.get("paid_date") or "",
             "outstanding_balance": outstanding,
             "loan_date": loan.get("loan_date") or "",
+            "total_repayable": float(loan.get("total_repayable") or 0),
+            "netoff_amount": float(loan.get("netoff_amount") or 0),
             "is_gyal": is_gyal,
             "gyal_since": loan.get("gyal_since") or "",
             "emi_year_data": emi_year_data,

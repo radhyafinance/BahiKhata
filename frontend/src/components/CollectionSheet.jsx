@@ -342,7 +342,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         }`}
         data-testid={`collection-row-${row.loan_db_id}`}
       >
-        <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,180px)_1fr_72px_68px] gap-0 items-stretch text-sm">
+        <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch text-sm">
           {/* EMI Amount */}
           <div className="text-right pr-2 pl-3 py-3 flex flex-col justify-center flex-shrink-0">
             <p className={`font-bold text-sm leading-tight text-foreground`}>
@@ -368,6 +368,24 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                 {guarantorName}
               </p>
             )}
+            {/* Show loan date on mobile (new cols hidden on mobile) */}
+            <p className="lg:hidden text-[10px] text-muted-foreground/70 mt-0.5">{fmtLoanDate(row.loan_date)}</p>
+          </div>
+
+          {/* पिछली बाक़ी — desktop only */}
+          <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
+            <p className="font-semibold text-sm tabular-nums text-foreground">
+              {row.netoff_amount > 0 ? fmt(row.netoff_amount) : "—"}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
+          </div>
+
+          {/* किस्त हाल — desktop only */}
+          <div className="hidden lg:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
+            <p className="font-semibold text-sm tabular-nums text-foreground">
+              {row.total_repayable > 0 ? fmt(row.total_repayable) : "—"}
+            </p>
+            <p className="text-[10px] text-muted-foreground mt-0.5">{fmtLoanDate(row.loan_date)}</p>
           </div>
 
           {/* 12-month FY strip — desktop only, expands to fill all available space */}
@@ -422,13 +440,10 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             })}
           </div>
 
-          {/* Balance */}
+          {/* Balance — amount only, date moved to new columns */}
           <div className="text-right pr-3 pl-1 py-2.5 flex flex-col justify-center">
             <p className={`font-semibold text-sm leading-tight tabular-nums text-foreground`}>
               {fmt(row.outstanding_balance)}
-            </p>
-            <p className={`text-[11px] leading-tight mt-0.5 whitespace-nowrap text-muted-foreground`}>
-              {fmtLoanDate(row.loan_date)}
             </p>
           </div>
 
@@ -527,9 +542,12 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {expanded && (
         <div className="divide-y divide-border/60">
           {/* Column Header */}
-          <div className="grid grid-cols-[52px_1fr_72px_68px] lg:grid-cols-[52px_minmax(80px,180px)_1fr_72px_68px] gap-0 items-stretch bg-muted/40 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+          <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch bg-muted/40 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
             <span className="text-right pr-2 pl-3 py-2 self-center">EMI</span>
             <span className="pl-2 py-2 self-center">नाम / Name</span>
+            {/* New columns — desktop only */}
+            <span className="hidden lg:flex items-center justify-end pr-2 pl-1 py-2 text-right leading-tight">पिछली बाक़ी</span>
+            <span className="hidden lg:flex items-center justify-end pr-2 pl-1 py-2 text-right leading-tight">किस्त हाल</span>
             {/* 12-month headers — desktop only, boxy */}
             <div className="hidden lg:flex self-stretch border-x border-border divide-x divide-border/50 bg-muted/20">
               {fyMonths.map(ym => {
@@ -638,7 +656,7 @@ export default function CollectionSheet() {
   const pct = totalRows > 0 ? Math.round((collected / totalRows) * 100) : 0;
 
   return (
-    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
+    <div className="p-4 sm:p-6 max-w-full mx-auto space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
