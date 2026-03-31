@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
@@ -33,6 +33,28 @@ function getFyMonths(ym) {
     result.push(`${fy}-${String(fm).padStart(2, "0")}`);
   }
   return result;
+}
+
+// FY selector helpers
+function getCurrentFyStart() {
+  const today = new Date();
+  const m = today.getMonth() + 1;
+  return m >= 4 ? today.getFullYear() : today.getFullYear() - 1;
+}
+
+function getFyLabel(fyStart) {
+  return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
+}
+
+// Active month to send to the API for a given FY start year
+function getApiMonthForFy(fyStart) {
+  const curFyStart = getCurrentFyStart();
+  if (fyStart === curFyStart) {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  }
+  // Past FY: use March of the end year so the backend computes the right FY range
+  return `${fyStart + 1}-03`;
 }
 
 const fmtMonth = (ym) => {
@@ -639,7 +661,14 @@ export default function CollectionSheet() {
   const { selectedIllaka } = useIllaka();
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  const [month, setMonth] = useState(defaultMonth);
+
+  // FY selector state — default to current FY
+  const [selectedFyStart, setSelectedFyStart] = useState(getCurrentFyStart);
+  // Derive the "active month" for API calls and Collect button from the selected FY
+  const month = getApiMonthForFy(selectedFyStart);
+  const currentFyStart = getCurrentFyStart();
+  const availableFys = [currentFyStart, currentFyStart - 1, currentFyStart - 2];
+
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [collectingRow, setCollectingRow] = useState(null);
@@ -703,42 +732,85 @@ export default function CollectionSheet() {
   const collected = data?.collected || 0;
   const pct = totalRows > 0 ? Math.round((collected / totalRows) * 100) : 0;
 
+  // FY-level stats computed from the 12-month strip data
+  const fyStats = useMemo(() => {
+    if (!data) return { total: 0, paid: 0 };
+    let total = 0, paid = 0;
+    for (const il of data.illakas) {
+      for (const ms of il.misals) {
+        for (const row of ms.rows) {
+          for (const yd of (row.emi_year_data || [])) {
+            if (yd.status !== "na") {
+              total++;
+              if (yd.status === "paid" || yd.status === "netoff") paid++;
+            }
+          }
+        }
+      }
+    }
+    return { total, paid };
+  }, [data]);
+
   return (
     <div className="p-4 sm:p-6 max-w-full mx-auto space-y-5">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-foreground font-['Outfit']">Vasuli / वसूली</h1>
-          <p className="text-sm text-muted-foreground">Collection Sheet — {fmtMonth(month)}</p>
+          <p className="text-sm text-muted-foreground">
+            FY {getFyLabel(selectedFyStart)} &nbsp;·&nbsp; Apr {selectedFyStart} → Mar {selectedFyStart + 1}
+          </p>
         </div>
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-muted-foreground">Month:</label>
-          <input
-            type="month"
-            value={month}
-            onChange={(e) => setMonth(e.target.value)}
-            className="bk-input sm:w-44"
-            data-testid="month-picker"
-          />
+        {/* FY Selector */}
+        <div className="flex items-center gap-2" data-testid="fy-selector">
+          <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Financial Year:</span>
+          <div className="flex rounded-lg border border-border overflow-hidden">
+            {availableFys.map((fy) => (
+              <button
+                key={fy}
+                onClick={() => setSelectedFyStart(fy)}
+                data-testid={`fy-btn-${fy}`}
+                className={`px-3 py-1.5 text-sm font-semibold transition-colors ${
+                  selectedFyStart === fy
+                    ? "bg-primary text-white"
+                    : "bg-card text-muted-foreground hover:bg-muted"
+                }`}
+              >
+                {getFyLabel(fy)}
+                {fy === currentFyStart && (
+                  <span className={`ml-1 text-[10px] ${selectedFyStart === fy ? "text-white/70" : "text-primary"}`}>
+                    ●
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Summary Bar */}
       {data && (
         <div className="bk-card p-4 space-y-3" data-testid="collection-summary">
+          {/* FY Progress */}
           <div className="flex items-center justify-between text-sm">
-            <span className="font-semibold text-foreground">{collected} of {totalRows} EMIs collected</span>
-            <span className="font-bold text-primary">{pct}%</span>
+            <span className="font-semibold text-foreground">
+              FY {getFyLabel(selectedFyStart)}: {fyStats.paid} of {fyStats.total} EMIs collected
+            </span>
+            <span className="font-bold text-primary">
+              {fyStats.total > 0 ? Math.round((fyStats.paid / fyStats.total) * 100) : 0}%
+            </span>
           </div>
           <div className="h-2.5 bg-muted rounded-full overflow-hidden">
             <div
               className="h-full bg-primary rounded-full transition-all duration-500"
-              style={{ width: `${pct}%` }}
+              style={{ width: `${fyStats.total > 0 ? Math.round((fyStats.paid / fyStats.total) * 100) : 0}%` }}
             />
           </div>
-          <div className="flex gap-4 text-xs text-muted-foreground">
+          {/* Active month breakdown */}
+          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
+            <span className="font-semibold text-foreground/70">{fmtMonth(month)}:</span>
             <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-600" /> {collected} Collected</span>
-            <span className="flex items-center gap-1"><AlertCircle size={12} className="text-red-500" /> {data.illakas.reduce((a, il) => a + il.misals.reduce((b, m) => b + m.rows.filter((r) => r.emi_status === "overdue").length, 0), 0)} Overdue</span>
+            <span className="flex items-center gap-1"><AlertCircle size={12} className="text-red-500" /> {data.illakas.reduce((a, il) => a + il.misals.reduce((b, ms) => b + ms.rows.filter((r) => r.emi_status === "overdue").length, 0), 0)} Overdue</span>
             <span className="flex items-center gap-1"><Clock size={12} className="text-gray-400" /> {totalRows - collected} Remaining</span>
           </div>
         </div>
@@ -752,8 +824,8 @@ export default function CollectionSheet() {
       ) : !data || data.illakas.length === 0 ? (
         <div className="bk-card py-16 text-center text-muted-foreground" data-testid="empty-sheet">
           <IndianRupee size={40} className="mx-auto mb-3 opacity-20" />
-          <p className="font-medium text-foreground">No EMIs due for {fmtMonth(month)}</p>
-          <p className="text-sm mt-1">इस महीने कोई किस्त नहीं</p>
+          <p className="font-medium text-foreground">No loans found for FY {getFyLabel(selectedFyStart)}</p>
+          <p className="text-sm mt-1">इस वर्ष कोई कर्ज़ नहीं</p>
         </div>
       ) : (
         <div className="space-y-6">

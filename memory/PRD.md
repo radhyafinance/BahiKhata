@@ -203,11 +203,12 @@ See CHANGELOG.md for full history.
 - [x] Renaming an Illaka or Misal propagates to all denormalized fields across `loans`, `kycs`, `expense_templates` collections via `update_many`
 - [x] `collections.py` now does a live bulk lookup of illaka/misal names from source collections as the primary source of truth, with stored name as fallback
 
-### Collection Sheet — Closed Loans Persistence (2026-03-31) ✓
-- [x] Closed loans now stay on the Collection Sheet until their 12-month EMI schedule ends naturally (end of FY/last scheduled month), not when marked closed
-- [x] Overdue loans whose 12-month tenure has ended now remain on the sheet for the entire FY, showing the last scheduled EMI as the representative entry (so the agent can still collect/action it)
-- [x] Logic: if a loan has ANY EMI in the current FY months, it is always shown; if no EMI matches the view month, the last scheduled EMI is used as display entry
-- [x] Added `netoff` EMI status styling (blue, ↩ icon) in the FY strip and action column
+### Collection Sheet — FY-Based View (2026-03-31) ✓
+- [x] Replaced month picker with a **Financial Year selector** (3-button toggle: current + 2 past FYs)
+- [x] Header shows FY label and Apr→Mar range instead of a single month
+- [x] Summary bar now shows FY-level EMI progress (all 12 months) + active month breakdown
+- [x] Active month (used for Collect button, highlighting, and edit permissions): today's month for current FY, March for past FYs
+- [x] All loans with any EMI in the selected FY are shown (not filtered by a single month)
 
 ### P2 (Backlog)
 - [ ] **Days Overdue badge** on Collection Sheet EMI rows (P1)
