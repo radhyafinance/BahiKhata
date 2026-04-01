@@ -160,7 +160,16 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
         customer_id = loan.get("customer_id") or kyc.get("customer_id") or "—"
 
         total_repayable = loan.get("total_repayable") or ((loan.get("emi_amount") or 0) * 12)
-        outstanding = total_repayable - (loan.get("total_paid") or 0)
+        # FY-end balance: only count paid EMIs whose due_month falls ON OR BEFORE the
+        # last month of the selected FY.  Using the EMI schedule (not the cached
+        # loan.total_paid field) ensures the Bal column reflects the state at the
+        # end of the viewed FY rather than the current all-time outstanding.
+        paid_through_fy_end = sum(
+            float(e.get("paid_amount") or 0)
+            for e in schedule
+            if e.get("status") == "paid" and (e.get("due_month") or "") <= fy_months[-1]
+        )
+        outstanding = max(0.0, total_repayable - paid_through_fy_end)
 
         # Opening balance at the START of the viewed FY (पिछली बाक़ी).
         # = total_repayable minus EMIs that were paid BEFORE the FY began.
