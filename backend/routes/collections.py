@@ -247,6 +247,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             "is_netoff_combined": False,
             "prev_opening_balance": 0.0,
             "new_loan_in_fy": False,
+            "extra_kisht_entries": [],
         }
 
         if loan_illaka_id not in illakas_map:
@@ -310,36 +311,81 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                 else:
                     continue
 
-                # Merge parent strip into child (L2 takes priority for non-na months)
+                # Merge parent strip into child (L2 takes priority for non-na months).
+                # IMPORTANT: skip parent's "netoff" status entries — those mark the old loan
+                # closing and must NOT bleed the ↩ symbol into the combined row's FY strip.
+                # The ↩ will be injected at L2's actual loan-start month below.
                 merged_strip = []
                 for entry in row["emi_year_data"]:
                     if entry["status"] != "na":
                         merged_strip.append(entry)
-                    elif entry["month"] in parent_strip and parent_strip[entry["month"]]["status"] != "na":
+                    elif (entry["month"] in parent_strip
+                          and parent_strip[entry["month"]]["status"] not in ("na", "netoff")):
                         merged_strip.append(parent_strip[entry["month"]])
                     else:
                         merged_strip.append(entry)
 
-                row["emi_year_data"] = merged_strip
+                # Inject a "chain_start" marker at the month when THIS re-loan was disbursed.
+                # This places the ↩ symbol exactly where the net-off transaction occurred,
+                # not one month earlier on L1's closing EMI.
+                row_start_ym = (row.get("loan_date") or "")[:7]
+                row["emi_year_data"] = [
+                    {"month": e["month"], "status": "chain_start", "paid_amount": 0.0, "note": ""}
+                    if (e["month"] == row_start_ym and e["status"] == "na")
+                    else e
+                    for e in merged_strip
+                ]
+
                 row["is_netoff_combined"] = True
                 row["prev_emi_amount"] = parent_emi_amount
 
-                # Determine whether L2 (this row) was disbursed BEFORE or IN the selected FY.
-                # पिछली बाक़ी and किस्त हाल must strictly respect FY boundaries.
+                # ── Determine पिछली बाक़ी and किस्त हाल values ──────────────────
+                # Gather chain metadata from parent (differs between Case A and Case B)
+                if parent_row:  # Case A — parent is a processed row
+                    _par_combined   = parent_row.get("is_netoff_combined", False)
+                    _par_netoff_amt = float(parent_row.get("netoff_amount") or 0)
+                    _par_repayable  = float(parent_row.get("total_repayable") or 0)
+                    _par_date       = parent_row.get("loan_date", "")
+                    _par_extra      = list(parent_row.get("extra_kisht_entries") or [])
+                    _par_root_bal   = float(parent_row.get("prev_opening_balance") or 0)
+                    _par_root_date  = parent_row.get("prev_loan_date", "")
+                else:  # Case B — parent from all_loans_by_id (raw loan)
+                    _par_combined   = False
+                    _par_netoff_amt = float(parent_loan.get("netoff_amount") or 0)
+                    _par_repayable  = 0.0
+                    _par_date       = ""
+                    _par_extra      = []
+                    _par_root_bal   = 0.0
+                    _par_root_date  = ""
+
                 row_loan_ym = (row.get("loan_date") or "")[:7]
                 l2_before_fy = bool(row_loan_ym) and row_loan_ym < fy_months[0]
 
                 if l2_before_fy:
-                    # L2 started BEFORE this FY → पिछली बाक़ी = L2's own opening balance
-                    # (how much L2 owed at the START of this FY), किस्त हाल = blank
+                    # This re-loan started BEFORE the selected FY.
+                    # पिछली बाक़ी = this loan's own opening balance at FY start + its loan date.
+                    # किस्त हाल = blank (not a new loan in this FY).
                     row["prev_opening_balance"] = row.get("opening_balance", 0.0)
-                    row["prev_loan_date"] = row.get("loan_date", "")
-                    row["new_loan_in_fy"] = False
+                    row["prev_loan_date"]        = row.get("loan_date", "")
+                    row["new_loan_in_fy"]        = False
+                    row["extra_kisht_entries"]   = []
                 else:
-                    # L2 was disbursed IN this FY → पिछली बाक़ी = L1's residual (netoff amount)
-                    # किस्त हाल = L2's total_repayable
-                    row["prev_opening_balance"] = parent_opening
-                    row["prev_loan_date"] = parent_loan_date
+                    # This re-loan was disbursed IN the selected FY.
+                    # पिछली बाक़ी = the ROOT original loan's netoff amount + its loan date.
+                    # किस्त हाल = all re-loans in the chain (extras first, then this row).
+                    if _par_combined:
+                        # Parent was itself already combined → chain the root data through.
+                        row["prev_opening_balance"] = _par_root_bal
+                        row["prev_loan_date"]       = _par_root_date
+                        # Add parent as a new kisht entry; carry forward its extra entries.
+                        row["extra_kisht_entries"] = _par_extra + [
+                            {"amount": _par_repayable, "loan_date": _par_date}
+                        ]
+                    else:
+                        # Parent is the uncombined original loan → use its netoff_amount.
+                        row["prev_opening_balance"] = _par_netoff_amt
+                        row["prev_loan_date"]       = parent_loan_date
+                        row["extra_kisht_entries"]  = []
                     row["new_loan_in_fy"] = True
 
             illakas_map[il_id]["misals"][m_id]["rows"] = [

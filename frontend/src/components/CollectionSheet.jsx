@@ -433,18 +433,31 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             // For net-off combined rows: only show if L2 was disbursed in THIS FY
             // (backend sets new_loan_in_fy=true only when L2 started in the viewed FY)
             const showNew = row.is_netoff_combined ? (row.new_loan_in_fy === true) : isNewLoan;
+            const extras = row.extra_kisht_entries || [];
             return (
               <div className="hidden lg:flex landscape:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
                 {showNew ? (
                   <>
-                    <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.total_repayable)}</p>
-                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                      {row.is_netoff_combined ? (
-                        <span className="text-blue-600">↩ {fmtLoanDate(row.loan_date)}</span>
-                      ) : (
-                        fmtLoanDate(row.loan_date)
-                      )}
-                    </p>
+                    {/* Extra chain entries (older re-loans) shown above the current one */}
+                    {extras.map((entry, idx) => (
+                      <div key={idx} className={idx > 0 ? "mt-1 pt-1 border-t border-border/30" : ""}>
+                        <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(entry.amount)}</p>
+                        <p className="text-[10px] text-muted-foreground">
+                          <span className="text-blue-600">↩ {fmtLoanDate(entry.loan_date)}</span>
+                        </p>
+                      </div>
+                    ))}
+                    {/* Current new loan */}
+                    <div className={extras.length > 0 ? "mt-1 pt-1 border-t border-border/30" : ""}>
+                      <p className="font-semibold text-sm tabular-nums text-foreground">{fmt(row.total_repayable)}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5">
+                        {row.is_netoff_combined ? (
+                          <span className="text-blue-600">↩ {fmtLoanDate(row.loan_date)}</span>
+                        ) : (
+                          fmtLoanDate(row.loan_date)
+                        )}
+                      </p>
+                    </div>
                   </>
                 ) : null}
               </div>
@@ -475,11 +488,11 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                   </div>
                 );
               }
-              if (yd.status === "netoff") {
+              if (yd.status === "netoff" || yd.status === "chain_start") {
                 return (
                   <div
                     key={yd.month}
-                    title="Net-off (closed via re-loan)"
+                    title={yd.status === "chain_start" ? "Net-off — new loan starts here" : "Net-off (closed via re-loan)"}
                     className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${isCurr ? "bg-blue-100" : "bg-blue-50/60"}`}
                   >
                     <span className="text-blue-600 text-xs font-bold leading-none">↩</span>

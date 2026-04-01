@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 26: Tested 3-level chain (L1→L2→L3) for RA0030 (Shanti Singh) and RA0022 regressions. All 29 backend tests PASS. Frontend smoke test PASS. RA0030 row in FY 2023-24 verified: पिछली बाक़ी=₹1,000/Jul 2022, किस्त हाल shows two-line (₹24K Aug 2023 above ₹36K Mar 2024), FY strip has ↩ in AUG 2023 and MAR 2024 (chain_start), no netoff.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "feature_tests": {
+    "RA0030_FY_2023_24_prev_opening_balance_1000": "PASS — prev_opening_balance=1000.0 (L1 netoff_amount). पिछली बाक़ी column shows ₹1,000.",
+    "RA0030_FY_2023_24_prev_loan_date_jul_2022": "PASS — prev_loan_date='2022-07-29' starts with '2022-07'. Formatted as 'Jul 2022' in UI.",
+    "RA0030_FY_2023_24_extra_kisht_entries_L2_24000_aug2023": "PASS — extra_kisht_entries=[{amount:24000, loan_date:'2023-08-15'}]. One entry for L2 (₹24,000 Aug 2023).",
+    "RA0030_FY_2023_24_total_repayable_36000": "PASS — total_repayable=36000.0 (L3 किस्त हाल current row).",
+    "RA0030_FY_2023_24_new_loan_in_fy_true": "PASS — new_loan_in_fy=True (L3 Mar 2024 is within FY 2023-24).",
+    "RA0030_FY_strip_chain_start_aug_2023": "PASS — emi_year_data has chain_start at 2023-08 (L2 start month). ↩ rendered in AUG column.",
+    "RA0030_FY_strip_chain_start_mar_2024": "PASS — emi_year_data has chain_start at 2024-03 (L3 start month). ↩ rendered in MAR column (highlighted blue as current month).",
+    "RA0030_FY_strip_no_netoff_jul_2023": "PASS — 2023-07 does NOT have netoff status. Old L1 closing netoff symbol not bleeding into combined row.",
+    "RA0030_FY_strip_exactly_two_chain_starts": "PASS — Exactly 2 chain_start entries in FY strip: 2023-08 and 2024-03.",
+    "RA0022_FY_2023_24_prev_opening_balance_18000": "PASS — prev_opening_balance=18000.0. पिछली बाक़ी = ₹18,000.",
+    "RA0022_FY_2023_24_prev_loan_date_dec_2022": "PASS — prev_loan_date='2022-12-15' starts with '2022-12'.",
+    "RA0022_FY_2023_24_new_loan_in_fy_false": "PASS — new_loan_in_fy=False (L2 Dec 2022 before Apr 2023 FY start). किस्त हाल blank.",
+    "RA0022_FY_2023_24_extra_kisht_entries_empty": "PASS — extra_kisht_entries=[] (no chain extras for 2-level chain in this FY).",
+    "RA0022_FY_2023_24_no_chain_start_or_netoff_in_strip": "PASS — FY strip has no chain_start or netoff entries for RA0022 in FY 2023-24.",
+    "RA0022_FY_2022_23_prev_opening_balance_2000": "PASS — prev_opening_balance=2000.0 (L1 netoff_amount). पिछली बाक़ी = ₹2,000.",
+    "RA0022_FY_2022_23_prev_loan_date_jan_2022": "PASS — prev_loan_date='2022-01-14' starts with '2022-01'.",
+    "RA0022_FY_2022_23_chain_start_dec_2022_in_strip": "PASS — emi_year_data has chain_start at 2022-12 (L2 start month). ↩ rendered in DEC column.",
+    "current_FY_all_combined_rows_have_extra_kisht_entries": "PASS — 17 combined rows in FY 2025-26. All have extra_kisht_entries field (even if empty for 2-level chains).",
+    "frontend_smoke_fy_2023_24_loads": "PASS — FY 2023-24 badge 'FY 2023-24 · Apr 2023 – Mar 2024' visible, Rampur Testing illaka, Delhi Road Testing misal loaded.",
+    "frontend_shanti_singh_two_line_kisht_haal": "PASS — Shanti Singh row shows: पिछली बाक़ी=₹1,000/Jul 2022, किस्त हाल line-1=₹24,000 ↩ Aug 2023, line-2=₹36,000 ↩ Mar 2024. FY strip has ↩ in AUG and MAR columns."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_collection_sheet_3chain.py",
+    "/app/test_reports/pytest/pytest_3chain.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "3-chain merge logic correctly reads _par_combined=True for L3's parent (L2) and propagates _par_root_bal/_par_root_date from L2's prev_opening_balance/prev_loan_date (which were set when L2 was merged with L1).",
+    "extra_kisht_entries accumulation: _par_extra + [{amount: _par_repayable, loan_date: _par_date}] correctly builds the chain list. For L3: L2's extra_kisht_entries=[] + L2's row = [{amount:24000, date:'2023-08-15'}].",
+    "chain_start merge pass (line 322-324): parent_strip[entry['month']]['status'] not in ('na', 'netoff') — 'chain_start' is NOT in the exclusion list, so L2's chain_start at 2023-08 propagates correctly into L3's FY strip.",
+    "chain_start injection for L3 at row_start_ym='2024-03': if entry is 'na' at that month, it's set to chain_start. Since L3 was disbursed in Mar 2024 with first EMI in Apr 2024 (next FY), Mar 2024 is 'na' → correctly becomes chain_start.",
+    "All 17 combined rows in FY 2025-26 have extra_kisht_entries field, confirming backward compatibility for 2-level chains (they get extra_kisht_entries=[])."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_collection_sheet_3chain.py"
+  ],
+  "success_rate": {
+    "backend": "100% — 29/29 tests pass",
+    "frontend": "100% — all smoke tests pass"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123"
+  },
+  "seed_data_creation": "No seed data created. RA0030 3-chain (L1 Jul 2022 → L2 Aug 2023 → L3 Mar 2024) was pre-seeded in Rampur Testing illaka.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 26: 3-level chain fixes for RA0030 fully verified. Key behaviors: (1) FY 2023-24 RA0030 L3: prev_opening_balance=1000 (L1 netoff), prev_loan_date=2022-07-29, extra_kisht_entries=[{24000, 2023-08-15}], total_repayable=36000, new_loan_in_fy=True, FY strip chain_start at 2023-08 + 2024-03. (2) FY 2023-24 RA0022: prev_opening_balance=18000, prev_loan_date=2022-12, new_loan_in_fy=False, extra_kisht_entries=[]. (3) FY 2022-23 RA0022: prev_opening_balance=2000, prev_loan_date=2022-01, chain_start at 2022-12 in strip. (4) All 17 combined rows in FY 2025-26 have extra_kisht_entries field. Backend test file: /app/backend/tests/test_collection_sheet_3chain.py (29 tests). Previous test file: /app/backend/tests/test_collection_sheet_netoff_fy.py (18 tests - still valid).",
+  "rca_of_issue": "3-chain merge works by iterating through loans in chronological order. When L3 processes its parent L2 (which is already is_netoff_combined=True from merging with L1): (1) _par_combined=True triggers the chain propagation path; (2) prev_opening_balance/prev_loan_date come from L2's prev_root values (L1's netoff amount + loan date); (3) extra_kisht_entries = L2's extras + L2's own entry = [{amount:24000, date:'2023-08'}]; (4) chain_start at L2's start month (2023-08) is preserved in merge because 'chain_start' status is not excluded like 'netoff'; (5) L3's own chain_start is injected at 2024-03 (L3's loan_date month which is 'na' in its own strip)."
+}
