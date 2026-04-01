@@ -1,0 +1,53 @@
+{
+  "summary": "Iteration 24: Tested sticky header feature on Collection Sheet (/collections). All 10 feature tests PASS. Sticky controls bar (vasuli-sticky-header), Misal toggle sticky, column header sticky, overflow-clip on MisalSection — all verified via computed CSS and scroll behavior tests.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "feature_tests": {
+    "vasuli_sticky_header_exists": "PASS — data-testid='vasuli-sticky-header' found, position:sticky, top:0px, z-index:30, height:57px (h-14=56px) ✓",
+    "sticky_header_content_title": "PASS — h1 contains 'Vasuli / वसूली' ✓",
+    "sticky_header_content_fy_badge": "PASS — FY badge shows 'FY 2026-27 · Apr 2026→Mar 2027' on desktop (sm:inline class) ✓",
+    "sticky_header_content_fy_select": "PASS — data-testid='fy-select' present in header, value='2026' ✓",
+    "sticky_header_content_misal_filter": "PASS — data-testid='misal-filter-select' visible with All Illakas (9 options including 'All Misals') ✓",
+    "sticky_header_stays_on_scroll": "PASS — After scrolling mainScrollTop=800px, header rect.top=55px (sticks to main scroll container top) ✓",
+    "misal_toggle_sticky_top14": "PASS — Misal section toggle button: position:sticky, top:56px (top-14=56px), z-index:20 ✓",
+    "column_header_sticky_top100px": "PASS — Column header (EMI | नाम/Name | पिछली बाक़ी | किस्त हाल | 12-month strip | शेष/Bal | Action): position:sticky, top:100px, z-index:10 ✓",
+    "overflow_clip_on_misal_section": "PASS — All 8 MisalSection outer divs have class 'overflow-clip' and computed overflow:clip (overflowX:clip, overflowY:clip) ✓",
+    "rounded_corners_preserved": "PASS — border-radius values preserved on MisalSection outer div (overflow-clip does NOT remove border-radius, unlike overflow-hidden which does in older contexts) ✓",
+    "summary_bar_in_normal_flow": "PASS — collection-summary bar has position:static (in normal scroll flow, not sticky) ✓",
+    "landscape_min_width": "PASS — Content div has class 'landscape:min-w-[1024px]' on px-4 sm:px-6 pt-4 pb-6 div ✓",
+    "fy_selector_changes_content": "PASS — Changing FY to 2025 updates summary to 'FY 2025-26: 58 of 190 EMIs collected 31%' and FY badge updates ✓",
+    "misal_filter_reduces_sections": "PASS — Filtering to 'TEST_Misal_1' reduces 8 misals to 1 visible section ✓",
+    "collect_button_works": "PASS — Collect button opens collect-modal (data-testid='collect-modal') ✓",
+    "note_button_present": "PASS — 106 Note buttons found on page; modal testid 'vasuli-note-modal' confirmed in code at CollectionSheet.jsx:191",
+    "main_layout_overflow_auto": "PASS — Layout.jsx main element has overflow:auto (correct scroll container for sticky positioning) ✓"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Sticky hierarchy is correct: controls bar at top:0 (z-30) → misal toggle at top-14/56px (z-20) → column header at top-[100px] (z-10). This stacking order is intentional and correct.",
+    "overflow-clip (not overflow-hidden) is correctly used on MisalSection outer div — this is key because overflow:hidden would prevent sticky children from working, while overflow:clip allows stickiness to propagate through.",
+    "The 100px = 56px (sticky controls h-14) + 44px (misal toggle py-3 + content) is a reasonable approximation for the column header sticky position.",
+    "Layout.jsx main element overflow:auto is confirmed as the scroll container — sticky elements in CollectionSheet.jsx correctly reference this scroll ancestor."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only test)",
+    "frontend": "100% — all 17/17 feature tests pass"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "illaka": "All Illakas (needed for multiple-Misal filter dropdown visibility)"
+  },
+  "seed_data_creation": "No seed data created. Used existing All Illakas view (9 Misals, 8 visible, 435 EMIs).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 24: Sticky header feature on /collections fully tested and working. Key verified behaviors: (1) vasuli-sticky-header: sticky top:0 z-30 height:57px. (2) Misal toggle: sticky top:56px (top-14) z-20. (3) Column header: sticky top:100px z-10. (4) MisalSection outer div: overflow-clip (not overflow-hidden) — critical for sticky to work inside the card. (5) Layout main element: overflow:auto is the scroll container. (6) landscape:min-w-[1024px] on content div. (7) FY and Misal filter controls in sticky header both work. (8) Collect modal works. Login flow: phone=9999999999/Admin@123 → skip passkey → select illaka-choice-all → continue → navigate to /collections.",
+  "rca_of_issue": null
+}

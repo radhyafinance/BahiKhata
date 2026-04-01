@@ -608,11 +608,11 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
   };
 
   return (
-    <div className="border border-border rounded-xl overflow-hidden">
-      {/* Misal Header */}
+    <div className="border border-border rounded-xl overflow-clip">
+      {/* Misal Header — sticky below the page controls bar */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors"
+        className={`w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors sticky top-14 z-20 ${expanded ? "rounded-t-xl" : "rounded-xl"}`}
         data-testid={`misal-header-${misal.misal_id}`}
       >
         <div className="flex items-center gap-2">
@@ -631,10 +631,9 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       </button>
 
       {expanded && (
-        <div className="landscape:overflow-x-auto">
-        <div className="landscape:min-w-[1024px] divide-y divide-border/60">
-          {/* Column Header */}
-          <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch bg-muted/40 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+        <div className="divide-y divide-border/60">
+          {/* Column Header — sticky below toggle */}
+          <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-[100px] z-10">
             <span className="text-right pr-2 pl-3 py-2 self-center">EMI</span>
             <span className="pl-2 py-2 self-center">नाम / Name</span>
             {/* New columns — desktop or landscape */}
@@ -672,7 +671,6 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               {gyalRows.map((row) => renderRow(row, true))}
             </>
           )}
-        </div>
         </div>
       )}
     </div>
@@ -795,9 +793,6 @@ export default function CollectionSheet() {
     return { totalRows, collected, overdue, remaining: totalRows - collected };
   }, [filteredIllakas]);
 
-  const totalRows = filteredStats.totalRows;
-  const collected = filteredStats.collected;
-  const pct = totalRows > 0 ? Math.round((collected / totalRows) * 100) : 0;
 
   // FY-level stats computed from the 12-month strip data (filtered)
   const fyStats = useMemo(() => {
@@ -818,25 +813,22 @@ export default function CollectionSheet() {
   }, [filteredIllakas]);
 
   return (
-    <div className="p-4 sm:p-6 max-w-full mx-auto space-y-5">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground font-['Outfit']">Vasuli / वसूली</h1>
-          <p className="text-sm text-muted-foreground">
-            FY {getFyLabel(selectedFyStart)} &nbsp;·&nbsp; Apr {selectedFyStart} → Mar {selectedFyStart + 1}
-          </p>
-        </div>
-        {/* FY Selector + Misal Filter */}
-        <div className="flex flex-wrap items-center gap-2" data-testid="sheet-controls">
-          {/* Misal filter — only show when there are multiple misals */}
-          {allMisals.length > 1 && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Misal:</span>
+    <div>
+      {/* ── STICKY CONTROLS BAR ── */}
+      <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border" data-testid="vasuli-sticky-header">
+        <div className="px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <h1 className="text-xl font-bold text-foreground font-['Outfit'] whitespace-nowrap">Vasuli / वसूली</h1>
+            <span className="hidden sm:inline text-xs px-2 py-0.5 bg-primary/10 text-primary font-semibold rounded-full whitespace-nowrap">
+              FY {getFyLabel(selectedFyStart)} · Apr {selectedFyStart}→Mar {selectedFyStart + 1}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0" data-testid="sheet-controls">
+            {allMisals.length > 1 && (
               <select
                 value={selectedMisalId}
                 onChange={(e) => setSelectedMisalId(e.target.value)}
-                className="bk-input py-1.5 pr-8 text-sm font-semibold"
+                className="bk-input h-9 py-0 pr-8 text-sm font-semibold max-w-[160px]"
                 data-testid="misal-filter-select"
               >
                 <option value="all">All Misals</option>
@@ -844,15 +836,11 @@ export default function CollectionSheet() {
                   <option key={ms.id} value={ms.id}>{ms.name}</option>
                 ))}
               </select>
-            </div>
-          )}
-          {/* FY Selector — dropdown so any year can be reached */}
-          <div className="flex items-center gap-2" data-testid="fy-selector">
-            <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Financial Year:</span>
+            )}
             <select
               value={selectedFyStart}
               onChange={(e) => setSelectedFyStart(Number(e.target.value))}
-              className="bk-input py-1.5 pr-8 text-sm font-semibold"
+              className="bk-input h-9 py-0 pr-8 text-sm font-semibold"
               data-testid="fy-select"
             >
               {availableFys.map((fy) => (
@@ -864,6 +852,9 @@ export default function CollectionSheet() {
           </div>
         </div>
       </div>
+
+      {/* ── PAGE CONTENT (non-sticky) ── */}
+      <div className="px-4 sm:px-6 pt-4 pb-6 landscape:min-w-[1024px] space-y-5">
 
       {/* Summary Bar */}
       {data && (
@@ -944,6 +935,8 @@ export default function CollectionSheet() {
           ))}
         </div>
       )}
+
+      </div>{/* end non-sticky content */}
 
       {collectingRow && (
         <CollectModal
