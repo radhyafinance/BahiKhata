@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 25: Tested 3 Collection Sheet FY-calculation bug fixes for net-off combined loan rows. All 18 backend tests PASS. Frontend smoke test PASS. RA0022 Kusum Kumari row verified in UI for FY 2022-23 (Bal=₹18,000) and FY 2023-24 (पिछली बाक़ी=₹18,000/Dec 2022, किस्त हाल=blank).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "feature_tests": {
+    "FY_2022_23_RA0022_outstanding_balance_18000": "PASS — outstanding_balance=18000.0 for RA0022 in month=2023-03 (FY 2022-23). L2 disbursed Dec 2022 is within FY 2022-23, so new_loan_in_fy=True and prev_opening_balance=L1 netoff residual (10000). Bal column correctly shows ₹18,000.",
+    "FY_2023_24_RA0022_prev_opening_balance_18000": "PASS — prev_opening_balance=18000.0 for RA0022 in month=2024-03 (FY 2023-24). L2 disbursed Dec 2022 is BEFORE FY 2023-24 start (Apr 2023), so l2_before_fy=True → uses L2's own opening_balance=18000.",
+    "FY_2023_24_RA0022_prev_loan_date_Dec2022": "PASS — prev_loan_date='2022-12-15' starts with '2022-12'. Frontend formats this as 'Dec 2022' in पिछली बाक़ी column.",
+    "FY_2023_24_RA0022_new_loan_in_fy_False": "PASS — new_loan_in_fy=False for RA0022 in FY 2023-24. Frontend correctly renders किस्त हाल column as blank (no value shown).",
+    "FY_2023_24_RA0030_new_loan_in_fy_True": "PASS — RA0030 L2 loan_date=2023-08-15 (within FY 2023-24 Apr 2023–Mar 2024), new_loan_in_fy=True. किस्त हाल shows L2's total_repayable with ↩ date.",
+    "current_FY_all_combined_rows_have_new_loan_in_fy_field": "PASS — 11 combined rows found in FY 2025-26 (month=2025-04). All have new_loan_in_fy field present. RA0006 L2=Jun 2025 correctly has new_loan_in_fy=True.",
+    "frontend_smoke_collection_sheet_loads": "PASS — /collections page loads, sticky header visible, FY selector works, 8 misal sections shown (Rampur Testing).",
+    "frontend_fy_selector_switch": "PASS — FY selector switches from 2026-27 to 2023-24 correctly; FY badge updates to 'FY 2023-24 · Apr 2023→Mar 2024'.",
+    "frontend_kusum_kumari_row_display": "PASS — Kusum Kumari row in FY 2023-24 shows: पिछली बाक़ी=₹18,000/Dec 2022, किस्त हाल=blank, Bal=₹16,000. UI confirmed visually."
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_collection_sheet_netoff_fy.py",
+    "/app/test_reports/pytest/pytest_netoff_fy.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Backend logic is correct: l2_before_fy check at line 330 correctly uses row_loan_ym < fy_months[0] to determine if L2 was disbursed before the viewed FY.",
+    "new_loan_in_fy=False initialized at row construction (line 249) ensures field is always present on all rows, not just combined ones.",
+    "Frontend showNew logic at CollectionSheet.jsx:435 correctly uses row.new_loan_in_fy === true without the old || row.is_netoff_combined override.",
+    "Frontend पिछली बाक़ी column at line 419 correctly uses fmtLoanDate(row.prev_loan_date) for combined rows.",
+    "Case B (parent not in current FY rows) also correctly applies l2_before_fy logic for cross-FY visibility."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_collection_sheet_netoff_fy.py"
+  ],
+  "success_rate": {
+    "backend": "100% — 18/18 tests pass",
+    "frontend": "100% — all smoke tests pass"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123"
+  },
+  "seed_data_creation": "No seed data created. Used existing RA0021-RA0030 net-off seed data in Rampur Testing illaka.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 25: Net-off combined row FY-calculation fixes fully verified. Key behaviors: (1) FY 2022-23 with RA0022: outstanding_balance=18000 (Bal column), new_loan_in_fy=True (L2 Dec 2022 is within FY), किस्त हाल shows L2's total_repayable. (2) FY 2023-24 with RA0022: prev_opening_balance=18000, prev_loan_date=2022-12-15, new_loan_in_fy=False → किस्त हाल blank. (3) RA0030 L2=Aug 2023 in FY 2023-24: new_loan_in_fy=True → किस्त हाल shows L2 total_repayable. (4) All 11 combined rows in FY 2025-26 have new_loan_in_fy field. Backend test file: /app/backend/tests/test_collection_sheet_netoff_fy.py (18 tests).",
+  "rca_of_issue": "3 bugs fixed: (1) FY 2022-23 Bal was wrong because outstanding was calculated incorrectly for netoff-combined rows — fixed by proper paid_through_fy_end calculation. (2) FY 2023-24 पिछली बाक़ी was L1 residual (wrong) instead of L2's own opening balance — fixed by l2_before_fy check: if L2 was disbursed before the FY, use L2's opening_balance and loan_date. (3) किस्त हाल was always shown for netoff-combined rows (via old || override) even when L2 wasn't new to the FY — fixed by removing that override and using new_loan_in_fy===true strictly."
+}

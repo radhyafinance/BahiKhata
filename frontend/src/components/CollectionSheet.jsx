@@ -426,12 +426,13 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
             );
           })()}
 
-          {/* किस्त हाल — desktop only: new loan in current FY, or always for net-off combined */}
+          {/* किस्त हाल — desktop only: new loan disbursed IN the selected FY */}
           {(() => {
             const loanYm = row.loan_date ? row.loan_date.substring(0, 7) : null;
             const isNewLoan = loanYm && loanYm >= fyMonths[0];
-            // For net-off combined rows: always show new loan (L2) amount here
-            const showNew = row.is_netoff_combined || isNewLoan;
+            // For net-off combined rows: only show if L2 was disbursed in THIS FY
+            // (backend sets new_loan_in_fy=true only when L2 started in the viewed FY)
+            const showNew = row.is_netoff_combined ? (row.new_loan_in_fy === true) : isNewLoan;
             return (
               <div className="hidden lg:flex landscape:flex flex-col justify-center text-right pr-2 pl-1 py-2.5">
                 {showNew ? (

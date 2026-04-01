@@ -246,6 +246,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             # Combined fields (filled during post-processing)
             "is_netoff_combined": False,
             "prev_opening_balance": 0.0,
+            "new_loan_in_fy": False,
         }
 
         if loan_illaka_id not in illakas_map:
@@ -321,9 +322,25 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
 
                 row["emi_year_data"] = merged_strip
                 row["is_netoff_combined"] = True
-                row["prev_opening_balance"] = parent_opening
-                row["prev_loan_date"] = parent_loan_date
                 row["prev_emi_amount"] = parent_emi_amount
+
+                # Determine whether L2 (this row) was disbursed BEFORE or IN the selected FY.
+                # पिछली बाक़ी and किस्त हाल must strictly respect FY boundaries.
+                row_loan_ym = (row.get("loan_date") or "")[:7]
+                l2_before_fy = bool(row_loan_ym) and row_loan_ym < fy_months[0]
+
+                if l2_before_fy:
+                    # L2 started BEFORE this FY → पिछली बाक़ी = L2's own opening balance
+                    # (how much L2 owed at the START of this FY), किस्त हाल = blank
+                    row["prev_opening_balance"] = row.get("opening_balance", 0.0)
+                    row["prev_loan_date"] = row.get("loan_date", "")
+                    row["new_loan_in_fy"] = False
+                else:
+                    # L2 was disbursed IN this FY → पिछली बाक़ी = L1's residual (netoff amount)
+                    # किस्त हाल = L2's total_repayable
+                    row["prev_opening_balance"] = parent_opening
+                    row["prev_loan_date"] = parent_loan_date
+                    row["new_loan_in_fy"] = True
 
             illakas_map[il_id]["misals"][m_id]["rows"] = [
                 r for r in rows if r["loan_db_id"] not in to_remove_ids
