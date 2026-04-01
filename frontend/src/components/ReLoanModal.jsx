@@ -70,7 +70,15 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!newAmountNum || newAmountNum <= 0) { toast.error("Enter a valid disbursement amount"); return; }
+    if (!newAmountNum || isNaN(newAmountNum) || newAmountNum <= 0) {
+      toast.error("Enter a valid disbursement amount"); return;
+    }
+    if (newAmountNum < 1000) {
+      toast.error("Loan amount must be at least ₹1,000"); return;
+    }
+    if (!loanDate) {
+      toast.error("Please select a loan date"); return;
+    }
     if (netOff && netDisbursement < 0) {
       toast.error(`Net disbursement cannot be negative. Outstanding: ${fmt(outstanding)}`); return;
     }
@@ -125,7 +133,7 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
         </div>
 
         {/* Scrollable body */}
-        <form onSubmit={handleSubmit} id="reloan-form" className="overflow-y-auto flex-1 p-5 space-y-6">
+        <form onSubmit={handleSubmit} id="reloan-form" noValidate className="overflow-y-auto flex-1 p-5 space-y-6">
 
           {/* Existing loan summary */}
           {currentLoan && (
@@ -215,9 +223,7 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
               onChange={e => setNewAmount(e.target.value)}
               className="bk-input"
               placeholder="e.g. 50000"
-              min="1000"
-              step="500"
-              required
+              min="1"
               data-testid="reloan-amount-input"
             />
           </div>
@@ -233,7 +239,6 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
               value={loanDate}
               onChange={e => setLoanDate(e.target.value)}
               className="bk-input"
-              required
               data-testid="reloan-date-input"
             />
           </div>
