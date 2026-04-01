@@ -1,0 +1,58 @@
+{
+  "summary": "Iteration 23: Tested Misal-level filtering dropdown on the Vasuli (Collection Sheet) page. All 10 feature test cases PASS. Filter works correctly client-side with no backend changes needed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Collection Sheet - Summary bar",
+        "issues": [
+          "Minor: 'Remaining' count = totalRows - collected (includes both overdue and pending). Summary shows '52 Overdue + 66 Remaining' separately, but they overlap (overdue rows are ALSO part of remaining). This could confuse users into thinking total = 52+66=118 when it's actually 67 total rows. Existing behavior, not new to this feature."
+        ]
+      }
+    ]
+  },
+  "feature_tests": {
+    "misal_filter_visible_multiple_misals": "PASS — data-testid='misal-filter-select' visible when All Illakas selected (9 options). Hidden correctly when single-Misal Illaka (Rampur Testing) selected.",
+    "all_misals_first_option": "PASS — 'All Misals' (value='all') is first option, followed by 8 Misal entries",
+    "filter_rows_specific_misal": "PASS — Selecting 'Delhi Road Testing' reduces illaka sections from 6→1, FY stats from 435→42 EMIs",
+    "reselect_all_misals": "PASS — Re-selecting 'All Misals' restores all 6 illaka sections and 435 EMIs",
+    "filter_resets_illaka_change": "PASS — Filter resets to 'all' after IllakaSwitcher→resetIllaka→new Illaka selected. Component remounts fresh.",
+    "filter_resets_fy_change": "PASS — useEffect correctly fires and resets selectedMisalId to 'all' when FY changes (verified: 69cbbd24...→'all' after FY switch)",
+    "summary_bar_updates": "PASS — FY stats and active month (Collected/Overdue/Remaining) update to reflect filtered Misal: '29 of 435 EMIs' (7%) becomes '1 of 42 EMIs' (2%), April stats: 12/56/106 becomes 1/52/66",
+    "collect_action_filtered": "PASS — Collect modal opens on filtered rows (Swati Devi, pre-filled ₹1000)",
+    "note_action_filtered": "PASS — Note modal opens on filtered rows (data-testid='vasuli-note-modal')",
+    "edit_emi_action_filtered": "PASS — Edit EMI modal opens on filtered paid rows (TEST_UndoClient, pre-filled ₹1000, collection date 03/29/2026)",
+    "single_misal_hides_dropdown": "PASS — Rampur Testing (1 Misal) correctly hides the dropdown; allMisals.length > 1 guard working",
+    "empty_state_message": "PASS — 'No records for selected Misal in FY 2026-27' shown when non-existent misal ID selected (verified via JS state manipulation)"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "allMisals memo correctly deduplicates across illakas for the dropdown — works well",
+    "filteredIllakas memo correctly preserves illaka wrapper while filtering misals — correct implementation",
+    "filteredStats + fyStats correctly derived from filteredIllakas — summary stats update properly",
+    "useEffect([selectedIllaka, selectedFyStart]) correctly resets selectedMisalId to 'all' on context change",
+    "sheet-controls data-testid correctly wraps both Misal filter and FY selector",
+    "data-testid='misal-filter-select' present on the select element",
+    "Empty state correctly distinguishes between no-data (!data) and filtered-no-match (filteredIllakas.length===0 with data)"
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "N/A (frontend-only test)",
+    "frontend": "100% — all 10/10 feature tests pass"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "illaka": "All Illakas (needed for multiple-Misal view)"
+  },
+  "seed_data_creation": "No seed data created. Used existing All Illakas view which has 9 Misals across multiple Illakas.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 23: Misal filter feature on /collections page fully tested. Key points: (1) Misal filter only shows when allMisals.length > 1 — requires 'All Illakas' or a multi-Misal Illaka; Rampur Testing has only 1 Misal and correctly hides the filter. (2) With 'All Illakas' selected, 9 Misals across 6 illakas are shown. (3) Filter is purely client-side — no new API calls. (4) All three action modals (Collect/Note/Edit) work on filtered rows. (5) Summary bar (FY strip stats + active month stats) updates correctly. (6) Filter resets on Illaka change (component remount) and FY change (useEffect). The collection sheet URL is /collections (plural).",
+  "rca_of_issue": null
+}

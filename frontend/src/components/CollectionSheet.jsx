@@ -701,6 +701,7 @@ export default function CollectionSheet() {
   const [collectingRow, setCollectingRow] = useState(null);
   const [notingRow, setNotingRow] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
+  const [selectedMisalId, setSelectedMisalId] = useState("all");
 
   const fyMonths = getFyMonths(month);
 
@@ -730,6 +731,9 @@ export default function CollectionSheet() {
 
   useEffect(() => { fetchSheet(); }, [fetchSheet]);
 
+  // Reset Misal filter whenever the Illaka or FY changes
+  useEffect(() => { setSelectedMisalId("all"); }, [selectedIllaka, selectedFyStart]);
+
   const handleCollected = (_loanDbId, _updatedLoan, _emiMonth, _collectedAmount) => {
     silentFetch();
   };
@@ -755,15 +759,50 @@ export default function CollectionSheet() {
     silentFetch();
   };
 
-  const totalRows = data?.total || 0;
-  const collected = data?.collected || 0;
+  // Flat list of all Misals for the filter dropdown
+  const allMisals = useMemo(() => {
+    if (!data) return [];
+    const list = [];
+    for (const il of data.illakas) {
+      for (const ms of il.misals) {
+        list.push({ id: ms.misal_id, name: ms.misal_name });
+      }
+    }
+    return list;
+  }, [data]);
+
+  // Filtered illakas/misals for rendering
+  const filteredIllakas = useMemo(() => {
+    if (!data) return [];
+    if (selectedMisalId === "all") return data.illakas;
+    return data.illakas
+      .map((il) => ({ ...il, misals: il.misals.filter((ms) => ms.misal_id === selectedMisalId) }))
+      .filter((il) => il.misals.length > 0);
+  }, [data, selectedMisalId]);
+
+  // Active-month stats derived from filtered data
+  const filteredStats = useMemo(() => {
+    let totalRows = 0, collected = 0, overdue = 0;
+    for (const il of filteredIllakas) {
+      for (const ms of il.misals) {
+        for (const r of ms.rows) {
+          totalRows++;
+          if (r.emi_status === "paid") collected++;
+          if (r.emi_status === "overdue") overdue++;
+        }
+      }
+    }
+    return { totalRows, collected, overdue, remaining: totalRows - collected };
+  }, [filteredIllakas]);
+
+  const totalRows = filteredStats.totalRows;
+  const collected = filteredStats.collected;
   const pct = totalRows > 0 ? Math.round((collected / totalRows) * 100) : 0;
 
-  // FY-level stats computed from the 12-month strip data
+  // FY-level stats computed from the 12-month strip data (filtered)
   const fyStats = useMemo(() => {
-    if (!data) return { total: 0, paid: 0 };
     let total = 0, paid = 0;
-    for (const il of data.illakas) {
+    for (const il of filteredIllakas) {
       for (const ms of il.misals) {
         for (const row of ms.rows) {
           for (const yd of (row.emi_year_data || [])) {
@@ -776,7 +815,7 @@ export default function CollectionSheet() {
       }
     }
     return { total, paid };
-  }, [data]);
+  }, [filteredIllakas]);
 
   return (
     <div className="p-4 sm:p-6 max-w-full mx-auto space-y-5">
@@ -788,21 +827,41 @@ export default function CollectionSheet() {
             FY {getFyLabel(selectedFyStart)} &nbsp;·&nbsp; Apr {selectedFyStart} → Mar {selectedFyStart + 1}
           </p>
         </div>
-        {/* FY Selector — dropdown so any year can be reached */}
-        <div className="flex items-center gap-2" data-testid="fy-selector">
-          <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Financial Year:</span>
-          <select
-            value={selectedFyStart}
-            onChange={(e) => setSelectedFyStart(Number(e.target.value))}
-            className="bk-input py-1.5 pr-8 text-sm font-semibold"
-            data-testid="fy-select"
-          >
-            {availableFys.map((fy) => (
-              <option key={fy} value={fy}>
-                {getFyLabel(fy)}{fy === currentFyStart ? " (Current)" : ""}
-              </option>
-            ))}
-          </select>
+        {/* FY Selector + Misal Filter */}
+        <div className="flex flex-wrap items-center gap-2" data-testid="sheet-controls">
+          {/* Misal filter — only show when there are multiple misals */}
+          {allMisals.length > 1 && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Misal:</span>
+              <select
+                value={selectedMisalId}
+                onChange={(e) => setSelectedMisalId(e.target.value)}
+                className="bk-input py-1.5 pr-8 text-sm font-semibold"
+                data-testid="misal-filter-select"
+              >
+                <option value="all">All Misals</option>
+                {allMisals.map((ms) => (
+                  <option key={ms.id} value={ms.id}>{ms.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {/* FY Selector — dropdown so any year can be reached */}
+          <div className="flex items-center gap-2" data-testid="fy-selector">
+            <span className="text-sm font-medium text-muted-foreground hidden sm:inline">Financial Year:</span>
+            <select
+              value={selectedFyStart}
+              onChange={(e) => setSelectedFyStart(Number(e.target.value))}
+              className="bk-input py-1.5 pr-8 text-sm font-semibold"
+              data-testid="fy-select"
+            >
+              {availableFys.map((fy) => (
+                <option key={fy} value={fy}>
+                  {getFyLabel(fy)}{fy === currentFyStart ? " (Current)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
@@ -827,9 +886,9 @@ export default function CollectionSheet() {
           {/* Active month breakdown */}
           <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
             <span className="font-semibold text-foreground/70">{fmtMonth(month)}:</span>
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-600" /> {collected} Collected</span>
-            <span className="flex items-center gap-1"><AlertCircle size={12} className="text-red-500" /> {data.illakas.reduce((a, il) => a + il.misals.reduce((b, ms) => b + ms.rows.filter((r) => r.emi_status === "overdue").length, 0), 0)} Overdue</span>
-            <span className="flex items-center gap-1"><Clock size={12} className="text-gray-400" /> {totalRows - collected} Remaining</span>
+            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-600" /> {filteredStats.collected} Collected</span>
+            <span className="flex items-center gap-1"><AlertCircle size={12} className="text-red-500" /> {filteredStats.overdue} Overdue</span>
+            <span className="flex items-center gap-1"><Clock size={12} className="text-gray-400" /> {filteredStats.remaining} Remaining</span>
           </div>
         </div>
       )}
@@ -839,15 +898,17 @@ export default function CollectionSheet() {
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : !data || data.illakas.length === 0 ? (
+      ) : !data || filteredIllakas.length === 0 ? (
         <div className="bk-card py-16 text-center text-muted-foreground" data-testid="empty-sheet">
           <IndianRupee size={40} className="mx-auto mb-3 opacity-20" />
-          <p className="font-medium text-foreground">No loans found for FY {getFyLabel(selectedFyStart)}</p>
+          <p className="font-medium text-foreground">
+            {!data ? `No loans found for FY ${getFyLabel(selectedFyStart)}` : `No records for selected Misal in FY ${getFyLabel(selectedFyStart)}`}
+          </p>
           <p className="text-sm mt-1">इस वर्ष कोई कर्ज़ नहीं</p>
         </div>
       ) : (
         <div className="space-y-6">
-          {data.illakas.map((illaka) => (
+          {filteredIllakas.map((illaka) => (
             <div key={illaka.illaka_id} className="space-y-3" data-testid={`illaka-section-${illaka.illaka_id}`}>
               {/* Illaka Header */}
               <div className="flex items-center gap-3">
