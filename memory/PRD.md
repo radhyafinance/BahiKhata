@@ -221,6 +221,13 @@ See CHANGELOG.md for full history.
 
 ### Collection Sheet — Days Overdue Badge (2026-03-31) — REMOVED per user request
 
+### Sticky Collection Sheet Header (2026-04-01) ✓
+- [x] Page controls bar (`sticky top-0 z-30`) — Vasuli title, FY badge, Misal filter, FY selector always on top
+- [x] Misal section toggle (`sticky top-14 z-20`) — Misal name + count sticks while scrolling through rows
+- [x] Column header (`sticky top-[100px] z-10`) — EMI/Name/months/Bal/Action headers always visible
+- [x] MisalSection outer div uses `overflow-clip` (not `overflow-hidden`) so sticky works inside cards
+- [x] Landscape horizontal scroll: `landscape:min-w-[1024px]` on content wrapper (handled by main scroll container)
+
 ### Misal-level Filtering on Vasuli (2026-04-01) ✓
 - [x] Misal dropdown filter on Collection Sheet header next to FY selector
 - [x] Client-side filtering (no new backend calls) — all misals already in response
