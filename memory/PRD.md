@@ -239,11 +239,15 @@ See CHANGELOG.md for full history.
 ### Collection Sheet — Net-off Combined Row (2026-03-31) ✓
 - [x] Net-off loan pairs (L1 netoff-closed + L2 re-loan) merged into ONE row on the sheet
 - [x] FY strip shows L1's netoff EMIs + L2's paid/pending EMIs continuously in the same row
-- [x] पिछली बाक़ी shows L1's opening balance + L1's loan date for combined rows
-- [x] किस्त हाल always shows L2's total_repayable + "↩ {month/year}" for combined rows
 - [x] EMI column shows old EMI (strikethrough) on top and new EMI in bold below
 - [x] Works even when L1 has no EMIs in the viewed FY (looks up L1 directly from loans collection)
 - [x] Seed data: 10 net-off re-loans created for RA0021–RA0030 in Rampur Testing
+
+### Collection Sheet — FY-Accurate Net-off Calculations (2026-04) ✓
+- [x] **Bal (शेष)**: outstanding_balance is FY-bounded — uses `paid_through_fy_end` (payments up to FY end only), not all-time `total_paid`
+- [x] **पिछली बाक़ी**: If L2 disbursed BEFORE the selected FY → shows L2's own opening balance + L2's loan_date. If L2 disbursed IN the FY → shows L1's residual netoff amount + L1's loan_date
+- [x] **किस्त हाल**: Only shown when L2 was actually disbursed IN the selected FY (`new_loan_in_fy=True`). Blank when L2 is from a prior FY — removes false "new loan" signal on historical views
+- [x] Backend sends `new_loan_in_fy` field on all rows; frontend `showNew` uses it strictly for combined rows
 - [ ] **Days Overdue badge** on Collection Sheet EMI rows (P1)
 - [x] **Misal-level Filtering on Vasuli** — dropdown filter on Collection Sheet (2026-04-01)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
