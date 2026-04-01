@@ -221,6 +221,14 @@ See CHANGELOG.md for full history.
 
 ### Collection Sheet — Days Overdue Badge (2026-03-31) — REMOVED per user request
 
+### Misal-level Filtering on Vasuli (2026-04-01) ✓
+- [x] Misal dropdown filter on Collection Sheet header next to FY selector
+- [x] Client-side filtering (no new backend calls) — all misals already in response
+- [x] FY stats and active month summary bar update to reflect filtered Misal
+- [x] Filter auto-resets when Illaka or FY changes
+- [x] Dropdown hidden when only one Misal exists (guard: allMisals.length > 1)
+- [x] Empty state message distinguishes "no FY data" vs "no Misal match"
+
 ### Collection Sheet — Net-off Combined Row (2026-03-31) ✓
 - [x] Net-off loan pairs (L1 netoff-closed + L2 re-loan) merged into ONE row on the sheet
 - [x] FY strip shows L1's netoff EMIs + L2's paid/pending EMIs continuously in the same row
@@ -230,6 +238,7 @@ See CHANGELOG.md for full history.
 - [x] Works even when L1 has no EMIs in the viewed FY (looks up L1 directly from loans collection)
 - [x] Seed data: 10 net-off re-loans created for RA0021–RA0030 in Rampur Testing
 - [ ] **Days Overdue badge** on Collection Sheet EMI rows (P1)
+- [x] **Misal-level Filtering on Vasuli** — dropdown filter on Collection Sheet (2026-04-01)
 - [ ] "Today's Collection Summary" WhatsApp/PDF export from Vasuli
 - [ ] "Print Passbook" PDF/WhatsApp share from ClientDetail
 - [ ] Forgot Password OTP Flow (Twilio/Paid Gateway)
