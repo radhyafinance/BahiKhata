@@ -162,16 +162,16 @@ export default function CollectionSheetPrint() {
         const regular = ms.rows.filter(r => !r.is_gyal);
         const gyal    = ms.rows.filter(r =>  r.is_gyal);
 
-        // Per-misal blank spacer rows (no upper limit)
+        // Per-misal blank spacer rows (no upper limit, always added if count > 0)
         const blankCount = Math.max(0, Number(blankRowsMap[ms.misal_id]) || 0);
-        const spacers = gyal.length > 0
+        const spacers = blankCount > 0
           ? Array.from({ length: blankCount }, () => ({ __blank: true }))
           : [];
 
         // Build regular section with spacers
         const regularSection = [...regular, ...spacers];
 
-        // ── Force Gyal onto a new page ──────────────────────────────────
+        // ── Force Gyal onto a new page (only when Gyal rows exist) ──────
         // Pad the regular section to the next full page boundary so Gyal
         // always starts at row 1 of a fresh page.
         if (gyal.length > 0 && regularSection.length > 0) {

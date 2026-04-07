@@ -1084,24 +1084,31 @@ export default function CollectionSheet() {
                   <p className="text-xs text-muted-foreground">कोई मिसाल नहीं मिली।</p>
                 )}
                 {allMisalsForPrint.map(ms => (
-                  <div key={ms.misalId} className="flex items-center gap-3 bg-muted/40 rounded-xl px-4 py-2.5">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate">{ms.misalName}</p>
+                  <div key={ms.misalId} className="rounded-xl border border-border overflow-hidden">
+                    {/* Misal name header */}
+                    <div className="bg-muted/60 px-4 py-2 flex items-center justify-between gap-2">
+                      <span className="text-sm font-bold">{ms.misalName}</span>
                       {ms.gyalCount > 0 && (
-                        <p className="text-xs text-muted-foreground">{ms.gyalCount} Gyal</p>
+                        <span className="text-xs text-muted-foreground bg-background border border-border px-2 py-0.5 rounded-full flex-shrink-0">
+                          {ms.gyalCount} Gyal
+                        </span>
                       )}
                     </div>
-                    <input
-                      type="number"
-                      min={0}
-                      value={blankRowsMap[ms.misalId] ?? 0}
-                      onChange={(e) => setBlankRowsMap(prev => ({
-                        ...prev,
-                        [ms.misalId]: Math.max(0, Number(e.target.value) || 0),
-                      }))}
-                      className="bk-input w-20 text-center font-bold text-base h-9 flex-shrink-0"
-                      data-testid={`blank-rows-input-${ms.misalId}`}
-                    />
+                    {/* Blank rows input */}
+                    <div className="px-4 py-2 flex items-center justify-between gap-3 bg-card">
+                      <span className="text-xs text-muted-foreground whitespace-nowrap">खाली पंक्तियाँ</span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={blankRowsMap[ms.misalId] ?? 0}
+                        onChange={(e) => setBlankRowsMap(prev => ({
+                          ...prev,
+                          [ms.misalId]: Math.max(0, Number(e.target.value) || 0),
+                        }))}
+                        className="bk-input w-20 text-center font-bold text-base h-9 flex-shrink-0"
+                        data-testid={`blank-rows-input-${ms.misalId}`}
+                      />
+                    </div>
                   </div>
                 ))}
               </div>
