@@ -416,6 +416,18 @@ async def get_collection_sheet(
             misal = illakas_map[il_id]["misals"][m_id]
             misal["rows"] = _merge_netoff_rows(misal["rows"], all_loans_by_id, fy_months)
 
+    # ── Re-sort rows by original disbursement date ────────────────────────────
+    # After merging, combined rows carry L2/L3's loan_date but should appear in
+    # the position of the root loan (L1).  पिछली बाक़ी date == the correct sort key.
+    def _row_sort_date(r: dict) -> str:
+        if r.get("is_netoff_combined") and r.get("prev_loan_date"):
+            return r["prev_loan_date"]
+        return r.get("loan_date") or ""
+
+    for il_id in illaka_order:
+        for m_id in misal_order[il_id]:
+            illakas_map[il_id]["misals"][m_id]["rows"].sort(key=_row_sort_date)
+
     # ── Assemble output ───────────────────────────────────────────────────────
     result = []
     for il_id in illaka_order:
