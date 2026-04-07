@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import { Loader2, Search } from "lucide-react";
@@ -9,6 +9,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 export default function LoanForm() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const [searchParams] = useSearchParams();
   const isEdit = !!id;
 
   const [submitting, setSubmitting] = useState(false);
@@ -16,6 +17,7 @@ export default function LoanForm() {
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState(null);
   const [searchLoading, setSearchLoading] = useState(false);
+  const [prefillLoading, setPrefillLoading] = useState(false);
 
   const [form, setForm] = useState({
     kyc_id: "",
@@ -55,7 +57,20 @@ export default function LoanForm() {
     }).catch(() => toast.error("Failed to load loan"));
   }, [id, isEdit]);
 
-  // Search clients (KYCs)
+  // Auto-select client when kyc_id is passed as a query param (e.g. from passbook)
+  useEffect(() => {
+    if (isEdit) return;
+    const kycId = searchParams.get("kyc_id");
+    if (!kycId) return;
+    setPrefillLoading(true);
+    axios.get(`${API}/kycs/${kycId}`, { withCredentials: true })
+      .then(r => {
+        selectClient(r.data);
+      })
+      .catch(() => toast.error("Could not load client details"))
+      .finally(() => setPrefillLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   useEffect(() => {
     if (!clientSearch || clientSearch.length < 2) { setClients([]); return; }
     const t = setTimeout(async () => {
@@ -131,7 +146,11 @@ export default function LoanForm() {
         <div className="bk-card space-y-4">
           <h3 className="font-semibold text-foreground border-b border-border pb-2">Client / ग्राहक</h3>
 
-          {selectedClient ? (
+          {prefillLoading ? (
+            <div className="flex items-center gap-3 p-3 bg-primary/5 border border-primary/20 rounded-lg text-primary text-sm animate-pulse">
+              <Loader2 size={16} className="animate-spin" /> Loading client details...
+            </div>
+          ) : selectedClient ? (
             <div className="flex items-center justify-between p-3 bg-primary/5 border border-primary/20 rounded-lg">
               <div>
                 <p className="font-semibold text-foreground text-sm">{form.client_name}</p>
