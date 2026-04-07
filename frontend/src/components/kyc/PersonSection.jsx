@@ -238,7 +238,7 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
               </div>
             </div>
 
-            {/* Name Hindi — always editable (transliterated, not OCR) */}
+            {/* Name Hindi — locked with front fields for restricted roles */}
             <div>
               <label className="bk-label">
                 <span className="bk-label-en">
@@ -247,13 +247,17 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
                 </span>
                 <span className="bk-label-hi">हिंदी नाम</span>
               </label>
-              <input
-                type="text" value={data.name_hindi || ""}
-                onChange={e => onChange("name_hindi", e.target.value)}
-                className="bk-input border-amber-300 bg-amber-50/40 focus:border-amber-500"
-                placeholder="Auto-filled · हिंदी में नाम"
-                data-testid={`name-hindi-${slug}`}
-              />
+              <div className="relative">
+                <input
+                  type="text" value={data.name_hindi || ""}
+                  onChange={frontLocked ? undefined : e => onChange("name_hindi", e.target.value)}
+                  readOnly={frontLocked}
+                  className={`bk-input ${frontLocked ? lockedCls : "border-amber-300 bg-amber-50/40 focus:border-amber-500"}`}
+                  placeholder="Auto-filled · हिंदी में नाम"
+                  data-testid={`name-hindi-${slug}`}
+                />
+                {frontLocked && <Lock size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-green-600" />}
+              </div>
             </div>
 
             {/* DOB */}
@@ -433,7 +437,7 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
             </div>
           </div>
 
-          {/* Relative Name Hindi — always editable */}
+          {/* Relative Name Hindi — locked with back fields for restricted roles */}
           <div>
             <label className="bk-label">
               <span className="bk-label-en">
@@ -442,13 +446,17 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
               </span>
               <span className="bk-label-hi">पति / पिता का हिंदी नाम</span>
             </label>
-            <input
-              type="text" value={data.relative_name_hindi || ""}
-              onChange={e => onChange("relative_name_hindi", e.target.value)}
-              className="bk-input border-amber-300 bg-amber-50/40 focus:border-amber-500"
-              placeholder="Auto-filled · हिंदी में पति/पिता का नाम"
-              data-testid={`relative-name-hindi-${slug}`}
-            />
+            <div className="relative">
+              <input
+                type="text" value={data.relative_name_hindi || ""}
+                onChange={backLocked ? undefined : e => onChange("relative_name_hindi", e.target.value)}
+                readOnly={backLocked}
+                className={`bk-input ${backLocked ? lockedBackCls : "border-amber-300 bg-amber-50/40 focus:border-amber-500"}`}
+                placeholder="Auto-filled · हिंदी में पति/पिता का नाम"
+                data-testid={`relative-name-hindi-${slug}`}
+              />
+              {backLocked && <Lock size={13} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-blue-600" />}
+            </div>
           </div>
         </div>
       )}
