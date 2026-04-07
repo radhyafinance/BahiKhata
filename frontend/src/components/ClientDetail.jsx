@@ -576,7 +576,7 @@ export default function ClientDetail() {
             </div>
           </div>
         </div>
-        {(user?.role === "sipahi" || user?.role === "muneem") && (
+        {(user?.role === "sipahi" || user?.role === "muneem" || user?.role === "admin" || user?.role === "maalik") && (
           <button
             onClick={() => navigate(`/kyc/${id}/edit`)}
             className="flex items-center gap-2 bg-muted text-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border transition-colors"
