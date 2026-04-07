@@ -6,7 +6,7 @@ import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
-  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3
+  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -763,6 +763,7 @@ export default function CollectionSheet() {
   const [editingRow, setEditingRow] = useState(null);
   const [selectedMisalId, setSelectedMisalId] = useState("all");
   const [collectDate, setCollectDate] = useState(new Date().toISOString().split("T")[0]);
+  const [printModalOpen, setPrintModalOpen] = useState(false);
 
   const fyMonths = getFyMonths(month);
 
@@ -925,6 +926,15 @@ export default function CollectionSheet() {
                 </option>
               ))}
             </select>
+            <button
+              onClick={() => setPrintModalOpen(true)}
+              className="flex items-center gap-1.5 bk-btn-secondary h-9 px-3 text-sm font-semibold"
+              title="Print / PDF — FY Collection Sheet"
+              data-testid="print-sheet-btn"
+            >
+              <Printer size={15} />
+              <span className="hidden sm:inline">Print</span>
+            </button>
           </div>
         </div>
       </div>
@@ -1033,6 +1043,69 @@ export default function CollectionSheet() {
           onCollected={handleCollected}
           defaultDate={collectDate}
         />
+      )}
+
+      {/* ── Print Options Modal ── */}
+      {printModalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" data-testid="print-modal">
+          <div className="bk-card w-full max-w-sm space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold font-['Outfit']">Print Collection Sheet</h2>
+                <p className="text-xs text-muted-foreground">FY {getFyLabel(selectedFyStart)} · Legal size · 10 clients/page</p>
+              </div>
+              <button onClick={() => setPrintModalOpen(false)} className="p-1.5 hover:bg-muted rounded-lg"><X size={18} /></button>
+            </div>
+
+            <div className="space-y-3">
+              {/* Single-sided */}
+              <button
+                onClick={() => {
+                  const url = `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=false`;
+                  window.open(url, "_blank");
+                  setPrintModalOpen(false);
+                }}
+                className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-left group"
+                data-testid="print-simplex-btn"
+              >
+                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10">
+                  <Printer size={20} className="text-muted-foreground group-hover:text-primary" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm">Single-sided</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Print on one side only. Select this in the print dialog.</p>
+                </div>
+              </button>
+
+              {/* Duplex long-edge */}
+              <button
+                onClick={() => {
+                  const url = `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=true`;
+                  window.open(url, "_blank");
+                  setPrintModalOpen(false);
+                }}
+                className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-border hover:border-violet-500 hover:bg-violet-50 transition-all text-left group"
+                data-testid="print-duplex-btn"
+              >
+                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-violet-100">
+                  <Printer size={20} className="text-muted-foreground group-hover:text-violet-600" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm">Double-sided <span className="text-xs font-normal text-muted-foreground">(Duplex)</span></p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    In the print dialog: enable <strong>Two-sided → Flip on Long Edge</strong>.
+                    Binding on the long edge (register style).
+                  </p>
+                </div>
+              </button>
+            </div>
+
+            <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
+              A new tab will open. Click <strong>Print / PDF</strong> there, or use <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Ctrl+P</kbd>.
+              Legal landscape paper · Blank Bal. and Sign columns for manual use.
+            </p>
+          </div>
+        </div>
       )}
 
       {notingRow && (

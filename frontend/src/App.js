@@ -16,6 +16,7 @@ import LoanList from "./components/LoanList";
 import LoanForm from "./components/LoanForm";
 import LoanDetail from "./components/LoanDetail";
 import CollectionSheet from "./components/CollectionSheet";
+import CollectionSheetPrint from "./components/CollectionSheetPrint";
 import IllakaSelector from "./components/IllakaSelector";
 import AccountsModule from "./components/AccountsModule";
 
@@ -80,6 +81,7 @@ function App() {
               <Route path="loans/:id" element={<LoanDetail />} />
               <Route path="loans/:id/edit" element={<ProtectedRoute roles={["admin", "maalik", "muneem", "sipahi"]}><LoanForm /></ProtectedRoute>} />
               <Route path="collections" element={<CollectionSheet />} />
+              <Route path="collections/print" element={<CollectionSheetPrint />} />
               <Route
                 path="accounts"
                 element={
