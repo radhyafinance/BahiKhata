@@ -829,17 +829,20 @@ export default function CollectionSheet() {
 
   // Active-month stats derived from filtered data
   const filteredStats = useMemo(() => {
-    let totalRows = 0, collected = 0, overdue = 0;
+    let totalRows = 0, collected = 0, overdue = 0, totalCollectedAmount = 0;
     for (const il of filteredIllakas) {
       for (const ms of il.misals) {
         for (const r of ms.rows) {
           totalRows++;
-          if (r.emi_status === "paid") collected++;
+          if (r.emi_status === "paid") {
+            collected++;
+            totalCollectedAmount += r.emi_paid_amount || r.emi_amount || 0;
+          }
           if (r.emi_status === "overdue") overdue++;
         }
       }
     }
-    return { totalRows, collected, overdue, remaining: totalRows - collected };
+    return { totalRows, collected, overdue, remaining: totalRows - collected, totalCollectedAmount };
   }, [filteredIllakas]);
 
 
@@ -918,27 +921,37 @@ export default function CollectionSheet() {
       {/* Summary Bar */}
       {data && (
         <div className="bk-card p-4 space-y-3" data-testid="collection-summary">
-          {/* FY Progress */}
-          <div className="flex items-center justify-between text-sm">
-            <span className="font-semibold text-foreground">
-              FY {getFyLabel(selectedFyStart)}: {fyStats.paid} of {fyStats.total} EMIs collected
-            </span>
-            <span className="font-bold text-primary">
-              {fyStats.total > 0 ? Math.round((fyStats.paid / fyStats.total) * 100) : 0}%
-            </span>
+          {/* Total collected amount — prominent headline */}
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
+                {fmtMonth(month)} — वसूली / Collected
+              </p>
+              <p className="text-3xl font-black tabular-nums text-green-600 leading-none" data-testid="total-collected-amount">
+                {fmt(filteredStats.totalCollectedAmount)}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {filteredStats.collected} of {filteredStats.totalRows} EMIs &nbsp;·&nbsp;
+                <span className="text-red-500">{filteredStats.overdue} overdue</span> &nbsp;·&nbsp;
+                <span className="text-gray-400">{filteredStats.remaining} remaining</span>
+              </p>
+            </div>
+            <div className="text-right shrink-0">
+              <p className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-0.5">
+                FY {getFyLabel(selectedFyStart)}
+              </p>
+              <p className="text-2xl font-black text-primary tabular-nums leading-none">
+                {fyStats.total > 0 ? Math.round((fyStats.paid / fyStats.total) * 100) : 0}%
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">{fyStats.paid}/{fyStats.total} EMIs</p>
+            </div>
           </div>
-          <div className="h-2.5 bg-muted rounded-full overflow-hidden">
+          {/* FY progress bar */}
+          <div className="h-2 bg-muted rounded-full overflow-hidden">
             <div
               className="h-full bg-primary rounded-full transition-all duration-500"
               style={{ width: `${fyStats.total > 0 ? Math.round((fyStats.paid / fyStats.total) * 100) : 0}%` }}
             />
-          </div>
-          {/* Active month breakdown */}
-          <div className="flex flex-wrap gap-4 text-xs text-muted-foreground">
-            <span className="font-semibold text-foreground/70">{fmtMonth(month)}:</span>
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-600" /> {filteredStats.collected} Collected</span>
-            <span className="flex items-center gap-1"><AlertCircle size={12} className="text-red-500" /> {filteredStats.overdue} Overdue</span>
-            <span className="flex items-center gap-1"><Clock size={12} className="text-gray-400" /> {filteredStats.remaining} Remaining</span>
           </div>
         </div>
       )}
