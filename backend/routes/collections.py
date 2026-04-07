@@ -382,8 +382,10 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                             {"amount": _par_repayable, "loan_date": _par_date}
                         ]
                     else:
-                        # Parent is the uncombined original loan → use its netoff_amount.
-                        row["prev_opening_balance"] = _par_netoff_amt
+                        # Parent is the uncombined original loan.
+                        # पिछली बाक़ी = parent's opening balance at the START of this FY
+                        # = the closing balance from the PREVIOUS financial year.
+                        row["prev_opening_balance"] = parent_opening
                         row["prev_loan_date"]       = parent_loan_date
                         row["extra_kisht_entries"]  = []
                     row["new_loan_in_fy"] = True
