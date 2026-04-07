@@ -228,59 +228,70 @@ export default function LoanDetail() {
   return (
     <div className="p-4 sm:p-6 max-w-4xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button onClick={() => navigate("/loans")} className="p-2 rounded-lg hover:bg-muted" data-testid="back-btn">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <button onClick={() => navigate("/loans")} className="p-2 rounded-lg hover:bg-muted flex-shrink-0 mt-0.5" data-testid="back-btn">
             <ArrowLeft size={20} />
           </button>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold font-['Outfit']">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl font-bold font-['Outfit'] leading-tight">
               {(user?.role === "muneem" || user?.role === "sipahi")
                 ? (loan.client_name_hindi || loan.client_name)
                 : loan.client_name}
             </h1>
             {(user?.role === "muneem" || user?.role === "sipahi") && loan.client_name_hindi && (
-              <p className="text-sm text-muted-foreground">{loan.client_name}</p>
+              <p className="text-sm text-muted-foreground truncate">{loan.client_name}</p>
             )}
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
+            <div className="flex items-center gap-1.5 mt-1 flex-wrap">
               <span className="font-mono text-sm text-muted-foreground">{loan.loan_number || "—"}</span>
               {loan.is_reloan && (
-                <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold">Re-Loan</span>
+                <span className="text-xs px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full font-semibold whitespace-nowrap">Re-Loan</span>
               )}
-              <span className="text-sm text-muted-foreground">{loan.illaka_name} / {loan.misal_name}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${STATUS_BADGE[loan.status] || ""}`} data-testid="loan-status-badge">
+              <span className="text-xs text-muted-foreground truncate max-w-[160px]">{loan.illaka_name} / {loan.misal_name}</span>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-semibold whitespace-nowrap ${STATUS_BADGE[loan.status] || ""}`} data-testid="loan-status-badge">
                 {loan.status}{loan.netoff_closed ? " · Net-off" : ""}
               </span>
               {loan.is_gyal && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-200 text-gray-500 border border-gray-300" data-testid="gyal-badge">
+                <span className="text-xs px-2 py-0.5 rounded-full font-semibold bg-gray-200 text-gray-500 border border-gray-300 whitespace-nowrap" data-testid="gyal-badge">
                   Gyal — घ्याल
                 </span>
               )}
             </div>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
+
+        {/* Action buttons — icon-only on mobile, icon+text on sm+ */}
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           {loan.kyc_id && (
             <button
               onClick={() => navigate(`/clients/${loan.kyc_id}`)}
-              className="flex items-center gap-2 bg-muted text-foreground px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border"
+              className="flex items-center gap-1.5 bg-muted text-foreground px-2.5 py-2 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border"
               data-testid="view-kyc-btn"
               title="View Client KYC"
             >
-              <User size={15} /> Client KYC
+              <User size={15} />
+              <span className="hidden sm:inline">Client KYC</span>
             </button>
           )}
           {canEdit && loan.status !== "closed" && (
-            <button onClick={() => navigate(`/loans/${id}/edit`)} className="flex items-center gap-2 bg-muted text-foreground px-4 py-2.5 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border" data-testid="edit-loan-btn">
-              <Edit size={16} /> Edit
+            <button
+              onClick={() => navigate(`/loans/${id}/edit`)}
+              className="flex items-center gap-1.5 bg-muted text-foreground px-2.5 py-2 rounded-lg text-sm font-semibold hover:bg-muted/80 border border-border"
+              data-testid="edit-loan-btn"
+              title="Edit Loan"
+            >
+              <Edit size={15} />
+              <span className="hidden sm:inline">Edit</span>
             </button>
           )}
           <button
             onClick={() => setShowReloan(true)}
-            className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 px-3 py-2.5 rounded-lg text-sm font-semibold hover:bg-primary/20 transition-colors"
+            className="flex items-center gap-1.5 bg-primary/10 text-primary border border-primary/20 px-2.5 py-2 rounded-lg text-sm font-semibold hover:bg-primary/20 transition-colors"
             data-testid="reloan-btn"
+            title="Re-Loan"
           >
-            <RefreshCw size={15} /> Re-Loan
+            <RefreshCw size={15} />
+            <span className="hidden sm:inline">Re-Loan</span>
           </button>
         </div>
       </div>
