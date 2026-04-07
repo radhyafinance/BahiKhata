@@ -247,6 +247,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
             "is_netoff_combined": False,
             "prev_opening_balance": 0.0,
             "new_loan_in_fy": False,
+            "older_emi_chain": [],
             "extra_kisht_entries": [],
         }
 
@@ -349,6 +350,8 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                     _par_extra      = list(parent_row.get("extra_kisht_entries") or [])
                     _par_root_bal   = float(parent_row.get("prev_opening_balance") or 0)
                     _par_root_date  = parent_row.get("prev_loan_date", "")
+                    _par_prev_emi   = float(parent_row.get("prev_emi_amount") or 0)
+                    _par_older_emi  = list(parent_row.get("older_emi_chain") or [])
                 else:  # Case B — parent from all_loans_by_id (raw loan)
                     _par_combined   = False
                     _par_netoff_amt = float(parent_loan.get("netoff_amount") or 0)
@@ -357,6 +360,8 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                     _par_extra      = []
                     _par_root_bal   = 0.0
                     _par_root_date  = ""
+                    _par_prev_emi   = 0.0
+                    _par_older_emi  = []
 
                 row_loan_ym = (row.get("loan_date") or "")[:7]
                 l2_before_fy = bool(row_loan_ym) and row_loan_ym < fy_months[0]
@@ -369,9 +374,10 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                     row["prev_loan_date"]        = row.get("loan_date", "")
                     row["new_loan_in_fy"]        = False
                     row["extra_kisht_entries"]   = []
+                    row["older_emi_chain"]       = []
                 else:
                     # This re-loan was disbursed IN the selected FY.
-                    # पिछली बाक़ी = the ROOT original loan's netoff amount + its loan date.
+                    # पिछली बाक़ी = the ROOT original loan's opening balance at FY start.
                     # किस्त हाल = all re-loans in the chain (extras first, then this row).
                     if _par_combined:
                         # Parent was itself already combined → chain the root data through.
@@ -381,6 +387,10 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                         row["extra_kisht_entries"] = _par_extra + [
                             {"amount": _par_repayable, "loan_date": _par_date}
                         ]
+                        # Thread older ancestor EMIs: parent's chain + parent's own prev_emi
+                        row["older_emi_chain"] = _par_older_emi + (
+                            [_par_prev_emi] if _par_prev_emi > 0 else []
+                        )
                     else:
                         # Parent is the uncombined original loan.
                         # पिछली बाक़ी = parent's opening balance at the START of this FY
@@ -388,6 +398,7 @@ async def get_collection_sheet(request: Request, month: Optional[str] = None, il
                         row["prev_opening_balance"] = parent_opening
                         row["prev_loan_date"]       = parent_loan_date
                         row["extra_kisht_entries"]  = []
+                        row["older_emi_chain"]      = []
                     row["new_loan_in_fy"] = True
 
             illakas_map[il_id]["misals"][m_id]["rows"] = [

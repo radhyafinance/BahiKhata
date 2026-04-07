@@ -369,6 +369,13 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch text-sm">
           {/* EMI Amount */}
           <div className="text-right pr-2 pl-3 py-3 flex flex-col justify-center flex-shrink-0">
+            {/* Older ancestor EMIs (3+ level chains) — oldest first, all strikethrough */}
+            {(row.older_emi_chain || []).map((amt, i) => (
+              <p key={i} className="text-[11px] tabular-nums text-muted-foreground line-through mb-0.5">
+                {new Intl.NumberFormat("en-IN").format(amt)}
+              </p>
+            ))}
+            {/* Immediate parent's EMI */}
             {row.is_netoff_combined && row.prev_emi_amount > 0 && (
               <p className="text-[11px] tabular-nums text-muted-foreground line-through mb-0.5">
                 {new Intl.NumberFormat("en-IN").format(row.prev_emi_amount)}
