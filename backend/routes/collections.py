@@ -465,3 +465,45 @@ async def get_collection_sheet(
         1 for il in result for m in il["misals"] for r in m["rows"] if r["emi_status"] == "paid"
     )
     return {"month": month, "total": total_rows, "collected": collected, "illakas": result}
+
+
+# ─── Monthly Summary (lightweight — for dashboard) ──────────────────────────
+@router.get("/collections/monthly-summary")
+async def monthly_summary(request: Request, illaka_id: str, month: str):
+    """Misal-wise Utaar (due) + Vayda (collected) + client count for the dashboard."""
+    await get_current_user(request)
+    from datetime import datetime
+    # Validate month format
+    try:
+        datetime.strptime(month, "%Y-%m")
+    except ValueError:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=400, detail="month must be YYYY-MM")
+
+    loans = await db.loans.find(
+        {"illaka_id": illaka_id, "status": {"$in": ["active", "overdue"]}},
+        {"misal_id": 1, "misal_name": 1, "emi_amount": 1, "emi_schedule": 1}
+    ).to_list(None)
+
+    misal_map = {}
+    for loan in loans:
+        mid   = loan.get("misal_id", "")
+        mname = loan.get("misal_name", "Unknown")
+        if mid not in misal_map:
+            misal_map[mid] = {"misal_id": mid, "misal_name": mname, "utaar": 0.0, "vayda": 0.0, "clients": 0}
+        entry = next((e for e in loan.get("emi_schedule", []) if e.get("due_month") == month), None)
+        if not entry:
+            continue
+        misal_map[mid]["clients"] += 1
+        misal_map[mid]["utaar"]   += float(loan.get("emi_amount") or 0)
+        if entry.get("status") == "paid":
+            misal_map[mid]["vayda"] += float(entry.get("paid_amount") or loan.get("emi_amount") or 0)
+
+    misals = sorted(misal_map.values(), key=lambda m: m["misal_name"])
+    total  = {
+        "utaar":   sum(m["utaar"]   for m in misals),
+        "vayda":   sum(m["vayda"]   for m in misals),
+        "clients": sum(m["clients"] for m in misals),
+    }
+    return {"month": month, "misals": misals, "total": total}
+
