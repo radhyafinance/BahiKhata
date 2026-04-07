@@ -236,7 +236,15 @@ See CHANGELOG.md for full history.
 - [x] Dropdown hidden when only one Misal exists (guard: allMisals.length > 1)
 - [x] Empty state message distinguishes "no FY data" vs "no Misal match"
 
-### Collection Sheet — Net-off Combined Row (2026-03-31) ✓
+### Collection Sheet — Rapid Entry (Enter Key Navigation) (2026-04-07) ✓
+- [x] **Date picker at top** of Collection Sheet page (shared collection date for all Enter-key entries, defaults to today)
+- [x] **Inline amount input** in Action column replaces "Collect" button — pre-filled with EMI amount, spinners removed for clean display
+- [x] **Enter key** submits collection (POST to `/api/loans/{id}/payments` with top-level date), shows success toast, and auto-focuses the next uncollected row's input
+- [x] **On focus**: input auto-selects all text (so user can type a new amount immediately if needed)
+- [x] **Gyal rows** show inline input but are excluded from Enter navigation (`data-action-input` not set)
+- [x] Note and View buttons retained alongside the inline input
+
+
 - [x] Net-off loan pairs (L1 netoff-closed + L2 re-loan) merged into ONE row on the sheet
 - [x] FY strip shows L1's netoff EMIs + L2's paid/pending EMIs continuously in the same row
 - [x] EMI column shows old EMI (strikethrough) on top and new EMI in bold below

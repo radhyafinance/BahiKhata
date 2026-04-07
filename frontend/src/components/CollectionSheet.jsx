@@ -322,7 +322,7 @@ function EditEmiModal({ row, onClose, onEdited }) {
 }
 
 
-function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, fyMonths, onCollect, onNote, onEdit }) {
+function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, fyMonths, onCollect, onNote, onEdit, collectDate, onCollected }) {
   const [expanded, setExpanded] = useState(true);
   const navigate = useNavigate();
 
@@ -366,7 +366,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         }`}
         data-testid={`collection-row-${row.loan_db_id}`}
       >
-        <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch text-sm">
+        <div className="grid grid-cols-[52px_1fr_68px_80px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch text-sm">
           {/* EMI Amount */}
           <div className="text-right pr-2 pl-3 py-3 flex flex-col justify-center flex-shrink-0">
             {/* Older ancestor EMIs (3+ level chains) — oldest first, all strikethrough */}
@@ -582,19 +582,46 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               </div>
             ) : (
               <>
-                <button
-                  onClick={() => onCollect(row)}
-                  className={`text-xs px-2 py-1.5 rounded-lg font-bold w-full text-center transition-colors ${
-                    isGyal
-                      ? "bg-gray-400 text-white hover:bg-gray-500"
-                      : row.emi_status === "overdue"
-                      ? "bg-red-600 text-white hover:bg-red-700"
-                      : "bg-primary text-white hover:bg-primary/90"
+                <input
+                  type="number"
+                  defaultValue={row.emi_amount}
+                  min="1"
+                  data-action-input={isGyal ? undefined : "true"}
+                  onFocus={(e) => e.target.select()}
+                  onKeyDown={async (e) => {
+                    if (e.key !== "Enter") return;
+                    e.preventDefault();
+                    const amount = Number(e.target.value);
+                    if (!amount || amount <= 0) {
+                      toast.error("Enter valid amount");
+                      return;
+                    }
+                    try {
+                      await axios.post(
+                        `${API}/loans/${row.loan_db_id}/payments`,
+                        { emi_month: row.emi_month, amount, payment_date: collectDate },
+                        { withCredentials: true }
+                      );
+                      toast.success(`किस्त जमा — ${row.client_name_hindi || row.client_name}`);
+                      onCollected(row.loan_db_id, null, row.emi_month, amount);
+                      // Focus next uncollected row's input (skip Gyal rows)
+                      const allInputs = [...document.querySelectorAll('[data-action-input="true"]')];
+                      const idx = allInputs.indexOf(e.target);
+                      if (idx >= 0 && idx < allInputs.length - 1) {
+                        allInputs[idx + 1].focus();
+                        allInputs[idx + 1].select();
+                      }
+                    } catch (err) {
+                      toast.error(err.response?.data?.detail || "Failed to collect");
+                    }
+                  }}
+                  className={`bk-input h-9 text-center text-sm font-bold w-full tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+                    row.emi_status === "overdue"
+                      ? "border-red-400 focus:ring-red-200"
+                      : ""
                   }`}
-                  data-testid={`collect-btn-${row.loan_db_id}`}
-                >
-                  Collect
-                </button>
+                  data-testid={`collect-amount-input-${row.loan_db_id}`}
+                />
                 <button
                   onClick={() => onNote(row)}
                   className="flex items-center justify-center gap-0.5 text-[10px] w-full py-1 rounded border border-dashed border-muted-foreground/40 text-muted-foreground hover:border-amber-400 hover:text-amber-700 hover:bg-amber-50 transition-colors"
@@ -654,7 +681,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {expanded && (
         <div className="divide-y divide-border/60">
           {/* Column Header — sticky below toggle */}
-          <div className="grid grid-cols-[52px_1fr_68px_68px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_68px] gap-0 items-stretch bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-[100px] z-10">
+          <div className="grid grid-cols-[52px_1fr_68px_80px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-[100px] z-10">
             <span className="text-right pr-2 pl-3 py-2 self-center">EMI</span>
             <span className="pl-2 py-2 self-center">नाम / Name</span>
             {/* New columns — desktop or landscape */}
@@ -721,6 +748,7 @@ export default function CollectionSheet() {
   const [notingRow, setNotingRow] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
   const [selectedMisalId, setSelectedMisalId] = useState("all");
+  const [collectDate, setCollectDate] = useState(new Date().toISOString().split("T")[0]);
 
   const fyMonths = getFyMonths(month);
 
@@ -858,6 +886,16 @@ export default function CollectionSheet() {
                 ))}
               </select>
             )}
+            <div className="flex items-center gap-1" title="Collection date — used when pressing Enter to collect">
+              <span className="hidden sm:inline text-[10px] font-semibold text-muted-foreground whitespace-nowrap">तारीख</span>
+              <input
+                type="date"
+                value={collectDate}
+                onChange={(e) => setCollectDate(e.target.value)}
+                className="bk-input h-9 py-0 text-sm w-[7.5rem]"
+                data-testid="global-collect-date"
+              />
+            </div>
             <select
               value={selectedFyStart}
               onChange={(e) => setSelectedFyStart(Number(e.target.value))}
@@ -949,6 +987,8 @@ export default function CollectionSheet() {
                     onCollect={setCollectingRow}
                     onNote={setNotingRow}
                     onEdit={setEditingRow}
+                    collectDate={collectDate}
+                    onCollected={handleCollected}
                   />
                 ))}
               </div>
