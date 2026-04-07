@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   Loader2, CheckCircle, ChevronRight, ChevronLeft,
   MapPin, User, Users, Shield, Camera,
-  ToggleLeft, ToggleRight
+  ToggleLeft, ToggleRight, Lock
 } from "lucide-react";
 import { API, STEPS, emptyPerson } from "./kyc/utils";
 import { PersonSection } from "./kyc/PersonSection";
@@ -204,7 +204,14 @@ export default function KYCForm() {
                 <div className="p-4 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm">
                   No Illakas assigned to you yet. Contact your Maalik or Admin.
                 </div>
+              ) : !id ? (
+                /* Create mode — Illaka locked to the globally selected one */
+                <div className="bk-input flex items-center gap-2 bg-muted/50 cursor-not-allowed select-none" data-testid="illaka-locked">
+                  <Lock size={13} className="text-muted-foreground flex-shrink-0" />
+                  <span className="font-medium">{selectedIllaka?.name || "—"}</span>
+                </div>
               ) : (
+                /* Edit mode — allow changing */
                 <select value={selectedIllaka?.id || ""} onChange={e => { illakaChangedByUser.current = true; const ill = illakas.find(i => i.id === e.target.value); setSelectedIllaka(ill || null); }} className="bk-input" data-testid="illaka-select">
                   <option value="">— Select Illaka —</option>
                   {illakas.map(ill => <option key={ill.id} value={ill.id}>{ill.name}</option>)}
