@@ -32,8 +32,20 @@ export default function LoanList() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
+  const [misalFilter, setMisalFilter] = useState("");
+  const [misals, setMisals] = useState([]);
   const [page, setPage] = useState(0);
   const limit = 20;
+
+  // Fetch misals when illaka changes
+  useEffect(() => {
+    setMisalFilter("");
+    setMisals([]);
+    if (!selectedIllaka?.id) return;
+    axios.get(`${API}/misals?illaka_id=${selectedIllaka.id}`, { withCredentials: true })
+      .then(r => setMisals(r.data || []))
+      .catch(() => {});
+  }, [selectedIllaka]);
 
   const fetchLoans = async () => {
     setLoading(true);
@@ -41,6 +53,7 @@ export default function LoanList() {
       const params = new URLSearchParams({ limit: limit.toString(), skip: (page * limit).toString() });
       if (search) params.append("search", search);
       if (statusFilter) params.append("status", statusFilter);
+      if (misalFilter) params.append("misal_id", misalFilter);
       if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
       const res = await axios.get(`${API}/loans?${params}`, { withCredentials: true });
       setLoans(res.data.loans || []);
@@ -55,7 +68,7 @@ export default function LoanList() {
   useEffect(() => {
     const t = setTimeout(fetchLoans, 300);
     return () => clearTimeout(t);
-  }, [search, statusFilter, page, selectedIllaka]);
+  }, [search, statusFilter, misalFilter, page, selectedIllaka]);
 
   const canCreate = user?.role === "muneem" || user?.role === "sipahi";
 
@@ -94,7 +107,7 @@ export default function LoanList() {
         <select
           value={statusFilter}
           onChange={e => { setStatusFilter(e.target.value); setPage(0); }}
-          className="bk-input sm:w-52"
+          className="bk-input sm:w-44"
           data-testid="loan-status-filter"
         >
           <option value="">All Status / सभी</option>
@@ -102,6 +115,19 @@ export default function LoanList() {
           <option value="overdue">Overdue / बकाया</option>
           <option value="closed">Closed / बंद</option>
         </select>
+        {misals.length > 0 && (
+          <select
+            value={misalFilter}
+            onChange={e => { setMisalFilter(e.target.value); setPage(0); }}
+            className="bk-input sm:w-44"
+            data-testid="loan-misal-filter"
+          >
+            <option value="">All Misals / सभी मिसाल</option>
+            {misals.map(m => (
+              <option key={m.id} value={m.id}>{m.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Table */}

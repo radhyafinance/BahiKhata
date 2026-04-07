@@ -201,7 +201,7 @@ export default function UserManagement() {
           </div>
         ) : (
           <div className="divide-y divide-border">
-            {users.map(u => (
+            {[...users].sort((a, b) => (b.is_active ? 1 : 0) - (a.is_active ? 1 : 0)).map(u => (
               <div key={u.id} className={`px-5 py-4 flex items-start gap-4 ${!u.is_active ? "opacity-50" : ""}`} data-testid={`user-row-${u.id}`}>
                 <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
                   <span className="text-primary font-bold">{u.name?.charAt(0)?.toUpperCase()}</span>
