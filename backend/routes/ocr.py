@@ -1,7 +1,8 @@
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Query
 from fastapi.responses import Response as FastResponse
-import uuid, tempfile, os, re, json, logging
+import uuid, tempfile, os, re, json, logging, io
 import jwt
+from PIL import Image
 from core.storage import get_object, put_object, APP_NAME, MIME_TYPES, EMERGENT_KEY
 from core.auth import get_current_user, JWT_ALGORITHM, get_jwt_secret
 from models import OCRRequest, TransliterateRequest
@@ -10,16 +11,56 @@ from emergentintegrations.llm.chat import LlmChat, UserMessage, FileContentWithM
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
+MAX_DIMENSION = 1920   # px — long edge cap
+JPEG_QUALITY  = 78     # good balance of clarity vs size
+
+
+def compress_image(data: bytes, content_type: str) -> tuple[bytes, str]:
+    """Resize to MAX_DIMENSION on the long edge and re-encode as JPEG.
+    Returns (compressed_bytes, 'image/jpeg').  PDFs pass through unchanged."""
+    if content_type == "application/pdf":
+        return data, content_type
+    try:
+        img = Image.open(io.BytesIO(data))
+        # Convert palette / RGBA → RGB so JPEG encoding works
+        if img.mode in ("RGBA", "P", "LA"):
+            img = img.convert("RGB")
+        elif img.mode != "RGB":
+            img = img.convert("RGB")
+        # Resize only if larger than MAX_DIMENSION
+        w, h = img.size
+        if max(w, h) > MAX_DIMENSION:
+            scale = MAX_DIMENSION / max(w, h)
+            img = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=JPEG_QUALITY, optimize=True)
+        compressed = buf.getvalue()
+        logger.info(f"Image compressed: {len(data)/1024:.0f}KB → {len(compressed)/1024:.0f}KB")
+        return compressed, "image/jpeg"
+    except Exception as e:
+        logger.warning(f"Compression failed, storing original: {e}")
+        return data, content_type
+
 
 @router.post("/upload")
 async def upload_file(request: Request, file: UploadFile = File(...)):
     await get_current_user(request)
     ext = file.filename.rsplit(".", 1)[-1].lower() if "." in file.filename else "bin"
     ct = MIME_TYPES.get(ext, file.content_type or "application/octet-stream")
-    path = f"{APP_NAME}/uploads/{uuid.uuid4()}.{ext}"
     data = await file.read()
+    original_size = len(data)
+    # Compress images before storing
+    data, ct = compress_image(data, ct)
+    # Always store as .jpg after compression (unless PDF)
+    store_ext = ext if ct == "application/pdf" else "jpg"
+    path = f"{APP_NAME}/uploads/{uuid.uuid4()}.{store_ext}"
     result = put_object(path, data, ct)
-    return {"path": result["path"], "size": result.get("size", len(data)), "content_type": ct}
+    return {
+        "path": result["path"],
+        "size": len(data),
+        "original_size": original_size,
+        "content_type": ct,
+    }
 
 
 @router.get("/files/{path:path}")
