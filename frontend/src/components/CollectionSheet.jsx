@@ -76,9 +76,9 @@ const EMI_STATUS = {
   pending: { cls: "bg-gray-100 text-gray-600", label: "Pending", icon: Clock, iconCls: "text-gray-400" },
 };
 
-function CollectModal({ row, onClose, onCollected }) {
+function CollectModal({ row, onClose, onCollected, defaultDate }) {
   const [amount, setAmount] = useState(row.emi_amount);
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(defaultDate || new Date().toISOString().split("T")[0]);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e) => {
@@ -582,6 +582,20 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               </div>
             ) : (
               <>
+                {/* Mobile: tap button → CollectModal (avoids mis-entry on small screen) */}
+                <button
+                  onClick={() => onCollect(row)}
+                  className={`lg:hidden landscape:hidden text-xs font-bold w-full py-2 rounded-lg transition-colors ${
+                    row.emi_status === "overdue"
+                      ? "bg-red-500 hover:bg-red-600 text-white"
+                      : "bg-primary hover:bg-primary/90 text-primary-foreground"
+                  }`}
+                  data-testid={`collect-btn-mobile-${row.loan_db_id}`}
+                >
+                  Collect
+                </button>
+
+                {/* Desktop / Landscape: inline input with Enter-key rapid entry */}
                 <input
                   type="number"
                   defaultValue={row.emi_amount}
@@ -615,7 +629,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                       toast.error(err.response?.data?.detail || "Failed to collect");
                     }
                   }}
-                  className={`bk-input h-9 text-center text-sm font-bold w-full tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+                  className={`hidden lg:block landscape:block bk-input h-9 text-center text-sm font-bold w-full tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
                     row.emi_status === "overdue"
                       ? "border-red-400 focus:ring-red-200"
                       : ""
@@ -1017,6 +1031,7 @@ export default function CollectionSheet() {
           row={collectingRow}
           onClose={() => setCollectingRow(null)}
           onCollected={handleCollected}
+          defaultDate={collectDate}
         />
       )}
 
