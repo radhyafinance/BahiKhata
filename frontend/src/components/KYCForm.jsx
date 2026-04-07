@@ -12,12 +12,14 @@ import { PersonSection } from "./kyc/PersonSection";
 import { LivePhotoGPS } from "./kyc/LivePhotoGPS";
 import { ReviewSection } from "./kyc/ReviewSection";
 import { useIllaka } from "./IllakaContext";
+import { useAuth } from "./AuthContext";
 
 const STEP_ICONS = [MapPin, User, Users, Shield, Camera, CheckCircle];
 
 export default function KYCForm() {
   const navigate = useNavigate();
   const { id } = useParams();
+  const { user } = useAuth();
   const { selectedIllaka: contextIllaka } = useIllaka();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
@@ -235,6 +237,7 @@ export default function KYCForm() {
             onChange={updatePerson("primaryBorrower")}
             onBatchChange={updatePersonBatch("primaryBorrower")}
             isMandatory={true}
+            userRole={user?.role}
           />
         )}
 
@@ -258,6 +261,7 @@ export default function KYCForm() {
                 onChange={updatePerson("coBorrower")}
                 onBatchChange={updatePersonBatch("coBorrower")}
                 isMandatory={false}
+                userRole={user?.role}
               />
             ) : (
               <div className="py-8 text-center text-muted-foreground space-y-3">
@@ -289,6 +293,7 @@ export default function KYCForm() {
                 onChange={updatePerson("guarantor")}
                 onBatchChange={updatePersonBatch("guarantor")}
                 isMandatory={false}
+                userRole={user?.role}
               />
             ) : (
               <div className="py-8 text-center text-muted-foreground space-y-3">
