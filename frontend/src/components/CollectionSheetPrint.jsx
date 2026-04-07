@@ -4,352 +4,434 @@ import axios from "axios";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const ROWS_PER_PAGE = 10;
+
+// ── helpers (mirrors CollectionSheet.jsx) ─────────────────────────────────
+const fmtK    = (n) => n ? new Intl.NumberFormat("en-IN").format(Math.round(n)) : "";
+const fmtIN   = (n) => n ? new Intl.NumberFormat("en-IN").format(Math.round(n)) : "";
+const fmtDate = (s) => { if (!s) return ""; const d=new Date(s); return isNaN(d)?"":`${d.toLocaleString("en-IN",{month:"short"})} ${d.getFullYear()}`; };
+
 const FY_ABBR = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
 
 function getFyMonths(fyStart) {
-  const months = [];
-  for (let i = 0; i < 12; i++) {
-    const mo = ((3 + i) % 12) + 1;
-    const yr = mo >= 4 ? fyStart : fyStart + 1;
-    months.push(`${yr}-${String(mo).padStart(2, "0")}`);
-  }
-  return months;
+  return Array.from({length:12},(_,i)=>{const m=((3+i)%12)+1;const y=m>=4?fyStart:fyStart+1;return`${y}-${String(m).padStart(2,"0")}`;});
 }
+function getFyLabel(s){ return `${String(s).slice(-2)}-${String(s+1).slice(-2)}`; }
+function getCurrentFyStart(){ const d=new Date(); return d.getMonth()+1>=4?d.getFullYear():d.getFullYear()-1; }
 
-function getFyLabel(s) {
-  return `${String(s).slice(-2)}-${String(s + 1).slice(-2)}`;
-}
+// ── Inject print/screen CSS ───────────────────────────────────────────────
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;600;700;900&family=Noto+Sans+Devanagari:wght@400;600;700;900&display=swap');
 
-function fmtIN(n) {
-  if (!n) return "";
-  return Number(n).toLocaleString("en-IN");
-}
-
-// ── Inject print + screen CSS once ──────────────────────────────────────────
-const PRINT_CSS = `
 @media print {
-  @page { size: legal landscape; margin: 0.3in 0.38in; }
-  html, body { margin: 0; padding: 0; font-size: 7.5pt; }
-  .no-print { display: none !important; }
-  .print-page { page-break-after: always; }
-  .print-page:last-child { page-break-after: auto; }
+  @page { size: legal landscape; margin: 0.28in 0.34in; }
+  html, body { margin:0; padding:0; }
+  .no-print { display:none!important; }
+  .print-page { page-break-after:always; }
+  .print-page:last-child { page-break-after:auto; }
 }
 @media screen {
-  body { background: #cbd5e1; padding: 56px 20px 20px; }
+  body { background:#94a3b8; padding:56px 16px 20px; }
   .print-page {
-    background: white;
-    width: 13.6in;
-    margin: 0 auto 20px;
-    padding: 0.3in 0.38in;
-    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+    background:#fff; width:13.6in;
+    margin:0 auto 20px; padding:0.28in 0.34in;
+    box-shadow:0 4px 24px rgba(0,0,0,.22);
   }
 }
-* { box-sizing: border-box; }
-body { font-family: 'Noto Sans', 'Noto Sans Devanagari', Arial, sans-serif; }
 
-/* ── Page header ── */
-.ph { display:flex; justify-content:space-between; align-items:flex-end; border-bottom:2pt solid #1e293b; padding-bottom:5px; margin-bottom:7px; }
-.ph-title { font-size:13pt; font-weight:900; color:#1e293b; line-height:1.2; }
-.ph-sub { font-size:7.5pt; color:#475569; margin-top:2px; }
-.ph-right { text-align:right; font-size:7.5pt; color:#64748b; }
-.ph-badge { display:inline-block; background:#7c3aed; color:white; font-size:6.5pt; padding:1px 7px; border-radius:10px; margin-top:2px; }
+*  { box-sizing:border-box; }
+body { font-family:'Noto Sans','Noto Sans Devanagari',sans-serif; font-size:7.5pt; color:#1e293b; }
 
-/* ── Table ── */
-table { width:100%; border-collapse:collapse; font-size:7pt; }
-thead tr { background:#1e293b; color:white; }
-th { padding:3.5px 2px; text-align:center; font-weight:700; border:0.4pt solid #334155; white-space:nowrap; line-height:1.3; }
-th.left { text-align:left; padding-left:5px; }
-td { padding:3.5px 2px; border:0.4pt solid #e2e8f0; vertical-align:middle; line-height:1.3; }
-td.c { text-align:center; }
-td.r { text-align:right; padding-right:3px; }
-tr:nth-child(even) td { background:#f8fafc; }
-.paid  { color:#16a34a; font-weight:600; }
-.overdue { color:#dc2626; }
-.na    { color:#cbd5e1; }
-.blank { background:#f1f5f9 !important; }
-.total-row td { background:#dcfce7 !important; font-weight:700; border-top:1.5pt solid #16a34a; }
-.empty-row { height:21pt; }
+/* ── page chrome ── */
+.page-header { display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:6px; }
+.page-header h1 { font-size:12pt; font-weight:900; line-height:1.2; color:#1e293b; margin:0; }
+.page-header .sub { font-size:7pt; color:#64748b; margin-top:2px; }
+.page-header .right { text-align:right; font-size:7pt; color:#64748b; }
+.duplex-badge { display:inline-block; background:#7c3aed; color:#fff; font-size:6pt; padding:1px 6px; border-radius:10px; vertical-align:middle; margin-left:6px; }
+.page-footer { display:flex; justify-content:space-between; margin-top:5px; font-size:6.5pt; color:#94a3b8; border-top:.4pt solid #e2e8f0; padding-top:3px; }
 
-/* ── Page footer ── */
-.pf { display:flex; justify-content:space-between; margin-top:5px; font-size:6.5pt; color:#94a3b8; border-top:0.5pt solid #e2e8f0; padding-top:3px; }
+/* ── main table ── */
+table  { width:100%; table-layout:fixed; border-collapse:collapse; font-size:7pt; }
+col.sn    { width:1.5%; }
+col.emi   { width:4.5%; }
+col.names { width:15%;  }
+col.prev  { width:5%;   }
+col.new   { width:5%;   }
+col.mo    { width:4.84%; }   /* 12 × 4.84 = 58.08 */
+col.bal   { width:4.5%; }
+col.sign  { width:4.5%; }
+
+/* ── header row (dark, like screen's sticky header) ── */
+thead tr { background:#1e293b; color:#fff; }
+th { padding:3px 2px; text-align:center; font-weight:700; border:.4pt solid #334155; line-height:1.3; white-space:nowrap; overflow:hidden; }
+th.left { text-align:left; padding-left:4px; }
+th.mo-h { font-size:6pt; letter-spacing:-.2px; }
+
+/* ── misal section header ── */
+.misal-hdr td { background:#0f172a; color:#e2e8f0; font-weight:700; font-size:7.5pt; padding:3px 6px; border:.4pt solid #1e293b; letter-spacing:.3px; }
+
+/* ── data cells ── */
+td { padding:3px 2px; border:.4pt solid #e2e8f0; vertical-align:middle; }
+td.c  { text-align:center; }
+td.r  { text-align:right; padding-right:3px; }
+td.lp { padding-left:4px; }
+
+/* ── row status backgrounds (mirrors screen) ── */
+tr.row-paid    td { background:#f0fdf4; }  /* green-50 */
+tr.row-netoff  td { background:#eff6ff; }  /* blue-50  */
+tr.row-overdue td { background:#fff1f2; }  /* red-50   */
+tr.row-gyal    td { background:#f4f4f5; }  /* gray-100 */
+tr.row-empty   td { background:#fafafa; }
+tr.row-empty   { height:21pt; }
+
+/* ── month cell states (mirrors screen) ── */
+td.mo-na      { background:#f8fafc; }
+td.mo-paid    { background:#dcfce7; } /* green-100 */
+td.mo-overdue { background:#fee2e2; } /* red-100   */
+td.mo-netoff  { background:#dbeafe; } /* blue-100  */
+td.mo-note    { background:#fef3c7; } /* amber-100 */
+td.mo-pending { background:#fff;    }
+
+.tick  { color:#16a34a; font-weight:900; font-size:8pt; }
+.kamt  { color:#15803d; font-weight:700; font-size:6.5pt; display:block; }
+.bang  { color:#ef4444; font-weight:900; font-size:9pt; }
+.arrow { color:#3b82f6; font-weight:900; font-size:8pt; }
+.dot   { color:#cbd5e1; font-size:10pt; }
+
+/* strikethrough for prev EMI amounts */
+.stk { text-decoration:line-through; color:#94a3b8; font-size:6pt; display:block; }
+
+/* ── totals row ── */
+tr.total-row td { background:#dcfce7!important; font-weight:700; border-top:1.5pt solid #16a34a; }
+
+/* ── blank columns styling (hatched look) ── */
+td.blank { background:repeating-linear-gradient(45deg,#f8fafc,#f8fafc 4pt,#f1f5f9 4pt,#f1f5f9 8pt)!important; }
+th.blank-h { background:#334155; }
 `;
 
+// ── Print page component ──────────────────────────────────────────────────
 export default function CollectionSheetPrint() {
-  const [searchParams] = useSearchParams();
-  const illakaId = searchParams.get("illaka_id");
-  const fyStart   = Number(searchParams.get("fy_start")) || new Date().getFullYear() - (new Date().getMonth() < 3 ? 1 : 0);
-  const duplex    = searchParams.get("duplex") === "true";
+  const [searchParams]    = useSearchParams();
+  const illakaId          = searchParams.get("illaka_id");
+  const fyStart           = Number(searchParams.get("fy_start")) || getCurrentFyStart();
+  const duplex            = searchParams.get("duplex") === "true";
 
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState(null);
 
-  const fyMonths    = useMemo(() => getFyMonths(fyStart), [fyStart]);
-  const activeMonth = fyMonths[0]; // Apr of the selected FY
+  const fyMonths = useMemo(() => getFyMonths(fyStart), [fyStart]);
 
   // Inject CSS
   useEffect(() => {
     const el = document.createElement("style");
-    el.textContent = PRINT_CSS;
+    el.textContent = CSS;
     document.head.appendChild(el);
     return () => document.head.removeChild(el);
   }, []);
 
+  // Fetch full-year data (use Apr of the FY as the month param)
   useEffect(() => {
-    const params = new URLSearchParams({ month: activeMonth });
+    const params = new URLSearchParams({ month: fyMonths[0] });
     if (illakaId) params.append("illaka_id", illakaId);
-    axios
-      .get(`${API}/collections/sheet?${params}`, { withCredentials: true })
-      .then((r) => setData(r.data))
-      .catch(() => setError("Failed to load collection data. Please check login and try again."))
+    axios.get(`${API}/collections/sheet?${params}`, { withCredentials: true })
+      .then(r => setData(r.data))
+      .catch(() => setError("Failed to load data. Please close this tab, check your login and try again."))
       .finally(() => setLoading(false));
-  }, [activeMonth, illakaId]);
+  }, []);                         // eslint-disable-line
 
-  // Build pages: [{illakaName, misalName, misalId, pageNum, totalPagesInMisal, rows, startIndex, allMisalRows}]
+  // ── Paginate: flat list of {illakaName, misalName, misalId, rows, startIdx, pageNum, totalPages, allRows}
   const pages = useMemo(() => {
     if (!data) return [];
-    const result = [];
-    for (const illaka of data.illakas) {
-      for (const misal of illaka.misals) {
-        const allRows  = misal.rows;
-        const numPages = Math.max(1, Math.ceil(allRows.length / ROWS_PER_PAGE));
-        for (let pg = 0; pg < numPages; pg++) {
-          result.push({
-            illakaName:         illaka.illaka_name,
-            misalName:          misal.misal_name,
-            misalId:            misal.misal_id,
-            pageNum:            pg + 1,
-            totalPagesInMisal:  numPages,
-            rows:               allRows.slice(pg * ROWS_PER_PAGE, (pg + 1) * ROWS_PER_PAGE),
-            startIndex:         pg * ROWS_PER_PAGE + 1,
-            allMisalRows:       allRows,
+    const out = [];
+    for (const il of data.illakas) {
+      for (const ms of il.misals) {
+        const all = ms.rows;
+        const np  = Math.max(1, Math.ceil(all.length / ROWS_PER_PAGE));
+        for (let p = 0; p < np; p++) {
+          out.push({
+            illakaName: il.illaka_name,
+            misalName:  ms.misal_name,
+            misalId:    ms.misal_id,
+            pageNum:    p + 1,
+            totalPages: np,
+            rows:       all.slice(p * ROWS_PER_PAGE, (p + 1) * ROWS_PER_PAGE),
+            startIdx:   p * ROWS_PER_PAGE + 1,
+            allRows:    all,
           });
         }
       }
     }
-    return result;
+    return out;
   }, [data]);
 
-  const totalClients = pages.reduce((a, p) => a + p.rows.length, 0);
-
-  // ── helpers ────────────────────────────────────────────────────────────────
-  function getMisalTotals(allRows) {
-    const monthTotals = {};
-    let totalVayda = 0;
+  // Misal totals (collected per month + total)
+  function misalTotals(allRows) {
+    const byMonth = {};
+    let total = 0;
     for (const row of allRows) {
       for (const yd of row.emi_year_data || []) {
         if (yd.status === "paid") {
-          monthTotals[yd.month] = (monthTotals[yd.month] || 0) + (yd.paid_amount || 0);
-          totalVayda += yd.paid_amount || 0;
+          byMonth[yd.month] = (byMonth[yd.month] || 0) + (yd.paid_amount || 0);
+          total += (yd.paid_amount || 0);
         }
       }
     }
-    return { monthTotals, totalVayda };
+    return { byMonth, total };
   }
 
-  // ── render guards ──────────────────────────────────────────────────────────
-  if (loading) {
-    return (
-      <div style={{ padding: 40, fontFamily: "sans-serif", color: "#475569" }}>
-        <p style={{ fontSize: 16, fontWeight: 700 }}>Loading collection data for FY {getFyLabel(fyStart)}…</p>
-        <p style={{ fontSize: 13, marginTop: 8 }}>Please wait while we fetch the full year's data.</p>
-      </div>
-    );
-  }
-  if (error) {
-    return (
-      <div style={{ padding: 40, fontFamily: "sans-serif", color: "#dc2626" }}>
-        <p style={{ fontSize: 16, fontWeight: 700 }}>Error</p>
-        <p>{error}</p>
-      </div>
-    );
-  }
+  if (loading) return <div style={{padding:40,fontFamily:"sans-serif",color:"#475569"}}><b>Loading FY {getFyLabel(fyStart)} collection sheet…</b></div>;
+  if (error)   return <div style={{padding:40,fontFamily:"sans-serif",color:"#dc2626"}}><b>Error:</b> {error}</div>;
 
-  const printDate = new Date().toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  const printDate = new Date().toLocaleDateString("en-IN", {day:"numeric",month:"short",year:"numeric"});
+  const totalClients = pages.reduce((a,p)=>a+p.rows.length, 0);
 
   return (
     <div>
-      {/* ── Screen-only top bar ── */}
-      <div
-        className="no-print"
-        style={{
-          position: "fixed", top: 0, left: 0, right: 0, zIndex: 999,
-          background: "#1e293b", color: "white",
-          padding: "9px 20px", display: "flex", alignItems: "center", gap: 16,
-          fontFamily: "sans-serif",
-        }}
-      >
+      {/* ── Screen toolbar ── */}
+      <div className="no-print" style={{position:"fixed",top:0,left:0,right:0,zIndex:999,background:"#0f172a",color:"#fff",padding:"8px 18px",display:"flex",alignItems:"center",gap:14,fontFamily:"sans-serif"}}>
         <div>
-          <strong style={{ fontSize: 14 }}>
-            Vasuli FY {getFyLabel(fyStart)} — Print Preview
-          </strong>
-          <span style={{ fontSize: 12, color: "#94a3b8", marginLeft: 12 }}>
-            {pages.length} pages · {totalClients} clients
-          </span>
+          <b style={{fontSize:14}}>Vasuli FY {getFyLabel(fyStart)}</b>
+          <span style={{fontSize:12,color:"#94a3b8",marginLeft:10}}>{pages.length} pages · {totalClients} clients</span>
         </div>
-
         {duplex && (
-          <span style={{
-            fontSize: 11, background: "#7c3aed", padding: "3px 12px",
-            borderRadius: 20, flexShrink: 0,
-          }}>
-            Duplex: In print dialog → Two-sided: On → Flip on Long Edge
+          <span style={{fontSize:11,background:"#7c3aed",padding:"3px 12px",borderRadius:20,flexShrink:0}}>
+            Duplex → In print dialog: Two-sided ON · Flip on Long Edge
           </span>
         )}
-
-        <div style={{ marginLeft: "auto", display: "flex", gap: 10 }}>
-          <button
-            onClick={() => window.print()}
-            style={{
-              background: "#16a34a", color: "white", border: "none",
-              padding: "8px 22px", borderRadius: 8, fontWeight: 700,
-              cursor: "pointer", fontSize: 14,
-            }}
-          >
-            Print / PDF
-          </button>
-          <button
-            onClick={() => window.close()}
-            style={{
-              background: "#475569", color: "white", border: "none",
-              padding: "8px 14px", borderRadius: 8, cursor: "pointer", fontSize: 14,
-            }}
-          >
-            Close
-          </button>
+        <div style={{marginLeft:"auto",display:"flex",gap:10}}>
+          <button onClick={()=>window.print()} style={{background:"#16a34a",color:"#fff",border:"none",padding:"7px 20px",borderRadius:8,fontWeight:700,cursor:"pointer",fontSize:14}}>Print / PDF</button>
+          <button onClick={()=>window.close()} style={{background:"#475569",color:"#fff",border:"none",padding:"7px 14px",borderRadius:8,cursor:"pointer",fontSize:14}}>Close</button>
         </div>
       </div>
 
       {/* ── Pages ── */}
       {pages.map((page) => {
-        const isLastPage = page.pageNum === page.totalPagesInMisal;
-        const totals     = isLastPage ? getMisalTotals(page.allMisalRows) : null;
-
-        // Pad to exactly ROWS_PER_PAGE with nulls for empty rows
-        const paddedRows = [...page.rows];
-        while (paddedRows.length < ROWS_PER_PAGE) paddedRows.push(null);
+        const isLast = page.pageNum === page.totalPages;
+        const tots   = isLast ? misalTotals(page.allRows) : null;
+        // pad to exactly ROWS_PER_PAGE
+        const padded = [...page.rows];
+        while (padded.length < ROWS_PER_PAGE) padded.push(null);
 
         return (
-          <div key={`${page.misalId}-p${page.pageNum}`} className="print-page">
-            {/* Page Header */}
-            <div className="ph">
+          <div key={`${page.misalId}-${page.pageNum}`} className="print-page">
+
+            {/* Page header */}
+            <div className="page-header">
               <div>
-                <div className="ph-title">
-                  बही खाता — वसूली पत्र &nbsp;/&nbsp; Collection Sheet &nbsp;·&nbsp; FY {getFyLabel(fyStart)}
-                </div>
-                <div className="ph-sub">
-                  इलाका: <strong>{page.illakaName}</strong>
+                <h1>
+                  बही खाता — वसूली पत्र &nbsp;/&nbsp; Collection Sheet
                   &nbsp;&nbsp;|&nbsp;&nbsp;
-                  मिसाल: <strong>{page.misalName}</strong>
+                  FY {getFyLabel(fyStart)}
+                  {duplex && <span className="duplex-badge">Duplex · Long Edge</span>}
+                </h1>
+                <div className="sub">
+                  इलाका: <b>{page.illakaName}</b>
                   &nbsp;&nbsp;|&nbsp;&nbsp;
-                  Page {page.pageNum} of {page.totalPagesInMisal}
+                  मिसाल: <b>{page.misalName}</b>
                   &nbsp;&nbsp;|&nbsp;&nbsp;
-                  Clients {page.startIndex}–{page.startIndex + page.rows.length - 1} of {page.allMisalRows.length}
-                  {duplex && <span className="ph-badge">Duplex · Long Edge</span>}
+                  Page {page.pageNum}/{page.totalPages}
+                  &nbsp;&nbsp;|&nbsp;&nbsp;
+                  Clients {page.startIdx}–{page.startIdx + page.rows.length - 1} of {page.allRows.length}
                 </div>
               </div>
-              <div className="ph-right">
-                <div><strong>Printed:</strong> {printDate}</div>
-                <div>Apr {fyStart} → Mar {fyStart + 1}</div>
+              <div className="right">
+                <div><b>Printed:</b> {printDate}</div>
+                <div>Apr {fyStart} → Mar {fyStart+1}</div>
               </div>
             </div>
 
-            {/* Table */}
+            {/* Main table */}
             <table>
+              <colgroup>
+                <col className="sn"/>
+                <col className="emi"/>
+                <col className="names"/>
+                <col className="prev"/>
+                <col className="new"/>
+                {fyMonths.map(m => <col key={m} className="mo"/>)}
+                <col className="bal"/>
+                <col className="sign"/>
+              </colgroup>
               <thead>
                 <tr>
-                  <th style={{ width: 22 }}>#</th>
-                  <th className="left" style={{ width: "20%" }}>ग्राहक / Client</th>
-                  <th style={{ width: 54 }}>Loan No.</th>
-                  <th style={{ width: 40 }}>EMI ₹</th>
-                  {FY_ABBR.map((abbr, i) => (
-                    <th key={fyMonths[i]} style={{ width: 36, fontSize: "6pt" }}>{abbr}</th>
-                  ))}
-                  <th style={{ width: 52 }}>Paid ₹</th>
-                  <th className="blank" style={{ width: 52 }}>Bal. ₹</th>
-                  <th className="blank" style={{ width: 38 }}>Sign</th>
+                  <th>#</th>
+                  <th>EMI ₹</th>
+                  <th className="left">ग्राहक / Client</th>
+                  <th className="mo-h">पिछली<br/>बाक़ी</th>
+                  <th className="mo-h">किस्त<br/>हाल</th>
+                  {FY_ABBR.map((a,i) => <th key={fyMonths[i]} className="mo-h">{a}</th>)}
+                  <th className="blank-h">Bal. ₹</th>
+                  <th className="blank-h">Sign</th>
                 </tr>
               </thead>
               <tbody>
-                {paddedRows.map((row, ri) => {
-                  const sn = page.startIndex + ri;
+                {/* Misal name sub-header on page 1 of misal, or always for clarity */}
+                <tr className="misal-hdr">
+                  <td colSpan={5 + 12 + 2}>
+                    मिसाल: {page.misalName} &nbsp;·&nbsp; {page.allRows.length} clients &nbsp;·&nbsp; Page {page.pageNum}/{page.totalPages}
+                  </td>
+                </tr>
 
+                {padded.map((row, ri) => {
+                  const sn = page.startIdx + ri;
+
+                  // Empty padding row
                   if (!row) {
                     return (
-                      <tr key={`empty-${ri}`} className="empty-row">
-                        <td className="c na">{sn}</td>
-                        <td /><td /><td />
-                        {fyMonths.map((ym) => <td key={ym} />)}
-                        <td /><td className="blank" /><td className="blank" />
+                      <tr key={`e-${ri}`} className="row-empty">
+                        <td className="c" style={{color:"#cbd5e1",fontSize:"6pt"}}>{sn}</td>
+                        <td/><td/><td/><td/>
+                        {fyMonths.map(m => <td key={m} className="mo-na"/>)}
+                        <td className="blank"/><td className="blank"/>
                       </tr>
                     );
                   }
 
-                  const yearData = row.emi_year_data || fyMonths.map(() => ({ status: "na", paid_amount: 0 }));
+                  // Row class based on status
+                  const rowCls =
+                    row.is_gyal              ? "row-gyal"    :
+                    row.emi_status==="netoff" ? "row-netoff"  :
+                    row.emi_status==="paid"   ? "row-paid"    :
+                    row.emi_status==="overdue"? "row-overdue" : "";
+
+                  // Prev balance (old loan or net-off combined)
+                  const loanYm     = row.loan_date ? row.loan_date.substring(0,7) : null;
+                  const isOldLoan  = loanYm && loanYm < fyMonths[0];
+                  const showPrev   = row.is_netoff_combined ? row.prev_opening_balance > 0 : isOldLoan;
+                  const prevAmt    = row.is_netoff_combined ? row.prev_opening_balance : row.opening_balance;
+                  const prevDate   = row.is_netoff_combined ? row.prev_loan_date : row.loan_date;
+
+                  // New loan (disbursed in this FY)
+                  const isNewLoan  = loanYm && loanYm >= fyMonths[0];
+                  const showNew    = row.is_netoff_combined ? row.new_loan_in_fy===true : isNewLoan;
+                  const extras     = row.extra_kisht_entries || [];
 
                   return (
-                    <tr key={row.loan_db_id}>
-                      <td className="c">{sn}</td>
-                      <td style={{ paddingLeft: 5 }}>
-                        <div style={{ fontWeight: 600 }}>{row.client_name_hindi || row.client_name}</div>
+                    <tr key={row.loan_db_id} className={rowCls}>
+                      {/* Serial # */}
+                      <td className="c" style={{fontWeight:600,fontSize:"6.5pt"}}>{sn}</td>
+
+                      {/* EMI amount */}
+                      <td className="r">
+                        {(row.older_emi_chain||[]).map((a,i)=>(
+                          <span key={i} className="stk">{fmtIN(a)}</span>
+                        ))}
+                        {row.is_netoff_combined && row.prev_emi_amount > 0 && (
+                          <span className="stk">{fmtIN(row.prev_emi_amount)}</span>
+                        )}
+                        <span style={{fontWeight:700,fontSize:"7.5pt",display:"block"}}>{fmtIN(row.emi_amount)}</span>
+                      </td>
+
+                      {/* Names */}
+                      <td className="lp">
+                        <div style={{fontWeight:700,fontSize:"7.5pt",lineHeight:1.3}}>
+                          {row.client_name_hindi || row.client_name}
+                        </div>
                         {row.client_name_hindi && (
-                          <div style={{ fontSize: "6pt", color: "#64748b" }}>{row.client_name}</div>
+                          <div style={{fontSize:"6pt",color:"#64748b",lineHeight:1.2}}>{row.client_name}</div>
+                        )}
+                        {(row.relative_name_hindi||row.relative_name) && (
+                          <div style={{fontSize:"6pt",color:"#64748b",lineHeight:1.2}}>
+                            {row.relative_name_hindi||row.relative_name}
+                          </div>
+                        )}
+                        {(row.guarantor_name_hindi||row.guarantor_name) && (
+                          <div style={{fontSize:"6pt",color:"#2563eb",lineHeight:1.2}}>
+                            {row.guarantor_name_hindi||row.guarantor_name}
+                          </div>
                         )}
                       </td>
-                      <td className="c" style={{ fontSize: "6pt" }}>{row.loan_number}</td>
-                      <td className="r">{fmtIN(row.emi_amount)}</td>
 
-                      {yearData.map((yd, mi) => {
-                        let cls = "";
-                        let val = "";
-                        if (yd.status === "paid") {
-                          cls = "paid c";
-                          val = fmtIN(yd.paid_amount);
-                        } else if (yd.status === "overdue" || yd.status === "pending") {
-                          cls = "overdue c";
-                          val = "";
-                        } else {
-                          cls = "na c";
-                          val = "—";
+                      {/* Previous balance */}
+                      <td className="r" style={{fontSize:"6.5pt"}}>
+                        {showPrev && prevAmt > 0 && (
+                          <>
+                            <span style={{fontWeight:600,display:"block"}}>{fmtIN(prevAmt)}</span>
+                            <span style={{color:"#64748b",fontSize:"5.5pt"}}>{fmtDate(prevDate)}</span>
+                          </>
+                        )}
+                      </td>
+
+                      {/* New loan */}
+                      <td className="r" style={{fontSize:"6.5pt"}}>
+                        {showNew && (
+                          <>
+                            {extras.map((e,i)=>(
+                              <div key={i} style={{marginBottom:"1pt"}}>
+                                <span style={{fontWeight:600,display:"block"}}>{fmtIN(e.amount)}</span>
+                                <span style={{color:"#2563eb",fontSize:"5.5pt"}}>↩ {fmtDate(e.loan_date)}</span>
+                              </div>
+                            ))}
+                            <span style={{fontWeight:600,display:"block"}}>{fmtIN(row.total_repayable)}</span>
+                            <span style={{color: row.is_netoff_combined?"#2563eb":"#64748b",fontSize:"5.5pt"}}>
+                              {row.is_netoff_combined?"↩ ":""}{fmtDate(row.loan_date)}
+                            </span>
+                          </>
+                        )}
+                      </td>
+
+                      {/* 12-month cells */}
+                      {(row.emi_year_data||fyMonths.map(()=>({status:"na",paid_amount:0}))).map((yd, mi) => {
+                        const ym = fyMonths[mi];
+                        if (yd.status==="na") {
+                          return <td key={ym} className="mo-na"/>;
                         }
-                        return (
-                          <td key={fyMonths[mi]} className={cls}>{val}</td>
-                        );
+                        if (yd.status==="paid") {
+                          return (
+                            <td key={ym} className="mo-paid c">
+                              <span className="tick">✓</span>
+                              <span className="kamt">{fmtK(yd.paid_amount)}</span>
+                              {yd.note && <span style={{display:"block",width:"6pt",height:"6pt",borderRadius:"50%",background:"#f59e0b",margin:"0 auto"}}/>}
+                            </td>
+                          );
+                        }
+                        if (yd.status==="netoff"||yd.status==="chain_start") {
+                          return <td key={ym} className="mo-netoff c"><span className="arrow">↩</span></td>;
+                        }
+                        if (yd.note) {
+                          return (
+                            <td key={ym} className="mo-note c" style={{fontSize:"5.5pt",color:"#92400e"}}>
+                              {yd.note.substring(0,12)}{yd.note.length>12?"…":""}
+                            </td>
+                          );
+                        }
+                        if (yd.status==="overdue") {
+                          return <td key={ym} className="mo-overdue c"><span className="bang">!</span></td>;
+                        }
+                        // pending
+                        return <td key={ym} className="mo-pending c"><span className="dot">·</span></td>;
                       })}
 
-                      <td className="r paid" style={{ fontWeight: 700 }}>
-                        {fmtIN(row.total_paid)}
-                      </td>
-                      <td className="blank" />
-                      <td className="blank" />
+                      {/* Bal (blank) */}
+                      <td className="blank"/>
+                      {/* Sign (blank) */}
+                      <td className="blank"/>
                     </tr>
                   );
                 })}
 
-                {/* Misal totals row — only on last page of the misal */}
-                {isLastPage && totals && (
+                {/* Misal totals — last page only */}
+                {isLast && tots && (
                   <tr className="total-row">
-                    <td colSpan={4} style={{ textAlign: "right", paddingRight: 6 }}>
-                      मिसाल कुल / Misal Total ({page.allMisalRows.length} clients):
+                    <td colSpan={5} className="r" style={{paddingRight:5,fontSize:"7pt"}}>
+                      मिसाल कुल / Total ({page.allRows.length}):
                     </td>
-                    {fyMonths.map((ym) => (
-                      <td key={ym} className="c paid">
-                        {totals.monthTotals[ym] ? fmtIN(totals.monthTotals[ym]) : ""}
+                    {fyMonths.map(m => (
+                      <td key={m} className="c" style={{color:"#15803d",fontWeight:700,fontSize:"6.5pt"}}>
+                        {tots.byMonth[m] ? fmtK(tots.byMonth[m]) : ""}
                       </td>
                     ))}
-                    <td className="r paid">{fmtIN(totals.totalVayda)}</td>
-                    <td className="blank" />
-                    <td className="blank" />
+                    <td className="blank"/><td className="blank"/>
                   </tr>
                 )}
               </tbody>
             </table>
 
-            {/* Page Footer */}
-            <div className="pf">
-              <span>बही खाता &nbsp;|&nbsp; {page.illakaName}</span>
-              <span>{page.misalName} &nbsp;|&nbsp; FY {getFyLabel(fyStart)}</span>
-              <span>Page {page.pageNum}/{page.totalPagesInMisal} &nbsp;|&nbsp; {printDate}</span>
+            {/* Page footer */}
+            <div className="page-footer">
+              <span>बही खाता &nbsp;·&nbsp; {page.illakaName}</span>
+              <span>{page.misalName} &nbsp;·&nbsp; FY {getFyLabel(fyStart)}</span>
+              <span>Page {page.pageNum}/{page.totalPages} &nbsp;·&nbsp; {printDate}</span>
             </div>
           </div>
         );
