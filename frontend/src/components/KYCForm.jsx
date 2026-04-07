@@ -238,6 +238,7 @@ export default function KYCForm() {
             onBatchChange={updatePersonBatch("primaryBorrower")}
             isMandatory={true}
             userRole={user?.role}
+            selectedIllakaId={selectedIllaka?.id}
           />
         )}
 
@@ -262,6 +263,7 @@ export default function KYCForm() {
                 onBatchChange={updatePersonBatch("coBorrower")}
                 isMandatory={false}
                 userRole={user?.role}
+                selectedIllakaId={selectedIllaka?.id}
               />
             ) : (
               <div className="py-8 text-center text-muted-foreground space-y-3">
@@ -294,6 +296,7 @@ export default function KYCForm() {
                 onBatchChange={updatePersonBatch("guarantor")}
                 isMandatory={false}
                 userRole={user?.role}
+                selectedIllakaId={selectedIllaka?.id}
               />
             ) : (
               <div className="py-8 text-center text-muted-foreground space-y-3">

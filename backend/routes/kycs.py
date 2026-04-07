@@ -135,6 +135,30 @@ async def create_kyc(data: KYCCreate, request: Request):
     return _doc(doc)
 
 
+@router.get("/kycs/check-aadhaar")
+async def check_aadhaar_exists(request: Request, aadhaar_number: str = Query(...)):
+    """Check if a KYC already exists for this Aadhaar number. Returns client info if found."""
+    await get_current_user(request)
+    digits = re.sub(r'\D', '', aadhaar_number)
+    if len(digits) != 12:
+        return {"exists": False}
+    pattern = r'\s*'.join(list(digits))
+    doc = await db.kycs.find_one(
+        {"primary_borrower.aadhaar_number": {"$regex": pattern}},
+        {"_id": 1, "customer_id": 1, "illaka_id": 1, "illaka_name": 1, "primary_borrower": 1}
+    )
+    if not doc:
+        return {"exists": False}
+    return {
+        "exists": True,
+        "kyc_id": str(doc["_id"]),
+        "customer_id": doc.get("customer_id", ""),
+        "illaka_id": doc.get("illaka_id", ""),
+        "illaka_name": doc.get("illaka_name", ""),
+        "client_name": (doc.get("primary_borrower") or {}).get("name", ""),
+    }
+
+
 @router.get("/kycs/{kyc_id}")
 async def get_kyc(kyc_id: str, request: Request):
     await get_current_user(request)

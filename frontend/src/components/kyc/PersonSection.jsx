@@ -1,11 +1,12 @@
 import { useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import { Loader2, Sparkles, Lock, LockOpen } from "lucide-react";
 import { API } from "./utils";
 import { DocUpload } from "./DocUpload";
 
-export function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandatory, userRole }) {
+export function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandatory, userRole, selectedIllakaId }) {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrDone, setOcrDone] = useState(false);
   const [backOcrLoading, setBackOcrLoading] = useState(false);
@@ -18,6 +19,9 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
   const [backOcrFailed, setBackOcrFailed] = useState(false);
   const [frontOverride, setFrontOverride] = useState(false);
   const [backOverride, setBackOverride] = useState(false);
+  const [duplicateError, setDuplicateError] = useState(null); // { illaka_name, kyc_id, client_name }
+
+  const navigate = useNavigate();
 
   // Muneem & Sipahi: OCR-filled fields are locked until override
   const isRestricted = userRole === "muneem" || userRole === "sipahi";
@@ -47,6 +51,7 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
     setFrontOcrFailed(false);
     setFrontOverride(false);
     setWrongSideWarning(false);
+    setDuplicateError(null);
     if (!path) return;
     setOcrLoading(true);
     try {
@@ -65,6 +70,28 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
       if (d.aadhaar_number) {
         updates.aadhaar_number = d.aadhaar_number;
         setFrontAadhaarNum(normalizeAadhaar(d.aadhaar_number));
+
+        // ── Duplicate check ──
+        try {
+          const chk = await axios.get(
+            `${API}/kycs/check-aadhaar?aadhaar_number=${encodeURIComponent(d.aadhaar_number)}`,
+            { withCredentials: true }
+          );
+          if (chk.data.exists) {
+            if (chk.data.illaka_id === selectedIllakaId) {
+              // Same illaka → redirect to client page
+              toast.info(`Client already registered as ${chk.data.customer_id} — redirecting...`);
+              navigate(`/clients/${chk.data.kyc_id}`);
+              return;
+            } else {
+              // Different illaka → show error, block form
+              onChange("aadhaar_front_path", null);
+              setDuplicateError(chk.data);
+              setOcrLoading(false);
+              return;
+            }
+          }
+        } catch {}
       }
       if (d.gender) updates.gender = d.gender;
       if (Object.keys(updates).length > 0) {
@@ -174,6 +201,29 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
               <p className="font-semibold">Wrong side uploaded / गलत तरफ अपलोड की</p>
               <p className="text-xs mt-0.5">Please upload the FRONT side (with photo, name & date of birth).</p>
               <button type="button" onClick={() => setWrongSideWarning(false)} className="mt-1 text-xs underline">Try again / फिर से</button>
+            </div>
+          </div>
+        )}
+
+        {/* Duplicate Aadhaar — different illaka */}
+        {duplicateError && (
+          <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-800 text-sm flex items-start gap-2 mt-2" data-testid="duplicate-aadhaar-error">
+            <span className="font-bold shrink-0 text-red-600">!</span>
+            <div>
+              <p className="font-semibold">Client already exists in another Illaka</p>
+              <p className="text-xs mt-0.5">
+                <span className="font-semibold">{duplicateError.client_name}</span> ({duplicateError.customer_id}) is registered under{" "}
+                <span className="font-semibold text-red-700">Illaka: {duplicateError.illaka_name}</span>.
+                Contact your Admin / Maalik to transfer or view this client.
+              </p>
+              <p className="text-xs mt-1 text-red-600">यह ग्राहक दूसरे इलाके में पहले से दर्ज है — {duplicateError.illaka_name}</p>
+              <button
+                type="button"
+                onClick={() => { setDuplicateError(null); setWrongSideWarning(false); }}
+                className="mt-1.5 text-xs underline text-red-700"
+              >
+                Upload a different Aadhaar / दूसरा आधार अपलोड करें
+              </button>
             </div>
           </div>
         )}
