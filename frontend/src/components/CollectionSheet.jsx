@@ -764,7 +764,8 @@ export default function CollectionSheet() {
   const [selectedMisalId, setSelectedMisalId] = useState("all");
   const [collectDate, setCollectDate] = useState(new Date().toISOString().split("T")[0]);
   const [printModalOpen, setPrintModalOpen] = useState(false);
-  const [blankRowsBeforeGyal, setBlankRowsBeforeGyal] = useState(2);
+  // Per-misal blank rows map: { [misalId]: count }
+  const [blankRowsMap, setBlankRowsMap] = useState({});
 
   const fyMonths = getFyMonths(month);
 
@@ -1049,84 +1050,91 @@ export default function CollectionSheet() {
       )}
 
       {/* ── Print Options Modal (Admin only) ── */}
-      {printModalOpen && user?.role === "admin" && (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" data-testid="print-modal">
-          <div className="bk-card w-full max-w-sm space-y-5">
-            <div className="flex items-center justify-between">
-              <div>
-                <h2 className="text-lg font-bold font-['Outfit']">Print Collection Sheet</h2>
-                <p className="text-xs text-muted-foreground">FY {getFyLabel(selectedFyStart)} · Legal size · 10 clients/page</p>
-              </div>
-              <button onClick={() => setPrintModalOpen(false)} className="p-1.5 hover:bg-muted rounded-lg"><X size={18} /></button>
-            </div>
-
-            {/* Blank rows before Gyal option */}
-            <div className="flex items-center justify-between bg-muted/50 rounded-xl px-4 py-3">
-              <div>
-                <p className="text-sm font-semibold">घ्याल से पहले खाली पंक्तियाँ</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Blank rows inserted above Gyal section per Misal</p>
-              </div>
-              <input
-                type="number"
-                min={0}
-                max={20}
-                value={blankRowsBeforeGyal}
-                onChange={(e) => setBlankRowsBeforeGyal(Math.max(0, Math.min(20, Number(e.target.value))))}
-                className="bk-input w-16 text-center font-bold text-base h-9"
-                data-testid="blank-rows-input"
-              />
-            </div>
-
-            <div className="space-y-3">
-              {/* Single-sided */}
-              <button
-                onClick={() => {
-                  const url = `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=false&blank_rows=${blankRowsBeforeGyal}`;
-                  window.open(url, "_blank");
-                  setPrintModalOpen(false);
-                }}
-                className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all text-left group"
-                data-testid="print-simplex-btn"
-              >
-                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-primary/10">
-                  <Printer size={20} className="text-muted-foreground group-hover:text-primary" />
-                </div>
+      {printModalOpen && user?.role === "admin" && (() => {
+        // Build flat list of misals with gyal count for the modal
+        const allMisalsForPrint = (data?.illakas || []).flatMap(il =>
+          (il.misals || []).map(ms => ({
+            misalId:   ms.misal_id,
+            misalName: ms.misal_name,
+            gyalCount: (ms.rows || []).filter(r => r.is_gyal).length,
+          }))
+        );
+        const buildUrl = (duplex) => {
+          const encoded = encodeURIComponent(JSON.stringify(blankRowsMap));
+          return `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=${duplex}&blank_rows=${encoded}`;
+        };
+        return (
+          <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" data-testid="print-modal">
+            <div className="bk-card w-full max-w-md flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="flex items-center justify-between p-5 pb-3 flex-shrink-0">
                 <div>
-                  <p className="font-bold text-sm">Single-sided</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Print on one side only. Select this in the print dialog.</p>
+                  <h2 className="text-lg font-bold font-['Outfit']">Print Collection Sheet</h2>
+                  <p className="text-xs text-muted-foreground">FY {getFyLabel(selectedFyStart)} · Legal size · 10 clients/page</p>
                 </div>
-              </button>
+                <button onClick={() => setPrintModalOpen(false)} className="p-1.5 hover:bg-muted rounded-lg"><X size={18} /></button>
+              </div>
 
-              {/* Duplex long-edge */}
-              <button
-                onClick={() => {
-                  const url = `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=true&blank_rows=${blankRowsBeforeGyal}`;
-                  window.open(url, "_blank");
-                  setPrintModalOpen(false);
-                }}
-                className="w-full flex items-start gap-4 p-4 rounded-xl border-2 border-border hover:border-violet-500 hover:bg-violet-50 transition-all text-left group"
-                data-testid="print-duplex-btn"
-              >
-                <div className="w-10 h-10 bg-muted rounded-lg flex items-center justify-center flex-shrink-0 group-hover:bg-violet-100">
-                  <Printer size={20} className="text-muted-foreground group-hover:text-violet-600" />
+              {/* Per-Misal blank rows — scrollable */}
+              <div className="flex-1 overflow-y-auto px-5 pb-2 space-y-2 min-h-0">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                  घ्याल से पहले खाली पंक्तियाँ (Blank rows before Gyal per Misal)
+                </p>
+                {allMisalsForPrint.length === 0 && (
+                  <p className="text-xs text-muted-foreground">कोई मिसाल नहीं मिली।</p>
+                )}
+                {allMisalsForPrint.map(ms => (
+                  <div key={ms.misalId} className="flex items-center gap-3 bg-muted/40 rounded-xl px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{ms.misalName}</p>
+                      {ms.gyalCount > 0 && (
+                        <p className="text-xs text-muted-foreground">{ms.gyalCount} Gyal</p>
+                      )}
+                    </div>
+                    <input
+                      type="number"
+                      min={0}
+                      value={blankRowsMap[ms.misalId] ?? 0}
+                      onChange={(e) => setBlankRowsMap(prev => ({
+                        ...prev,
+                        [ms.misalId]: Math.max(0, Number(e.target.value) || 0),
+                      }))}
+                      className="bk-input w-20 text-center font-bold text-base h-9 flex-shrink-0"
+                      data-testid={`blank-rows-input-${ms.misalId}`}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {/* Print buttons */}
+              <div className="px-5 pb-5 pt-3 space-y-3 flex-shrink-0 border-t border-border mt-2">
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => { window.open(buildUrl(false), "_blank"); setPrintModalOpen(false); }}
+                    className="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/5 transition-all group"
+                    data-testid="print-simplex-btn"
+                  >
+                    <Printer size={17} className="text-muted-foreground group-hover:text-primary" />
+                    <span className="font-semibold text-sm">Single-sided</span>
+                  </button>
+                  <button
+                    onClick={() => { window.open(buildUrl(true), "_blank"); setPrintModalOpen(false); }}
+                    className="flex-1 flex items-center justify-center gap-2 p-3 rounded-xl border-2 border-border hover:border-violet-500 hover:bg-violet-50 transition-all group"
+                    data-testid="print-duplex-btn"
+                  >
+                    <Printer size={17} className="text-muted-foreground group-hover:text-violet-600" />
+                    <span className="font-semibold text-sm">Double-sided</span>
+                  </button>
                 </div>
-                <div>
-                  <p className="font-bold text-sm">Double-sided <span className="text-xs font-normal text-muted-foreground">(Duplex)</span></p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    In the print dialog: enable <strong>Two-sided → Flip on Long Edge</strong>.
-                    Binding on the long edge (register style).
-                  </p>
-                </div>
-              </button>
+                <p className="text-[11px] text-muted-foreground">
+                  A new tab will open. Click <strong>Print / PDF</strong> there, or use <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Ctrl+P</kbd>.
+                  Legal landscape · Blank Bal. and Sign columns for manual use. Gyal section starts on a new page.
+                </p>
+              </div>
             </div>
-
-            <p className="text-[11px] text-muted-foreground border-t border-border pt-3">
-              A new tab will open. Click <strong>Print / PDF</strong> there, or use <kbd className="px-1 py-0.5 bg-muted rounded text-[10px]">Ctrl+P</kbd>.
-              Legal landscape paper · Blank Bal. and Sign columns for manual use.
-            </p>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {notingRow && (
         <NoteModal

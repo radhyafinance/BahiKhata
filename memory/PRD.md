@@ -214,11 +214,11 @@ See CHANGELOG.md for full history.
 
 ### Collection Sheet PDF Print — Final (2026-04-07) ✓
 - [x] Print button restricted to **Admin role only**
-- [x] Print modal: number input for **blank rows before Gyal** per Misal (default 2, range 0–20)
+- [x] Print modal: **per-Misal** blank rows inputs (no upper limit, shows Gyal count per Misal)
+- [x] **Gyal section starts on a new page** (regular section auto-padded to page boundary)
 - [x] PDF table column header: **white background** (no more black header)
 - [x] PDF index table header: **light grey** (no more black header)
-- [x] Blank spacer rows correctly inserted between regular and Gyal sections in page builder
-- [x] Misal totals row and client count correctly excludes blank spacer rows
+- [x] blank_rows encoded as JSON object `{ misalId: count }` in URL param
 
 ### Collection Sheet — FY-Based View (2026-03-31) ✓
 - [x] Replaced month picker with a **Financial Year selector** (3-button toggle: current + 2 past FYs)

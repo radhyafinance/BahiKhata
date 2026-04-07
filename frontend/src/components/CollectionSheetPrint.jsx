@@ -118,7 +118,15 @@ export default function CollectionSheetPrint() {
   const illakaId          = searchParams.get("illaka_id");
   const fyStart           = Number(searchParams.get("fy_start")) || getCurrentFyStart();
   const duplex            = searchParams.get("duplex") === "true";
-  const blankRowsBeforeGyal = Math.max(0, Math.min(20, Number(searchParams.get("blank_rows")) || 0));
+
+  // Per-misal blank rows: encoded JSON object { [misalId]: count }
+  const blankRowsMap = useMemo(() => {
+    try {
+      const raw = searchParams.get("blank_rows");
+      if (!raw) return {};
+      return JSON.parse(decodeURIComponent(raw));
+    } catch { return {}; }
+  }, [searchParams]);
 
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -151,16 +159,30 @@ export default function CollectionSheetPrint() {
 
     for (const il of data.illakas) {
       for (const ms of il.misals) {
-        // Sort: regular rows first, then blank spacers, then gyal at bottom
         const regular = ms.rows.filter(r => !r.is_gyal);
         const gyal    = ms.rows.filter(r =>  r.is_gyal);
 
-        // Insert null spacer rows between regular and gyal (only if gyal exists)
+        // Per-misal blank spacer rows (no upper limit)
+        const blankCount = Math.max(0, Number(blankRowsMap[ms.misal_id]) || 0);
         const spacers = gyal.length > 0
-          ? Array.from({ length: blankRowsBeforeGyal }, () => ({ __blank: true }))
+          ? Array.from({ length: blankCount }, () => ({ __blank: true }))
           : [];
 
-        const allRows = [...regular, ...spacers, ...gyal];
+        // Build regular section with spacers
+        const regularSection = [...regular, ...spacers];
+
+        // ── Force Gyal onto a new page ──────────────────────────────────
+        // Pad the regular section to the next full page boundary so Gyal
+        // always starts at row 1 of a fresh page.
+        if (gyal.length > 0 && regularSection.length > 0) {
+          const rem = regularSection.length % ROWS_PER_PAGE;
+          if (rem !== 0) {
+            const padding = ROWS_PER_PAGE - rem;
+            for (let i = 0; i < padding; i++) regularSection.push({ __blank: true });
+          }
+        }
+
+        const allRows = [...regularSection, ...gyal];
 
         const np = Math.max(1, Math.ceil(allRows.length / ROWS_PER_PAGE));
         const startGlobal = globalPage;
@@ -176,21 +198,21 @@ export default function CollectionSheetPrint() {
             rows:        sliceRows,
             startIdx:    p * ROWS_PER_PAGE + 1,
             allRows,
-            gyalStart:   regular.length + spacers.length + 1,   // serial # where gyal starts
+            gyalStart:   regularSection.length + 1,   // serial # where gyal starts
             globalPage:  globalPage++,
           });
         }
 
         idx.push({
-          misalName:  ms.misal_name,
-          clients:    regular.length + gyal.length,   // don't count blank spacers
-          fromPage:   startGlobal,
-          toPage:     globalPage - 1,
+          misalName: ms.misal_name,
+          clients:   regular.length + gyal.length,   // don't count blank spacers
+          fromPage:  startGlobal,
+          toPage:    globalPage - 1,
         });
       }
     }
     return { pages: out, indexData: idx };
-  }, [data, blankRowsBeforeGyal]);
+  }, [data, blankRowsMap]);
 
   // Misal totals
   function misalTotals(allRows) {
