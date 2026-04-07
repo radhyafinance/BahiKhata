@@ -51,7 +51,7 @@ body { font-family:'Noto Sans','Noto Sans Devanagari',sans-serif; font-size:7.5p
 .index-title { font-size:14pt; font-weight:900; text-align:center; margin-bottom:4px; }
 .index-subtitle { font-size:8pt; text-align:center; color:#444; margin-bottom:16px; }
 table.index-tbl { width:60%; margin:0 auto; border-collapse:collapse; font-size:9pt; }
-table.index-tbl th { border:1pt solid #000; padding:5px 8px; font-weight:700; background:#000; color:#fff; text-align:center; }
+table.index-tbl th { border:1pt solid #000; padding:5px 8px; font-weight:700; background:#e8e8e8; color:#000; text-align:center; }
 table.index-tbl td { border:.7pt solid #333; padding:5px 8px; }
 table.index-tbl tr:nth-child(even) td { background:#f5f5f5; }
 
@@ -67,11 +67,11 @@ col.bal   { width:4.5%; }
 col.sign  { width:4.5%; }
 
 /* ── header row ── */
-thead tr { background:#000; color:#fff; }
-th { padding:3px 2px; text-align:center; font-weight:700; border:.5pt solid #000; line-height:1.3; white-space:nowrap; overflow:hidden; }
+thead tr { background:#fff; color:#000; }
+th { padding:3px 2px; text-align:center; font-weight:700; border:.7pt solid #000; line-height:1.3; white-space:nowrap; overflow:hidden; }
 th.left { text-align:left; padding-left:4px; }
 th.mo-h { font-size:6pt; }
-th.blank-h { background:#333; }
+th.blank-h { background:#e8e8e8; }
 
 /* ── data cells ── */
 td { padding:3px 2px; border:.4pt solid #999; vertical-align:middle; }
@@ -118,6 +118,7 @@ export default function CollectionSheetPrint() {
   const illakaId          = searchParams.get("illaka_id");
   const fyStart           = Number(searchParams.get("fy_start")) || getCurrentFyStart();
   const duplex            = searchParams.get("duplex") === "true";
+  const blankRowsBeforeGyal = Math.max(0, Math.min(20, Number(searchParams.get("blank_rows")) || 0));
 
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
@@ -150,10 +151,16 @@ export default function CollectionSheetPrint() {
 
     for (const il of data.illakas) {
       for (const ms of il.misals) {
-        // Sort: regular rows first, gyal at bottom
+        // Sort: regular rows first, then blank spacers, then gyal at bottom
         const regular = ms.rows.filter(r => !r.is_gyal);
         const gyal    = ms.rows.filter(r =>  r.is_gyal);
-        const allRows = [...regular, ...gyal];
+
+        // Insert null spacer rows between regular and gyal (only if gyal exists)
+        const spacers = gyal.length > 0
+          ? Array.from({ length: blankRowsBeforeGyal }, () => ({ __blank: true }))
+          : [];
+
+        const allRows = [...regular, ...spacers, ...gyal];
 
         const np = Math.max(1, Math.ceil(allRows.length / ROWS_PER_PAGE));
         const startGlobal = globalPage;
@@ -169,27 +176,28 @@ export default function CollectionSheetPrint() {
             rows:        sliceRows,
             startIdx:    p * ROWS_PER_PAGE + 1,
             allRows,
-            gyalStart:   regular.length + 1,   // serial # where gyal starts
+            gyalStart:   regular.length + spacers.length + 1,   // serial # where gyal starts
             globalPage:  globalPage++,
           });
         }
 
         idx.push({
           misalName:  ms.misal_name,
-          clients:    allRows.length,
+          clients:    regular.length + gyal.length,   // don't count blank spacers
           fromPage:   startGlobal,
           toPage:     globalPage - 1,
         });
       }
     }
     return { pages: out, indexData: idx };
-  }, [data]);
+  }, [data, blankRowsBeforeGyal]);
 
   // Misal totals
   function misalTotals(allRows) {
     const byMonth = {};
     let total = 0;
     for (const row of allRows) {
+      if (row?.__blank) continue;   // skip blank spacers
       for (const yd of row.emi_year_data || []) {
         if (yd.status === "paid") {
           byMonth[yd.month] = (byMonth[yd.month] || 0) + (yd.paid_amount || 0);
@@ -335,11 +343,11 @@ export default function CollectionSheetPrint() {
                 {padded.map((row, ri) => {
                   const sn = page.startIdx + ri;
 
-                  // Empty padding row
-                  if (!row) {
+                  // Empty padding row (end-of-page filler) or __blank spacer
+                  if (!row || row.__blank) {
                     return (
                       <tr key={`e-${ri}`} className="row-empty">
-                        <td className="c" style={{color:"#aaa",fontSize:"6pt"}}>{sn}</td>
+                        <td className="c" style={{color:"#aaa",fontSize:"6pt"}}>{row?.__blank ? "" : sn}</td>
                         <td/><td/><td/><td/>
                         {fyMonths.map(m => <td key={m} className="mo-na"/>)}
                         <td className="blank"/><td className="blank"/>
@@ -349,9 +357,9 @@ export default function CollectionSheetPrint() {
 
                   const isGyal = !!row.is_gyal;
 
-                  // Gyal separator line before first gyal row
+                  // Gyal separator line before first gyal row (skip blank spacers)
                   const prevRow = ri > 0 ? padded[ri-1] : null;
-                  const showGyalSep = isGyal && (ri === 0 || !prevRow?.is_gyal);
+                  const showGyalSep = isGyal && (ri === 0 || (!prevRow?.is_gyal && !prevRow?.__blank));
 
                   // Prev balance
                   const loanYm   = row.loan_date ? row.loan_date.substring(0,7) : null;
@@ -465,7 +473,7 @@ export default function CollectionSheetPrint() {
                 {isLast && tots && (
                   <tr className="total-row">
                     <td colSpan={5} className="r" style={{paddingRight:5,fontSize:"7pt"}}>
-                      मिसाल कुल ({page.allRows.length} ग्राहक):
+                      मिसाल कुल ({page.allRows.filter(r => !r?.__blank).length} ग्राहक):
                     </td>
                     {fyMonths.map(m => (
                       <td key={m} className="c" style={{fontWeight:700,fontSize:"6.5pt"}}>

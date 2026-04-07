@@ -764,6 +764,7 @@ export default function CollectionSheet() {
   const [selectedMisalId, setSelectedMisalId] = useState("all");
   const [collectDate, setCollectDate] = useState(new Date().toISOString().split("T")[0]);
   const [printModalOpen, setPrintModalOpen] = useState(false);
+  const [blankRowsBeforeGyal, setBlankRowsBeforeGyal] = useState(2);
 
   const fyMonths = getFyMonths(month);
 
@@ -926,15 +927,17 @@ export default function CollectionSheet() {
                 </option>
               ))}
             </select>
-            <button
-              onClick={() => setPrintModalOpen(true)}
-              className="flex items-center gap-1.5 bk-btn-secondary h-9 px-3 text-sm font-semibold"
-              title="Print / PDF — FY Collection Sheet"
-              data-testid="print-sheet-btn"
-            >
-              <Printer size={15} />
-              <span className="hidden sm:inline">Print</span>
-            </button>
+            {user?.role === "admin" && (
+              <button
+                onClick={() => setPrintModalOpen(true)}
+                className="flex items-center gap-1.5 bk-btn-secondary h-9 px-3 text-sm font-semibold"
+                title="Print / PDF — FY Collection Sheet"
+                data-testid="print-sheet-btn"
+              >
+                <Printer size={15} />
+                <span className="hidden sm:inline">Print</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1045,8 +1048,8 @@ export default function CollectionSheet() {
         />
       )}
 
-      {/* ── Print Options Modal ── */}
-      {printModalOpen && (
+      {/* ── Print Options Modal (Admin only) ── */}
+      {printModalOpen && user?.role === "admin" && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" data-testid="print-modal">
           <div className="bk-card w-full max-w-sm space-y-5">
             <div className="flex items-center justify-between">
@@ -1057,11 +1060,28 @@ export default function CollectionSheet() {
               <button onClick={() => setPrintModalOpen(false)} className="p-1.5 hover:bg-muted rounded-lg"><X size={18} /></button>
             </div>
 
+            {/* Blank rows before Gyal option */}
+            <div className="flex items-center justify-between bg-muted/50 rounded-xl px-4 py-3">
+              <div>
+                <p className="text-sm font-semibold">घ्याल से पहले खाली पंक्तियाँ</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Blank rows inserted above Gyal section per Misal</p>
+              </div>
+              <input
+                type="number"
+                min={0}
+                max={20}
+                value={blankRowsBeforeGyal}
+                onChange={(e) => setBlankRowsBeforeGyal(Math.max(0, Math.min(20, Number(e.target.value))))}
+                className="bk-input w-16 text-center font-bold text-base h-9"
+                data-testid="blank-rows-input"
+              />
+            </div>
+
             <div className="space-y-3">
               {/* Single-sided */}
               <button
                 onClick={() => {
-                  const url = `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=false`;
+                  const url = `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=false&blank_rows=${blankRowsBeforeGyal}`;
                   window.open(url, "_blank");
                   setPrintModalOpen(false);
                 }}
@@ -1080,7 +1100,7 @@ export default function CollectionSheet() {
               {/* Duplex long-edge */}
               <button
                 onClick={() => {
-                  const url = `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=true`;
+                  const url = `/collections/print?illaka_id=${selectedIllaka?.id}&fy_start=${selectedFyStart}&duplex=true&blank_rows=${blankRowsBeforeGyal}`;
                   window.open(url, "_blank");
                   setPrintModalOpen(false);
                 }}

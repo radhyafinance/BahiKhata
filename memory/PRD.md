@@ -212,6 +212,14 @@ See CHANGELOG.md for full history.
 - [x] Renaming an Illaka or Misal propagates to all denormalized fields across `loans`, `kycs`, `expense_templates` collections via `update_many`
 - [x] `collections.py` now does a live bulk lookup of illaka/misal names from source collections as the primary source of truth, with stored name as fallback
 
+### Collection Sheet PDF Print — Final (2026-04-07) ✓
+- [x] Print button restricted to **Admin role only**
+- [x] Print modal: number input for **blank rows before Gyal** per Misal (default 2, range 0–20)
+- [x] PDF table column header: **white background** (no more black header)
+- [x] PDF index table header: **light grey** (no more black header)
+- [x] Blank spacer rows correctly inserted between regular and Gyal sections in page builder
+- [x] Misal totals row and client count correctly excludes blank spacer rows
+
 ### Collection Sheet — FY-Based View (2026-03-31) ✓
 - [x] Replaced month picker with a **Financial Year selector** (3-button toggle: current + 2 past FYs)
 - [x] Header shows FY label and Apr→Mar range instead of a single month
