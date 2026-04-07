@@ -89,7 +89,7 @@ function FieldAgentDashboard({ user, selectedIllaka }) {
       labelHi: "बिड",
       icon: Gavel,
       color: "bg-amber-600 hover:bg-amber-700",
-      path: "/loans/new",
+      path: "/accounts?tab=bid",
       testId: "quick-bid",
     },
     {
@@ -97,7 +97,7 @@ function FieldAgentDashboard({ user, selectedIllaka }) {
       labelHi: "खर्चा",
       icon: Receipt,
       color: "bg-rose-600 hover:bg-rose-700",
-      path: "/expenses",
+      path: "/accounts?tab=expense",
       testId: "quick-expenses",
     },
   ];
@@ -162,7 +162,7 @@ function FieldAgentDashboard({ user, selectedIllaka }) {
                 <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                   {selectedIllaka?.name} — कुल / Total
                 </p>
-                <p className="text-xs text-muted-foreground">{total.clients || 0} clients</p>
+                <p className="text-xs text-muted-foreground">{total.clients_paid ?? 0}/{total.clients || 0} clients paid</p>
               </div>
               <span className="text-xs font-semibold text-primary bg-primary/10 px-2 py-1 rounded-full">
                 {total.utaar > 0 ? Math.round((total.vayda / total.utaar) * 100) : 0}% collected
@@ -219,7 +219,7 @@ function FieldAgentDashboard({ user, selectedIllaka }) {
                   <div className="flex items-start justify-between gap-2 mb-2">
                     <div className="min-w-0">
                       <p className="font-semibold text-sm text-foreground truncate">{m.misal_name}</p>
-                      <p className="text-[11px] text-muted-foreground">{m.clients} clients</p>
+                      <p className="text-[11px] text-muted-foreground">{m.clients_paid ?? 0}/{m.clients} clients paid</p>
                     </div>
                     <span
                       className={`text-[11px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${

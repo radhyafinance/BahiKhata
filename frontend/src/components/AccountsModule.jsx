@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
 import { toast } from "sonner";
@@ -22,11 +23,15 @@ import { API } from "./accounts/utils";
 export default function AccountsModule() {
   const { user } = useAuth();
   const { selectedIllaka, eligibleIllakas } = useIllaka();
+  const [searchParams] = useSearchParams();
   const illakaId = selectedIllaka?.id && selectedIllaka.id !== "all" ? selectedIllaka.id : null;
 
   const today = new Date();
   const [month, setMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
-  const [activeTab, setActiveTab] = useState("cashbook");
+  const [activeTab, setActiveTab] = useState(() => {
+    const t = searchParams.get("tab");
+    return ["cashbook","bid","summary","trial","balancesheet","expense"].includes(t) ? t : "cashbook";
+  });
   const [heads, setHeads] = useState([]);
   const [groups, setGroups] = useState([]);
   const [showSimpleEntry, setShowSimpleEntry] = useState(false);

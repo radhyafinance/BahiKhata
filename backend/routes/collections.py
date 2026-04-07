@@ -490,7 +490,7 @@ async def monthly_summary(request: Request, illaka_id: str, month: str):
         mid   = loan.get("misal_id", "")
         mname = loan.get("misal_name", "Unknown")
         if mid not in misal_map:
-            misal_map[mid] = {"misal_id": mid, "misal_name": mname, "utaar": 0.0, "vayda": 0.0, "clients": 0}
+            misal_map[mid] = {"misal_id": mid, "misal_name": mname, "utaar": 0.0, "vayda": 0.0, "clients": 0, "clients_paid": 0}
         entry = next((e for e in loan.get("emi_schedule", []) if e.get("due_month") == month), None)
         if not entry:
             continue
@@ -498,12 +498,14 @@ async def monthly_summary(request: Request, illaka_id: str, month: str):
         misal_map[mid]["utaar"]   += float(loan.get("emi_amount") or 0)
         if entry.get("status") == "paid":
             misal_map[mid]["vayda"] += float(entry.get("paid_amount") or loan.get("emi_amount") or 0)
+            misal_map[mid]["clients_paid"] += 1
 
     misals = sorted(misal_map.values(), key=lambda m: m["misal_name"])
     total  = {
-        "utaar":   sum(m["utaar"]   for m in misals),
-        "vayda":   sum(m["vayda"]   for m in misals),
-        "clients": sum(m["clients"] for m in misals),
+        "utaar":        sum(m["utaar"]        for m in misals),
+        "vayda":        sum(m["vayda"]        for m in misals),
+        "clients":      sum(m["clients"]      for m in misals),
+        "clients_paid": sum(m["clients_paid"] for m in misals),
     }
     return {"month": month, "misals": misals, "total": total}
 
