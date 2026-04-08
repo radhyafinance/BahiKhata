@@ -68,9 +68,9 @@ def _get_loan_status(schedule: list) -> str:
 
 def _build_emi_schedule(principal: float, loan_date: date_type) -> tuple:
     """Returns (emi_amount, schedule_list).
-    Formula: total = principal * 120/103 (interest = principal * 17/103), EMI rounded to nearest ₹100.
+    Formula: total = principal * 120/103 (interest = principal * 17/103), EMI rounded to nearest ₹10.
     """
-    emi_amount = round(principal * 120 / 103 / 12 / 100) * 100
+    emi_amount = round(principal * 120 / 103 / 12 / 10) * 10
     schedule = []
     for i in range(12):
         due = _add_months(loan_date, i + 1)
