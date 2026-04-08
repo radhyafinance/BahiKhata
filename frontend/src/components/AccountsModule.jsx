@@ -22,9 +22,10 @@ import { API } from "./accounts/utils";
 
 export default function AccountsModule() {
   const { user } = useAuth();
-  const { selectedIllaka, eligibleIllakas } = useIllaka();
+  const { selectedIllaka, filteredIllakas, selectedMaalik } = useIllaka();
   const [searchParams] = useSearchParams();
   const illakaId = selectedIllaka?.id && selectedIllaka.id !== "all" ? selectedIllaka.id : null;
+  const maalikId = !illakaId && selectedMaalik ? selectedMaalik.id : null;
 
   const today = new Date();
   const [month, setMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`);
@@ -98,7 +99,7 @@ export default function AccountsModule() {
     { key: "expense", label: "Expense Sheet", icon: FileText },
   ];
 
-  const eligibleList = (eligibleIllakas || []).filter(i => i.id !== "all");
+  const eligibleList = (filteredIllakas || []).filter(i => i.id !== "all");
 
   return (
     <div className="p-4 sm:p-6 max-w-6xl mx-auto">
@@ -168,11 +169,11 @@ export default function AccountsModule() {
       </div>
 
       {/* Tab Content */}
-      {activeTab === "cashbook" && <CashBook month={month} illakaId={illakaId} refresh={refreshKey} user={user} onDelete={handleDeleteEntry} onEdit={handleEditEntry} />}
-      {activeTab === "bid" && <Bid month={month} illakaId={illakaId} refresh={refreshKey} />}
-      {activeTab === "summary" && <PLSummary month={month} illakaId={illakaId} refresh={refreshKey} />}
-      {activeTab === "trial" && <TrialBalance month={month} illakaId={illakaId} refresh={refreshKey} />}
-      {activeTab === "balancesheet" && <BalanceSheet month={month} illakaId={illakaId} refresh={refreshKey} />}
+      {activeTab === "cashbook" && <CashBook month={month} illakaId={illakaId} maalikId={maalikId} refresh={refreshKey} user={user} onDelete={handleDeleteEntry} onEdit={handleEditEntry} />}
+      {activeTab === "bid" && <Bid month={month} illakaId={illakaId} maalikId={maalikId} refresh={refreshKey} />}
+      {activeTab === "summary" && <PLSummary month={month} illakaId={illakaId} maalikId={maalikId} refresh={refreshKey} />}
+      {activeTab === "trial" && <TrialBalance month={month} illakaId={illakaId} maalikId={maalikId} refresh={refreshKey} />}
+      {activeTab === "balancesheet" && <BalanceSheet month={month} illakaId={illakaId} maalikId={maalikId} refresh={refreshKey} />}
       {activeTab === "expense" && (
         <ExpenseSheet
           illakaId={illakaId}

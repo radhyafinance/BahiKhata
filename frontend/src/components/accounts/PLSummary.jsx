@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import { TrendingUp, TrendingDown, BarChart3 } from "lucide-react";
 import { API, fmt } from "./utils";
 
-export function PLSummary({ month, illakaId, refresh }) {
+export function PLSummary({ month, illakaId, maalikId, refresh }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -12,11 +12,12 @@ export function PLSummary({ month, illakaId, refresh }) {
     try {
       const params = new URLSearchParams({ month });
       if (illakaId) params.set("illaka_id", illakaId);
+      else if (maalikId) params.set("maalik_id", maalikId);
       const res = await fetch(`${API}/api/accounts/summary?${params}`, { credentials: "include" });
       setData(await res.json());
     } catch { toast.error("Failed to load summary"); }
     finally { setLoading(false); }
-  }, [month, illakaId, refresh]);
+  }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
 

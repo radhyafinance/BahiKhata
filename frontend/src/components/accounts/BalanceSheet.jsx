@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { API, fmt, MONTHS } from "./utils";
 
-export function BalanceSheet({ month, illakaId, refresh }) {
+export function BalanceSheet({ month, illakaId, maalikId, refresh }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [y, m] = month.split("-").map(Number);
@@ -13,11 +13,12 @@ export function BalanceSheet({ month, illakaId, refresh }) {
     try {
       const params = new URLSearchParams({ month });
       if (illakaId) params.set("illaka_id", illakaId);
+      else if (maalikId) params.set("maalik_id", maalikId);
       const res = await fetch(`${API}/api/accounts/balance-sheet?${params}`, { credentials: "include" });
       setData(await res.json());
     } catch { toast.error("Failed to load Balance Sheet"); }
     finally { setLoading(false); }
-  }, [month, illakaId, refresh]);
+  }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
 

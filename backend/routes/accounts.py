@@ -15,12 +15,15 @@ from models import (
 router = APIRouter()
 
 
-async def _illaka_filter_for_user(user: dict, illaka_id: Optional[str]) -> dict:
+async def _illaka_filter_for_user(user: dict, illaka_id: Optional[str], maalik_id: Optional[str] = None) -> dict:
     """Return query fragment to restrict journal entries by user's accessible illakas."""
     query = {}
     if user["role"] == "admin":
         if illaka_id:
             query["illaka_id"] = illaka_id
+        elif maalik_id:
+            ids = await get_admin_maalik_filter_ids(maalik_id)
+            query["illaka_id"] = {"$in": ids}
     elif user["role"] == "maalik":
         ids = await _get_maalik_illaka_ids(user)
         if illaka_id:
@@ -169,13 +172,14 @@ async def delete_account_head(head_id: str, request: Request):
 async def list_entries(
     request: Request,
     illaka_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
     month: Optional[str] = None,
     entry_type: Optional[str] = None,
     limit: int = 200,
     skip: int = 0,
 ):
     current_user = await get_current_user(request)
-    query = await _illaka_filter_for_user(current_user, illaka_id)
+    query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
     if month:
         query["date"] = {"$regex": f"^{month}"}
     if entry_type:
@@ -349,6 +353,7 @@ async def delete_journal_entry(entry_id: str, request: Request):
 async def get_cashbook(
     request: Request,
     illaka_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
     month: Optional[str] = None,
 ):
     current_user = await get_current_user(request)
@@ -356,7 +361,7 @@ async def get_cashbook(
         today = date_type.today()
         month = f"{today.year}-{today.month:02d}"
 
-    query = await _illaka_filter_for_user(current_user, illaka_id)
+    query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
     query["date"] = {"$regex": f"^{month}"}
 
     cash_head = await db.account_heads.find_one({"system_key": "cash_in_hand"})
@@ -468,6 +473,7 @@ async def get_cashbook(
 async def get_bid(
     request: Request,
     illaka_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
     month: Optional[str] = None,
 ):
     """Monthly aggregate Bahi Khata (Bid) — MFI format.
@@ -489,7 +495,7 @@ async def get_bid(
         today = date_type.today()
         month = f"{today.year}-{today.month:02d}"
 
-    query = await _illaka_filter_for_user(current_user, illaka_id)
+    query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
     query["date"] = {"$regex": f"^{month}"}
 
     cash_head = await db.account_heads.find_one({"system_key": "cash_in_hand"})
@@ -636,6 +642,7 @@ async def get_bid(
 async def get_trial_balance(
     request: Request,
     illaka_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
     month: Optional[str] = None,
 ):
     """Cumulative trial balance as of the last day of the selected month.
@@ -646,7 +653,7 @@ async def get_trial_balance(
         today = date_type.today()
         month = f"{today.year}-{today.month:02d}"
 
-    query = await _illaka_filter_for_user(current_user, illaka_id)
+    query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
 
     # Include everything up to (but not including) the first day of the NEXT month
     y, m = map(int, month.split("-"))
@@ -702,6 +709,7 @@ async def get_trial_balance(
 async def get_balance_sheet(
     request: Request,
     illaka_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
     month: Optional[str] = None,
 ):
     """Balance Sheet as of the last day of the selected month.
@@ -713,7 +721,7 @@ async def get_balance_sheet(
         today = date_type.today()
         month = f"{today.year}-{today.month:02d}"
 
-    query = await _illaka_filter_for_user(current_user, illaka_id)
+    query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
     y, m = map(int, month.split("-"))
     next_y, next_m = (y + 1, 1) if m == 12 else (y, m + 1)
     next_month_start = f"{next_y}-{next_m:02d}-01"
@@ -1260,6 +1268,7 @@ async def unlock_expense_submission(sub_id: str, request: Request):
 async def get_monthly_summary(
     request: Request,
     illaka_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
     month: Optional[str] = None,
 ):
     current_user = await get_current_user(request)
@@ -1267,7 +1276,7 @@ async def get_monthly_summary(
         today = date_type.today()
         month = f"{today.year}-{today.month:02d}"
 
-    query = await _illaka_filter_for_user(current_user, illaka_id)
+    query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
     query["date"] = {"$regex": f"^{month}"}
 
     entries = await db.journal_entries.find(query).to_list(2000)

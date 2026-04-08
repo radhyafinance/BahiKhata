@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { API, fmt } from "./utils";
 
-export function CashBook({ month, illakaId, refresh, user, onDelete, onEdit }) {
+export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, onEdit }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const canAct = user?.role === "admin" || user?.role === "maalik";
@@ -16,11 +16,12 @@ export function CashBook({ month, illakaId, refresh, user, onDelete, onEdit }) {
     try {
       const params = new URLSearchParams({ month });
       if (illakaId) params.set("illaka_id", illakaId);
+      else if (maalikId) params.set("maalik_id", maalikId);
       const res = await fetch(`${API}/api/accounts/cashbook?${params}`, { credentials: "include" });
       setData(await res.json());
     } catch { toast.error("Failed to load cashbook"); }
     finally { setLoading(false); }
-  }, [month, illakaId, refresh]);
+  }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
 

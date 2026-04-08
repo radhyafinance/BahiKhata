@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { API, fmt } from "./utils";
 
-export function Bid({ month, illakaId, refresh }) {
+export function Bid({ month, illakaId, maalikId, refresh }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -15,11 +15,12 @@ export function Bid({ month, illakaId, refresh }) {
     try {
       const params = new URLSearchParams({ month });
       if (illakaId) params.set("illaka_id", illakaId);
+      else if (maalikId) params.set("maalik_id", maalikId);
       const res = await fetch(`${API}/api/accounts/bid?${params}`, { credentials: "include" });
       setData(await res.json());
     } catch { toast.error("Failed to load Bid"); }
     finally { setLoading(false); }
-  }, [month, illakaId, refresh]);
+  }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
 
