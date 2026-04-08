@@ -164,7 +164,10 @@ function YearEndClosingModal({ illaka, onClose }) {
   };
 
   const handleConfirm = async () => {
-    if (!window.confirm(`This will mark ${preview?.count} loan(s) as Gyal and create write-off entries. Proceed?`)) return;
+    const gyalMsg = preview?.count > 0
+      ? `This will mark ${preview.count} loan(s) as Gyal and create write-off entries.`
+      : `No loans qualify for Gyal. The year will still be locked — no further changes will be allowed for this period.`;
+    if (!window.confirm(`${gyalMsg}\n\nProceed with Year-End Closing for ${closingDate}?`)) return;
     setConfirmLoading(true);
     try {
       const res = await axios.post(
@@ -324,7 +327,7 @@ function YearEndClosingModal({ illaka, onClose }) {
                     <span className="text-xs text-muted-foreground">Cutoff: {preview.cutoff_date}</span>
                   </div>
                   {preview.count === 0 ? (
-                    <p className="text-sm text-muted-foreground italic">No loans qualify. Nothing to close.</p>
+                    <p className="text-sm text-muted-foreground italic">No loans qualify for Gyal. The year will still be locked after closing.</p>
                   ) : (
                     <div className="border border-border rounded-lg overflow-hidden max-h-40 overflow-y-auto">
                       {preview.loans.map((l, i) => (
@@ -344,17 +347,15 @@ function YearEndClosingModal({ illaka, onClose }) {
                     </div>
                   )}
 
-                  {preview.count > 0 && (
-                    <button
-                      onClick={handleConfirm}
-                      disabled={confirmLoading}
-                      className="w-full flex items-center justify-center gap-2 bg-amber-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-amber-700 transition-colors disabled:opacity-50"
-                      data-testid="confirm-gyal-btn"
-                    >
-                      {confirmLoading ? <Loader2 size={18} className="animate-spin" /> : <CalendarCheck size={18} />}
-                      Confirm Year-End Closing
-                    </button>
-                  )}
+                  <button
+                    onClick={handleConfirm}
+                    disabled={confirmLoading}
+                    className="w-full flex items-center justify-center gap-2 bg-amber-600 text-white px-4 py-3 rounded-lg font-semibold hover:bg-amber-700 transition-colors disabled:opacity-50"
+                    data-testid="confirm-gyal-btn"
+                  >
+                    {confirmLoading ? <Loader2 size={18} className="animate-spin" /> : <CalendarCheck size={18} />}
+                    {preview.count > 0 ? "Confirm Year-End Closing" : "Lock Year (No Gyal)"}
+                  </button>
                 </div>
               )}
             </>

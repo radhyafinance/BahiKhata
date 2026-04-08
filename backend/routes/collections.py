@@ -480,14 +480,13 @@ async def get_collection_sheet(
     result_illaka_ids = [il["illaka_id"] for il in result]
     latest_closings: dict = {}
     if result_illaka_ids:
-        gyal_loans_q = await db.loans.find(
-            {"illaka_id": {"$in": result_illaka_ids}, "is_gyal": True,
-             "gyal_since": {"$exists": True, "$ne": ""}},
-            {"illaka_id": 1, "gyal_since": 1},
+        closing_docs = await db.illaka_closings.find(
+            {"illaka_id": {"$in": result_illaka_ids}},
+            {"illaka_id": 1, "closing_date": 1},
         ).to_list(5000)
-        for gl in gyal_loans_q:
-            il_id = gl.get("illaka_id", "")
-            gs    = gl.get("gyal_since", "")
+        for cd in closing_docs:
+            il_id = cd.get("illaka_id", "")
+            gs    = cd.get("closing_date", "")
             if gs and (il_id not in latest_closings or gs > latest_closings[il_id]):
                 latest_closings[il_id] = gs
     for il in result:

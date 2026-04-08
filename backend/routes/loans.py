@@ -355,16 +355,16 @@ async def edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, requ
             raise HTTPException(status_code=403, detail="Muneem/Sipahi can only edit entries for the current month")
     elif current_user["role"] in ["admin", "maalik"]:
         # Block entries locked by year-end closing
-        latest_gyal = await db.loans.find_one(
-            {"illaka_id": doc["illaka_id"], "is_gyal": True, "gyal_since": {"$exists": True, "$ne": ""}},
-            sort=[("gyal_since", -1)]
+        latest_closing = await db.illaka_closings.find_one(
+            {"illaka_id": doc["illaka_id"]},
+            sort=[("closing_date", -1)]
         )
-        if latest_gyal and latest_gyal.get("gyal_since"):
-            closing_ym = latest_gyal["gyal_since"][:7]
+        if latest_closing:
+            closing_ym = latest_closing["closing_date"][:7]
             if emi_month <= closing_ym:
                 raise HTTPException(
                     status_code=403,
-                    detail=f"This entry is locked by year-end closing ({latest_gyal['gyal_since']}). Undo the closing first."
+                    detail=f"This entry is locked by year-end closing ({latest_closing['closing_date']}). Undo the closing first."
                 )
 
     schedule = doc.get("emi_schedule", [])
@@ -614,10 +614,18 @@ async def year_end_closing_preview(
 
 @router.post("/loans/year-end-closing")
 async def year_end_closing(data: YearEndClosingRequest, request: Request):
-    """Mark eligible loans as Gyal and create write-off journal entries."""
+    """Mark eligible loans as Gyal and create write-off journal entries. Always records a closing entry."""
     current_user = await get_current_user(request)
     if current_user["role"] not in ["admin", "maalik"]:
         raise HTTPException(status_code=403, detail="Only Admin or Maalik can perform year-end closing")
+
+    # Check for duplicate closing
+    existing = await db.illaka_closings.find_one(
+        {"illaka_id": data.illaka_id, "closing_date": data.closing_date}
+    )
+    if existing:
+        raise HTTPException(status_code=400, detail=f"A closing for {data.closing_date} already exists for this Illaka.")
+
     closing_date_obj = date_type.fromisoformat(data.closing_date)
     cutoff = _add_months(closing_date_obj, -36)
     query = {
@@ -627,8 +635,6 @@ async def year_end_closing(data: YearEndClosingRequest, request: Request):
         "loan_date": {"$lte": cutoff.isoformat()},
     }
     loans_to_gyal = await db.loans.find(query).to_list(5000)
-    if not loans_to_gyal:
-        return {"marked_count": 0, "message": "No loans qualify for Gyal classification"}
 
     heads = await db.account_heads.find(
         {"system_key": {"$in": ["loans_portfolio", "bad_debt_written_off"]}}
@@ -661,28 +667,31 @@ async def year_end_closing(data: YearEndClosingRequest, request: Request):
                 )
         count += 1
 
-    return {"marked_count": count, "message": f"{count} loan(s) marked as Gyal (Bad Debt)"}
+    # Always record the closing — even if 0 Gyal loans
+    await db.illaka_closings.insert_one({
+        "illaka_id": data.illaka_id,
+        "closing_date": data.closing_date,
+        "gyal_count": count,
+        "created_by_id": current_user["id"],
+        "created_by_name": current_user["name"],
+        "created_at": now,
+    })
+
+    msg = f"{count} loan(s) marked as Gyal (Bad Debt)" if count > 0 else "Year-end closing recorded. No loans qualified for Gyal."
+    return {"marked_count": count, "message": msg}
 
 
 @router.get("/loans/year-end-closing/history")
 async def year_end_closing_history(request: Request, illaka_id: str):
-    """Return all year-end closing dates done for an illaka, newest first."""
+    """Return all year-end closing records for an illaka, newest first."""
     current_user = await get_current_user(request)
     if current_user["role"] not in ["admin", "maalik"]:
         raise HTTPException(status_code=403, detail="Only Admin or Maalik can view closing history")
-    gyal_loans = await db.loans.find(
-        {"illaka_id": illaka_id, "is_gyal": True},
-        {"gyal_since": 1}
-    ).to_list(5000)
-    closing_map: dict = {}
-    for loan in gyal_loans:
-        gs = loan.get("gyal_since") or "unknown"
-        closing_map[gs] = closing_map.get(gs, 0) + 1
-    closings = sorted(
-        [{"closing_date": k, "count": v} for k, v in closing_map.items()],
-        key=lambda x: x["closing_date"],
-        reverse=True,
-    )
+    closing_docs = await db.illaka_closings.find(
+        {"illaka_id": illaka_id},
+        {"_id": 0}
+    ).sort("closing_date", -1).to_list(200)
+    closings = [{"closing_date": c["closing_date"], "count": c.get("gyal_count", 0)} for c in closing_docs]
     return {"closings": closings}
 
 
@@ -692,22 +701,29 @@ async def year_end_closing_undo(data: YearEndUndoRequest, request: Request):
     current_user = await get_current_user(request)
     if current_user["role"] not in ["admin", "maalik"]:
         raise HTTPException(status_code=403, detail="Only Admin or Maalik can undo year-end closing")
-    # Block if a newer closing exists for this illaka
-    newer = await db.loans.find_one({
+
+    # Verify this closing exists in illaka_closings
+    closing_record = await db.illaka_closings.find_one(
+        {"illaka_id": data.illaka_id, "closing_date": data.closing_date}
+    )
+    if not closing_record:
+        raise HTTPException(status_code=404, detail="No closing record found for the specified date")
+
+    # Block if a newer closing exists
+    newer = await db.illaka_closings.find_one({
         "illaka_id": data.illaka_id,
-        "is_gyal": True,
-        "gyal_since": {"$gt": data.closing_date},
+        "closing_date": {"$gt": data.closing_date},
     })
     if newer:
         raise HTTPException(
             status_code=400,
             detail="Cannot undo: a more recent year-end closing exists for this illaka. Undo that first.",
         )
+
+    # Undo Gyal loans that were marked on this closing date
     loans_to_undo = await db.loans.find(
         {"illaka_id": data.illaka_id, "is_gyal": True, "gyal_since": data.closing_date}
     ).to_list(5000)
-    if not loans_to_undo:
-        raise HTTPException(status_code=404, detail="No Gyal loans found for the specified closing date")
     now = datetime.now(timezone.utc).isoformat()
     count = 0
     for loan in loans_to_undo:
@@ -722,4 +738,11 @@ async def year_end_closing_undo(data: YearEndUndoRequest, request: Request):
             "illaka_id": data.illaka_id,
         })
         count += 1
-    return {"undone_count": count, "message": f"{count} loan(s) restored from Gyal"}
+
+    # Delete the closing record
+    await db.illaka_closings.delete_one(
+        {"illaka_id": data.illaka_id, "closing_date": data.closing_date}
+    )
+
+    msg = f"{count} loan(s) restored from Gyal. Closing record removed." if count > 0 else "Year-end closing record removed (no Gyal loans to undo)."
+    return {"undone_count": count, "message": msg}
