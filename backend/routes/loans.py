@@ -8,6 +8,7 @@ from core.auth import get_current_user
 from helpers import (
     _doc, generate_loan_number, _build_emi_schedule,
     _get_loan_status, _apply_overdue_to_schedule, _add_months, _loan_query_for_user,
+    get_admin_maalik_filter_ids,
     create_journal_entry_internal, _get_system_heads, _make_head_line, book_loan_disbursement
 )
 from models import LoanCreate, LoanStatusUpdate, PaymentCreate, PaymentEdit, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest, YearEndUndoRequest
@@ -73,6 +74,7 @@ async def list_loans(
     kyc_id: Optional[str] = None,
     status: Optional[str] = None,
     search: Optional[str] = None,
+    maalik_id: Optional[str] = None,
     limit: int = 50,
     skip: int = 0,
 ):
@@ -80,6 +82,9 @@ async def list_loans(
     query = await _loan_query_for_user(current_user)
     if illaka_id:
         query["illaka_id"] = illaka_id
+    elif maalik_id and current_user["role"] == "admin":
+        ids = await get_admin_maalik_filter_ids(maalik_id)
+        query["illaka_id"] = {"$in": ids}
     if misal_id:
         query["misal_id"] = misal_id
     if kyc_id:

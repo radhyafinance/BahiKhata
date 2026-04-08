@@ -5,7 +5,7 @@ import { useAuth } from "./AuthContext";
 
 export default function IllakaSelector() {
   const { user } = useAuth();
-  const { eligibleIllakas, setSelectedIllaka } = useIllaka();
+  const { filteredIllakas, setSelectedIllaka, selectedMaalik } = useIllaka();
   // undefined = not yet chosen in this UI, null = "All", {id,name} = specific
   const [choice, setChoice] = useState(undefined);
 
@@ -47,7 +47,7 @@ export default function IllakaSelector() {
 
       {/* Cards */}
       <div className="flex-1 p-5 max-w-2xl mx-auto w-full">
-        {eligibleIllakas.length === 0 ? (
+        {filteredIllakas.length === 0 ? (
           <div className="flex items-center justify-center pt-16">
             <Loader2 size={24} className="animate-spin text-muted-foreground" />
           </div>
@@ -72,9 +72,11 @@ export default function IllakaSelector() {
               </div>
               <div className="flex-1">
                 <p className={`font-semibold text-sm ${isAllChosen ? "text-primary" : "text-foreground"}`}>
-                  All Illakas / सभी इलाके
+                  {selectedMaalik ? `All of ${selectedMaalik.name}'s Illakas` : "All Illakas / सभी इलाके"}
                 </p>
-                <p className="text-xs text-muted-foreground mt-0.5">View data across all assigned areas</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {selectedMaalik ? `View all data for ${selectedMaalik.name}` : "View data across all assigned areas"}
+                </p>
               </div>
               {isAllChosen && (
                 <div className="w-6 h-6 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
@@ -84,7 +86,7 @@ export default function IllakaSelector() {
             </button>
 
             {/* Individual Illakas */}
-            {eligibleIllakas.map((ill, idx) => {
+            {filteredIllakas.map((ill, idx) => {
               const isChosen = choice?.id === ill.id;
               return (
                 <button
@@ -141,7 +143,7 @@ export default function IllakaSelector() {
               <>
                 Continue
                 <span className="text-xs opacity-80">
-                  / {choice === null ? "सभी इलाके" : choice.name}
+                  / {choice === null ? (selectedMaalik ? `All - ${selectedMaalik.name}` : "सभी इलाके") : choice.name}
                 </span>
                 <ArrowRight size={16} />
               </>

@@ -24,7 +24,7 @@ const StatusBadge = ({ status }) => {
 export default function ClientList() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { selectedIllaka } = useIllaka();
+  const { selectedIllaka, selectedMaalik } = useIllaka();
   const [kycs, setKycs] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -56,6 +56,7 @@ export default function ClientList() {
       if (statusFilter) params.append("status", statusFilter);
       if (misalFilter) params.append("misal_id", misalFilter);
       if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
+      else if (selectedMaalik) params.append("maalik_id", selectedMaalik.id);
       const res = await axios.get(`${API}/kycs?${params}`, { withCredentials: true });
       setKycs(res.data.kycs || []);
       setTotal(res.data.total || 0);
@@ -69,7 +70,7 @@ export default function ClientList() {
   useEffect(() => {
     const t = setTimeout(fetchKycs, 300);
     return () => clearTimeout(t);
-  }, [search, statusFilter, misalFilter, page, selectedIllaka]);
+  }, [search, statusFilter, misalFilter, page, selectedIllaka, selectedMaalik]);
 
   return (
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">

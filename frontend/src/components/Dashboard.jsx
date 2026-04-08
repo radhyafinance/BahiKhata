@@ -268,7 +268,7 @@ function FieldAgentDashboard({ user, selectedIllaka }) {
 // ═══════════════════════════════════════════════════════════════════════════
 // Admin / Maalik Dashboard (unchanged)
 // ═══════════════════════════════════════════════════════════════════════════
-function AdminDashboard({ user, selectedIllaka }) {
+function AdminDashboard({ user, selectedIllaka, selectedMaalik }) {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recent, setRecent] = useState([]);
@@ -278,9 +278,16 @@ function AdminDashboard({ user, selectedIllaka }) {
     const fetchAll = async () => {
       try {
         const p = new URLSearchParams({ limit: "5" });
-        if (selectedIllaka) p.append("illaka_id", selectedIllaka.id);
+        const statsP = new URLSearchParams();
+        if (selectedIllaka) {
+          p.append("illaka_id", selectedIllaka.id);
+          statsP.append("illaka_id", selectedIllaka.id);
+        } else if (selectedMaalik) {
+          p.append("maalik_id", selectedMaalik.id);
+          statsP.append("maalik_id", selectedMaalik.id);
+        }
         const [s, k] = await Promise.all([
-          axios.get(`${API}/dashboard/stats${selectedIllaka ? `?illaka_id=${selectedIllaka.id}` : ""}`, { withCredentials: true }),
+          axios.get(`${API}/dashboard/stats?${statsP}`, { withCredentials: true }),
           axios.get(`${API}/kycs?${p}`, { withCredentials: true }),
         ]);
         setStats(s.data);
@@ -289,7 +296,7 @@ function AdminDashboard({ user, selectedIllaka }) {
       finally { setLoading(false); }
     };
     fetchAll();
-  }, [selectedIllaka]);
+  }, [selectedIllaka, selectedMaalik]);
 
   const roleGreeting = { admin: "Administrator", maalik: "Maalik (Owner)" }[user?.role] || "";
 
@@ -379,10 +386,10 @@ function AdminDashboard({ user, selectedIllaka }) {
 // ═══════════════════════════════════════════════════════════════════════════
 export default function Dashboard() {
   const { user } = useAuth();
-  const { selectedIllaka } = useIllaka();
+  const { selectedIllaka, selectedMaalik } = useIllaka();
 
   if (user?.role === "muneem" || user?.role === "sipahi") {
     return <FieldAgentDashboard user={user} selectedIllaka={selectedIllaka} />;
   }
-  return <AdminDashboard user={user} selectedIllaka={selectedIllaka} />;
+  return <AdminDashboard user={user} selectedIllaka={selectedIllaka} selectedMaalik={selectedMaalik} />;
 }

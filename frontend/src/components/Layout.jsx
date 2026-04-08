@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
-import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin, TrendingUp, ClipboardList, Globe, ChevronDown, BookOpen } from "lucide-react";
+import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin, TrendingUp, ClipboardList, Globe, ChevronDown, BookOpen, Crown } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -39,7 +39,7 @@ function getNavItems(role) {
 
 export default function Layout() {
   const { user, logout } = useAuth();
-  const { selectedIllaka, resetIllaka } = useIllaka();
+  const { selectedIllaka, resetIllaka, maaliks, selectedMaalik, setSelectedMaalik } = useIllaka();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -109,6 +109,26 @@ export default function Layout() {
 
       {/* User + Logout */}
       <div className="p-4 border-t border-border">
+        {/* Maalik Filter — Admin only */}
+        {user?.role === "admin" && maaliks.length > 0 && (
+          <div className="mb-3 px-1">
+            <p className="text-xs text-muted-foreground mb-1.5 font-medium flex items-center gap-1">
+              <Crown size={11} /> Maalik Filter
+            </p>
+            <select
+              value={selectedMaalik?.id || ""}
+              onChange={e => {
+                const m = maaliks.find(m => m.id === e.target.value);
+                setSelectedMaalik(m ? { id: m.id, name: m.name, illaka_ids: m.assigned_illaka_ids || [] } : null);
+              }}
+              className="w-full text-xs px-2 py-1.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+              data-testid="maalik-filter-select"
+            >
+              <option value="">All Maaliks</option>
+              {maaliks.map(m => <option key={m.id} value={m.id}>{m.name}</option>)}
+            </select>
+          </div>
+        )}
         {/* Illaka Switcher */}
         <div className="mb-3 px-1">
           <p className="text-xs text-muted-foreground mb-1.5 font-medium">Working Illaka / कार्यक्षेत्र</p>

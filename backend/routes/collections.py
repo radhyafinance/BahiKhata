@@ -4,7 +4,7 @@ from datetime import date as date_type
 from bson import ObjectId
 from core.database import db
 from core.auth import get_current_user
-from helpers import _loan_query_for_user
+from helpers import _loan_query_for_user, get_admin_maalik_filter_ids
 
 router = APIRouter()
 
@@ -255,6 +255,7 @@ async def get_collection_sheet(
     request: Request,
     month: Optional[str] = None,
     illaka_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
 ):
     current_user = await get_current_user(request)
     if not month:
@@ -267,6 +268,9 @@ async def get_collection_sheet(
     # No status filter — closed loans must stay visible until their FY schedule ends.
     if illaka_id:
         query["illaka_id"] = illaka_id
+    elif maalik_id and current_user["role"] == "admin":
+        ids = await get_admin_maalik_filter_ids(maalik_id)
+        query["illaka_id"] = {"$in": ids}
 
     loans = await db.loans.find(query).sort(
         [("illaka_id", 1), ("misal_id", 1), ("loan_date", 1)]

@@ -26,7 +26,7 @@ function fmt(amount) {
 export default function LoanList() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { selectedIllaka } = useIllaka();
+  const { selectedIllaka, selectedMaalik } = useIllaka();
   const [loans, setLoans] = useState([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -55,6 +55,7 @@ export default function LoanList() {
       if (statusFilter) params.append("status", statusFilter);
       if (misalFilter) params.append("misal_id", misalFilter);
       if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
+      else if (selectedMaalik) params.append("maalik_id", selectedMaalik.id);
       const res = await axios.get(`${API}/loans?${params}`, { withCredentials: true });
       setLoans(res.data.loans || []);
       setTotal(res.data.total || 0);
@@ -68,7 +69,7 @@ export default function LoanList() {
   useEffect(() => {
     const t = setTimeout(fetchLoans, 300);
     return () => clearTimeout(t);
-  }, [search, statusFilter, misalFilter, page, selectedIllaka]);
+  }, [search, statusFilter, misalFilter, page, selectedIllaka, selectedMaalik]);
 
   const canCreate = user?.role === "muneem" || user?.role === "sipahi";
 

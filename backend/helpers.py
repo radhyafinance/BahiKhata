@@ -96,6 +96,20 @@ async def _get_maalik_illaka_ids(user: dict) -> list:
     return list(ids)
 
 
+async def get_admin_maalik_filter_ids(maalik_user_id: str) -> list:
+    """For Admin use: given a maalik user ID, return all Illaka IDs that belong to them."""
+    try:
+        maalik_user = await db.users.find_one({"_id": ObjectId(maalik_user_id)})
+        if not maalik_user:
+            return []
+        owned = await db.illakas.find({"maalik_id": maalik_user_id}, {"_id": 1}).to_list(1000)
+        ids = {str(ill["_id"]) for ill in owned}
+        ids.update(maalik_user.get("assigned_illaka_ids", []))
+        return list(ids)
+    except Exception:
+        return []
+
+
 async def _kyc_query_for_user(user: dict) -> dict:
     query = {}
     if user["role"] == "admin":

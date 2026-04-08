@@ -741,7 +741,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
 
 export default function CollectionSheet() {
   const { user } = useAuth();
-  const { selectedIllaka } = useIllaka();
+  const { selectedIllaka, selectedMaalik } = useIllaka();
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
@@ -774,6 +774,7 @@ export default function CollectionSheet() {
     try {
       const params = new URLSearchParams({ month });
       if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
+      else if (selectedMaalik) params.append("maalik_id", selectedMaalik.id);
       const res = await axios.get(`${API}/collections/sheet?${params}`, { withCredentials: true });
       setData(res.data);
     } catch (e) {
@@ -781,17 +782,18 @@ export default function CollectionSheet() {
     } finally {
       setLoading(false);
     }
-  }, [month, selectedIllaka]);
+  }, [month, selectedIllaka, selectedMaalik]);
 
   // Silent background re-fetch — no loading spinner, just syncs data with server
   const silentFetch = useCallback(async () => {
     try {
       const params = new URLSearchParams({ month });
       if (selectedIllaka) params.append("illaka_id", selectedIllaka.id);
+      else if (selectedMaalik) params.append("maalik_id", selectedMaalik.id);
       const res = await axios.get(`${API}/collections/sheet?${params}`, { withCredentials: true });
       setData(res.data);
     } catch (_) {}
-  }, [month, selectedIllaka]);
+  }, [month, selectedIllaka, selectedMaalik]);
 
   useEffect(() => { fetchSheet(); }, [fetchSheet]);
 

@@ -7,7 +7,8 @@ from core.database import db
 from core.auth import get_current_user
 from helpers import (
     _doc, generate_customer_id, generate_loan_number,
-    _build_emi_schedule, _get_loan_status, _add_months, _kyc_query_for_user, book_loan_disbursement,
+    _build_emi_schedule, _get_loan_status, _add_months, _kyc_query_for_user,
+    get_admin_maalik_filter_ids, book_loan_disbursement,
 )
 from models import KYCCreate, KYCStatusUpdate
 
@@ -21,17 +22,21 @@ async def list_kycs(
     search: Optional[str] = None,
     illaka_id: Optional[str] = None,
     misal_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
     limit: int = 50,
     skip: int = 0
 ):
     current_user = await get_current_user(request)
     query = await _kyc_query_for_user(current_user)
-    if status:
-        query["status"] = status
     if illaka_id:
         query["illaka_id"] = illaka_id
+    elif maalik_id and current_user["role"] == "admin":
+        ids = await get_admin_maalik_filter_ids(maalik_id)
+        query["illaka_id"] = {"$in": ids}
     if misal_id:
         query["misal_id"] = misal_id
+    if status:
+        query["status"] = status
     if search:
         query["$or"] = [
             {"customer_id": {"$regex": search, "$options": "i"}},
