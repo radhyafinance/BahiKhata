@@ -5,7 +5,7 @@ from typing import Optional, List
 import uuid
 from core.database import db
 from core.auth import get_current_user
-from helpers import _doc, create_journal_entry_internal
+from helpers import _doc, create_journal_entry_internal, _get_maalik_illaka_ids
 from models import (
     AccountHeadCreate, AccountHeadUpdate, JournalEntryCreate, SimpleEntryCreate,
     ExpenseTemplateCreate, ExpenseTemplateField, ExpenseSubmissionCreate,
@@ -22,8 +22,7 @@ async def _illaka_filter_for_user(user: dict, illaka_id: Optional[str]) -> dict:
         if illaka_id:
             query["illaka_id"] = illaka_id
     elif user["role"] == "maalik":
-        illakas = await db.illakas.find({"maalik_id": user["id"]}, {"_id": 1}).to_list(1000)
-        ids = [str(i["_id"]) for i in illakas]
+        ids = await _get_maalik_illaka_ids(user)
         if illaka_id:
             if illaka_id not in ids:
                 query["illaka_id"] = "__none__"

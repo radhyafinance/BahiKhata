@@ -88,13 +88,20 @@ def _build_emi_schedule(principal: float, loan_date: date_type) -> tuple:
     return emi_amount, schedule
 
 
+async def _get_maalik_illaka_ids(user: dict) -> list:
+    """Return all illaka IDs accessible to a Maalik: owned (maalik_id) + admin-assigned."""
+    owned = await db.illakas.find({"maalik_id": user["id"]}, {"_id": 1}).to_list(1000)
+    ids = {str(ill["_id"]) for ill in owned}
+    ids.update(user.get("assigned_illaka_ids", []))
+    return list(ids)
+
+
 async def _kyc_query_for_user(user: dict) -> dict:
     query = {}
     if user["role"] == "admin":
         pass
     elif user["role"] == "maalik":
-        illakas = await db.illakas.find({"maalik_id": user["id"]}, {"_id": 1}).to_list(1000)
-        illaka_ids = [str(ill["_id"]) for ill in illakas]
+        illaka_ids = await _get_maalik_illaka_ids(user)
         query["illaka_id"] = {"$in": illaka_ids}
     elif user["role"] == "muneem":
         assigned = user.get("assigned_illaka_ids", [])
@@ -144,8 +151,7 @@ async def _loan_query_for_user(user: dict) -> dict:
     if user["role"] == "admin":
         return {}
     elif user["role"] == "maalik":
-        illakas = await db.illakas.find({"maalik_id": user["id"]}, {"_id": 1}).to_list(1000)
-        ids = [str(i["_id"]) for i in illakas]
+        ids = await _get_maalik_illaka_ids(user)
         return {"illaka_id": {"$in": ids}}
     elif user["role"] == "muneem":
         assigned = user.get("assigned_illaka_ids", [])
