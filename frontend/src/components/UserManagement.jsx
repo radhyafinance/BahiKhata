@@ -62,7 +62,7 @@ function UserModal({ user: editUser, currentUser, illakas, maaliks, onClose, onS
     }
   };
 
-  const showIllakaPicker = form.role === "muneem" || form.role === "sipahi";
+  const showIllakaPicker = form.role === "maalik" || form.role === "muneem" || form.role === "sipahi";
   const showMaalikPicker = currentUser.role === "admin" && (form.role === "muneem" || form.role === "sipahi");
 
   return (
