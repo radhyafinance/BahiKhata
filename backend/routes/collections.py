@@ -51,7 +51,15 @@ def _compute_fy_balances(schedule: list, fy_months: list, total_repayable: float
 def _build_emi_year_strip(
     schedule: list, fy_months: list, is_gyal: bool, gyal_year_data: dict
 ) -> list:
-    """Build the 12-entry list (one per FY month) for the horizontal FY strip."""
+    """Build the 12-entry list (one per FY month) for the horizontal FY strip.
+
+    For non-gyal loans the priority is:
+    1. If any EMI was physically COLLECTED in this month (paid_date[:7] == fy_m),
+       show it as paid — this handles old overdue loans whose due_month is in a
+       past FY but whose payment was received in the current FY.
+    2. Fall back to the scheduled due_month match (pending / overdue / etc.).
+    3. If nothing matches → "na".
+    """
     result = []
     for fy_m in fy_months:
         sched_item = next(
@@ -70,7 +78,22 @@ def _build_emi_year_strip(
             else:
                 result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
         else:
-            if sched_item:
+            # Priority 1: EMI physically collected in this month (paid_date[:7] == fy_m)
+            paid_this_month = next(
+                (e for e in schedule
+                 if e.get("status") == "paid"
+                 and (e.get("paid_date") or "")[:7] == fy_m
+                 and not e.get("is_gyal_entry")),
+                None,
+            )
+            if paid_this_month:
+                result.append({
+                    "month": fy_m,
+                    "status": "paid",
+                    "paid_amount": float(paid_this_month.get("paid_amount") or 0),
+                    "note": paid_this_month.get("note") or "",
+                })
+            elif sched_item:
                 result.append({"month": fy_m, "status": sched_item.get("status", "pending"),
                                 "paid_amount": float(sched_item.get("paid_amount") or 0),
                                 "note": sched_item.get("note") or ""})
@@ -326,14 +349,21 @@ async def get_collection_sheet(
                 }
             elif not emi:
                 # Non-gyal loan with no EMI for the selected month.
-                # Keep if the loan existed during this FY.
+                # Keep if the loan existed during this FY OR had a payment collected in this FY.
                 loan_has_fy_emi      = any(e.get("due_month") in fy_months for e in schedule)
                 loan_date_ym         = (loan.get("loan_date") or "")[:7]
                 loan_disbursed_in_fy = loan_date_ym in fy_months
                 loan_existed_by_fy_end = bool(loan_date_ym) and loan_date_ym <= fy_months[-1]
                 loan_has_outstanding   = loan.get("status") in ("active", "overdue")
+                # Include also when a payment was physically received during this FY
+                loan_has_fy_payment  = any(
+                    (e.get("paid_date") or "")[:7] in fy_months
+                    for e in schedule
+                    if e.get("status") == "paid"
+                )
                 if not (loan_has_fy_emi or loan_disbursed_in_fy
-                        or (loan_has_outstanding and loan_existed_by_fy_end)):
+                        or (loan_has_outstanding and loan_existed_by_fy_end)
+                        or loan_has_fy_payment):
                     continue
                 if not schedule:
                     continue
