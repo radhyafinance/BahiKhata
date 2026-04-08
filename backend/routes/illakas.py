@@ -16,7 +16,15 @@ async def list_illakas(request: Request):
     if user["role"] == "admin":
         query = {}
     elif user["role"] == "maalik":
-        query = {"maalik_id": user["id"]}
+        conditions = [{"maalik_id": user["id"]}]
+        assigned = user.get("assigned_illaka_ids", [])
+        if assigned:
+            try:
+                oids = [ObjectId(i) for i in assigned]
+                conditions.append({"_id": {"$in": oids}})
+            except Exception:
+                pass
+        query = {"$or": conditions} if len(conditions) > 1 else conditions[0]
     else:
         assigned = user.get("assigned_illaka_ids", [])
         if not assigned:
