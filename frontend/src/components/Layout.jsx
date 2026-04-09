@@ -1,7 +1,7 @@
 import { Outlet, NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
-import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin, TrendingUp, ClipboardList, Globe, ChevronDown, BookOpen, Crown } from "lucide-react";
+import { LayoutDashboard, UserPlus, FileText, LogOut, Menu, X, Users, MapPin, TrendingUp, ClipboardList, Globe, ChevronDown, BookOpen, Crown, Upload } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -33,6 +33,7 @@ function getNavItems(role) {
   if (role === "admin" || role === "maalik") {
     base.push({ to: "/illakas", icon: MapPin, label: "Illakas", labelHi: "इलाके / मिसाल" });
     base.push({ to: "/users", icon: Users, label: "Team", labelHi: "टीम" });
+    base.push({ to: "/import", icon: Upload, label: "Import", labelHi: "डेटा आयात" });
   }
   return base;
 }

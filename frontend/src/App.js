@@ -19,6 +19,7 @@ import CollectionSheet from "./components/CollectionSheet";
 import CollectionSheetPrint from "./components/CollectionSheetPrint";
 import IllakaSelector from "./components/IllakaSelector";
 import AccountsModule from "./components/AccountsModule";
+import ImportPage from "./components/ImportPage";
 
 const ProtectedRoute = ({ children, roles }) => {
   const { user, loading } = useAuth();
@@ -87,6 +88,14 @@ function App() {
                 element={
                   <ProtectedRoute roles={["admin", "maalik", "muneem"]}>
                     <AccountsModule />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="import"
+                element={
+                  <ProtectedRoute roles={["admin", "maalik"]}>
+                    <ImportPage />
                   </ProtectedRoute>
                 }
               />
