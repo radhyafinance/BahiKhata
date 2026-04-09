@@ -1,107 +1,130 @@
 {
-  "theme": "light",
-  "archetype": "Archetype 1 (Organic & Earthy)",
-  "design_philosophy": "Trustworthy, professional, and accessible for semi-urban/rural Indian field officers. The app must feel like a stable, high-end fintech product (like CRED or Jupiter) but grounded in utility. Uses clear bilingual (English/Hindi) typography, high contrast for outdoor visibility, and generous touch targets.",
-  "colors": {
-    "background": "hsl(45, 20%, 98%)",
-    "foreground": "hsl(160, 20%, 15%)",
-    "primary": "hsl(156, 72%, 25%)",
-    "primary_foreground": "hsl(0, 0%, 100%)",
-    "card": "hsl(0, 0%, 100%)",
-    "card_foreground": "hsl(160, 20%, 15%)",
-    "border": "hsl(156, 20%, 85%)",
-    "muted": "hsl(156, 10%, 92%)",
-    "muted_foreground": "hsl(160, 15%, 45%)",
-    "accent_terracotta": "hsl(15, 80%, 55%)",
-    "ring": "hsl(156, 72%, 25%)",
-    "destructive": "hsl(0, 84%, 60%)"
-  },
+  "theme": "dark/light adaptable",
+  "archetype": "Archetype 4: Swiss & High-Contrast (Control Room Variant)",
   "typography": {
     "fonts": {
-      "headings": "'Outfit', 'Hind', sans-serif",
-      "body": "'IBM Plex Sans Devanagari', 'IBM Plex Sans', sans-serif"
+      "heading": "Outfit, sans-serif",
+      "body": "IBM Plex Sans, sans-serif",
+      "devanagari": "IBM Plex Sans Devanagari, sans-serif"
     },
-    "hierarchy": {
-      "h1": "text-3xl sm:text-4xl lg:text-5xl font-bold tracking-tight text-foreground",
-      "h2": "text-2xl sm:text-3xl font-semibold tracking-tight text-foreground",
-      "h3": "text-xl sm:text-2xl font-medium tracking-tight text-foreground",
-      "body": "text-base font-normal leading-relaxed text-muted-foreground",
-      "small_label": "text-xs font-semibold tracking-wider uppercase text-muted-foreground"
+    "scale": {
+      "h1": "text-3xl font-bold tracking-tight",
+      "h2": "text-xl font-semibold tracking-tight",
+      "h3": "text-lg font-medium",
+      "body": "text-sm",
+      "small": "text-xs",
+      "metric_value": "text-3xl lg:text-4xl font-semibold tracking-tighter"
     },
-    "rules": [
-      "No generic sans for headings. Use Outfit for English, Hind for Hindi.",
-      "Use IBM Plex Sans Devanagari globally for body text to ensure seamless bilingual rendering.",
-      "Bilingual UI pattern: English primary label, smaller Hindi secondary label (e.g., 'First Name / प्रथम नाम' where Hindi is muted-foreground)."
+    "bilingual_rules": {
+      "english_primary": "text-sm font-medium text-foreground",
+      "hindi_secondary": "text-xs font-normal text-muted-foreground/80 mt-0.5",
+      "layout": "flex flex-col"
+    }
+  },
+  "colors": {
+    "strategy": "High contrast, data-first. Use existing CSS variables (--primary, --background, --card) but enforce strict border colors and semantic text tones.",
+    "primary": "var(--primary)",
+    "background": "var(--background)",
+    "card": "var(--card)",
+    "text_primary": "var(--foreground)",
+    "text_muted": "var(--muted-foreground)",
+    "borders": "var(--border)",
+    "semantic": {
+      "success_bg": "bg-green-100 dark:bg-green-900/30",
+      "success_text": "text-green-800 dark:text-green-400",
+      "warning_bg": "bg-yellow-100 dark:bg-yellow-900/30",
+      "warning_text": "text-yellow-800 dark:text-yellow-400",
+      "danger_bg": "bg-red-100 dark:bg-red-900/30",
+      "danger_text": "text-red-800 dark:text-red-400"
+    }
+  },
+  "layout_and_spacing": {
+    "grid_system": "The 'Control Room' Grid. Base grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 or gap-6. Row 1: 5 stat cards spanning 1 col each on LG. Row 2: Illaka Table (lg:col-span-2) + Recovery Graph (lg:col-span-3).",
+    "container": "p-4 md:p-8 max-w-[1600px] mx-auto flex flex-col gap-6",
+    "card_padding": "p-5 md:p-6"
+  },
+  "components": {
+    "cards": {
+      "base": "bk-card relative overflow-hidden transition-all duration-200 flex flex-col justify-between",
+      "hover_state": "hover:shadow-md hover:border-primary/40"
+    },
+    "badges": {
+      "recovery_high": "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-800 border border-green-200 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800",
+      "recovery_medium": "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-yellow-100 text-yellow-800 border border-yellow-200 dark:bg-yellow-900/40 dark:text-yellow-400 dark:border-yellow-800",
+      "recovery_low": "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-800 border border-red-200 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800"
+    },
+    "table": {
+      "wrapper": "rounded-xl border border-border overflow-hidden bg-card text-sm",
+      "header": "bg-muted/50 font-medium text-muted-foreground",
+      "row": "border-b border-border hover:bg-muted/30 transition-colors"
+    },
+    "charts": {
+      "library": "recharts",
+      "style": "Use ComposedChart for Utaar/Vayda (Bar) with Line overlay for Recovery %. Use hsl(var(--primary)) for Vayda and hsl(var(--muted-foreground)) with low opacity for Utaar. Minimal grid lines."
+    }
+  },
+  "page_structure": {
+    "header": {
+      "description": "Greeting 'Namaste, {name}' and current Date. Right-aligned avatar.",
+      "layout": "flex justify-between items-end"
+    },
+    "portfolio_summary": {
+      "description": "Top cards showing global stats.",
+      "items": [
+        {"id": "bakaya", "en": "Total Bakaya", "hi": "कुल बकाया", "type": "currency"},
+        {"id": "active_clients", "en": "Active Clients", "hi": "सक्रिय ग्राहक", "type": "number"}
+      ]
+    },
+    "monthly_performance": {
+      "description": "Cards for current month operations.",
+      "items": [
+        {"id": "utaar", "en": "Scheduled EMI (Utaar)", "hi": "उतार", "type": "currency_and_count"},
+        {"id": "vayda", "en": "Collected EMI (Vayda)", "hi": "वायदा", "type": "currency_and_percentage"},
+        {"id": "den", "en": "Disbursements (Den)", "hi": "देन", "type": "currency_and_count"}
+      ]
+    },
+    "illaka_table": {
+      "description": "Compact list/table showing breakdown per Illaka.",
+      "columns": ["Illaka", "Bakaya", "Active", "Utaar", "Vayda", "Rec %"]
+    },
+    "recovery_graph": {
+      "description": "Bar + Line chart for Financial Year."
+    }
+  },
+  "media_assets": {
+    "images": [
+      {
+        "id": "avatar_maalik",
+        "url": "https://images.unsplash.com/photo-1659353220482-554773c2f7fa?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2Nzd8MHwxfHNlYXJjaHwxfHxwcm9mZXNzaW9uYWwlMjBpbmRpYW4lMjBidXNpbmVzc21hbiUyMHBvcnRyYWl0fGVufDB8fHx8MTc3NTcxNDA1NXww&ixlib=rb-4.1.0&q=85",
+        "alt": "Maalik Avatar",
+        "usage": "Top right header user profile picture"
+      }
+    ],
+    "icons": {
+      "library": "lucide-react",
+      "usage_rules": "Use stroke-width 1.5. Colors must match the text-muted-foreground unless active/alert."
+    }
+  },
+  "testing_requirements": {
+    "data_testids": [
+      "dashboard-header-greeting",
+      "card-bakaya-total",
+      "card-active-clients",
+      "card-utaar-month",
+      "card-vayda-month",
+      "card-den-month",
+      "table-illaka-breakdown",
+      "chart-year-recovery"
     ]
   },
-  "spacing_and_layout": {
-    "philosophy": "Mobile-first, generous thumb zones. Everything must be easily tappable on a cheap Android device in bright sunlight.",
-    "container": "w-full mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6",
-    "touch_targets": "min-h-[3.5rem] (h-14) for all buttons and inputs. Crucial for field officers.",
-    "grid_system": "MODE B: The 'Control Room' Grid for Dashboards. Stacked full-width cards for mobile. Use tight gaps (gap-4).",
-    "corners": "rounded-xl for cards, rounded-lg for buttons to keep it professional.",
-    "surfaces": "Flat Solid surfaces with 1px border (border-border). Avoid glassmorphism for field apps to ensure max outdoor legibility."
-  },
-  "components_strategy": {
-    "forms": {
-      "inputs": "Shadcn UI Input, height h-14, solid bg-white border border-border focus:ring-2 focus:ring-primary. High contrast text.",
-      "labels": "Clear bold labels, text-sm mb-2 text-foreground flex flex-col sm:flex-row sm:gap-1"
-    },
-    "buttons": {
-      "primary": "bg-primary text-primary-foreground h-14 rounded-lg font-semibold hover:bg-primary/90 transition-colors shadow-sm",
-      "secondary": "bg-muted text-foreground h-14 rounded-lg font-semibold hover:bg-muted/80 border border-border"
-    },
-    "cards": {
-      "default": "bg-card text-card-foreground p-6 border border-border rounded-xl shadow-sm",
-      "client_list_item": "bg-card p-4 border-b border-border/50 flex flex-col gap-2 hover:bg-muted/30 cursor-pointer transition-colors"
-    },
-    "camera_gps": {
-      "placeholder": "bg-muted/30 border-2 border-dashed border-border rounded-xl flex flex-col items-center justify-center p-8 text-muted-foreground gap-4 w-full aspect-video"
-    }
-  },
-  "motion": {
-    "transitions": "transition-all duration-200 ease-in-out",
-    "interactions": "Buttons MUST have hover and active states (scale down slightly active:scale-[0.98]).",
-    "loaders": "Use clean spinner or pulse animations for OCR extraction and GPS location fetching to build trust during wait times."
-  },
-  "icons": {
-    "library": "lucide-react",
-    "rules": "Use for clear signposting (e.g., Camera icon for uploads, MapPin for GPS). Maintain consistent stroke width."
-  },
-  "image_urls": [
-    {
-      "url": "https://images.unsplash.com/photo-1766716946030-5869da2a0ead?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTZ8MHwxfHNlYXJjaHwyfHxpbmRpYW4lMjBydXJhbCUyMGJ1c2luZXNzfGVufDB8fHx8MTc3NDYxMTYxNHww&ixlib=rb-4.1.0&q=85",
-      "description": "Man in traditional indian attire talking on phone. Use for Login Page background or Hero visual to establish local context.",
-      "category": "hero"
-    },
-    {
-      "url": "https://images.unsplash.com/photo-1770665568496-681c24e27328?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NTZ8MHwxfHNlYXJjaHwxfHxpbmRpYW4lMjBydXJhbCUyMGJ1c2luZXNzfGVufDB8fHx8MTc3NDYxMTYxNHww&ixlib=rb-4.1.0&q=85",
-      "description": "Elderly woman selling flowers and fruit. Perfect for 'Client Profiles' empty state or dashboard banner.",
-      "category": "dashboard_banner"
-    },
-    {
-      "url": "https://images.unsplash.com/photo-1760127255134-2b1fbc6d284d?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG9yZ2FuaWMlMjBwYXR0ZXJuJTIwbGlnaHQlMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc3NDYxMTYxNnww&ixlib=rb-4.1.0&q=85",
-      "description": "Abstract pattern of light and shadow. Use as subtle background texture for the KYC form header.",
-      "category": "background_texture"
-    },
-    {
-      "url": "https://images.pexels.com/photos/6060893/pexels-photo-6060893.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
-      "description": "A street vendor in Jaipur. Good for Guarantor/Co-borrower contextual imagery or marketing sidebars.",
-      "category": "contextual"
-    }
-  ],
-  "accessibility": {
-    "contrast": "Ensure all text meets minimum 4.5:1 ratio against backgrounds. Use deep green text on light green backgrounds.",
-    "focus": "All form inputs and buttons MUST have focus:ring-2 focus:ring-primary focus:ring-offset-2 focus:outline-none.",
-    "testing": "All interactive elements must include data-testid attributes (e.g., data-testid='submit-kyc-button')."
-  },
-  "instructions_to_main_agent": {
-    "1": "Update Tailwind CSS configuration to include the custom colors listed above using CSS variables in index.css.",
-    "2": "Import 'Outfit', 'Hind', and 'IBM Plex Sans Devanagari' from Google Fonts in index.css.",
-    "3": "Build mobile-first. Default everything to w-full. Use bottom sticky navigation on mobile and a sidebar on desktop.",
-    "4": "Integrate Shadcn components: Button, Input, Select, Card, Dialog, Tabs. Modify Shadcn defaults to use h-14 for inputs/buttons for thumb-friendly touch zones.",
-    "5": "For the KYC form, build a multi-step progressive wizard (Primary -> Co-borrower -> Guarantor -> Live Photo & GPS -> Submit). DO NOT dump all inputs on a single page. Use Tabs or custom step indicators.",
-    "6": "Implement bilingual labels (e.g., 'Aadhaar Number / आधार संख्या') in all form fields.",
-    "7": "Do not use generic placeholder text or empty avatars. Use the provided image URLs where appropriate."
-  }
+  "instructions_to_main_agent": [
+    "Strictly follow the 'Control Room' grid layout: tight data-dense configuration using CSS grid (lg:grid-cols-5).",
+    "Ensure bilingual text implementation where Hindi labels sit directly below English labels using the defined bk-label-en and bk-label-hi classes from index.css or the typography scale defined.",
+    "Do NOT use placeholder text or external URLs not defined in media_assets.",
+    "Rely on existing tailwind classes and CSS variables. Expand custom classes only via Tailwind utility classes directly in React components.",
+    "Make sure Recharts components are responsive (ResponsiveContainer) and use theme CSS variables for colors.",
+    "Include hover states on table rows and cards for an interactive feel.",
+    "Implement the 'Year Recovery Graph' using a ComposedChart (Bar for Utaar/Vayda, Line for Recovery %).",
+    "All cards must have the bk-card class applied."
+  ]
 }
