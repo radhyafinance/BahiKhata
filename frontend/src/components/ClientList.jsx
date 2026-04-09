@@ -4,6 +4,7 @@ import axios from "axios";
 import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
 import { Search, UserPlus } from "lucide-react";
+import { getSuffixHindi } from "./kyc/utils";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -170,7 +171,13 @@ export default function ClientList() {
                       {(user?.role === "muneem" || user?.role === "sipahi")
                         ? (kyc.primary_borrower?.name_hindi || kyc.primary_borrower?.name || "—")
                         : (kyc.primary_borrower?.name || "—")}
-                      {kyc.primary_borrower?.suffix ? <span className="font-normal text-muted-foreground"> {kyc.primary_borrower.suffix}</span> : null}
+                      {kyc.primary_borrower?.suffix
+                        ? <span className="font-normal text-muted-foreground">
+                            {" "}{(user?.role === "muneem" || user?.role === "sipahi")
+                              ? getSuffixHindi(kyc.primary_borrower.suffix)
+                              : kyc.primary_borrower.suffix}
+                          </span>
+                        : null}
                     </p>
                     {(user?.role === "muneem" || user?.role === "sipahi") && kyc.primary_borrower?.name_hindi && (
                       <p className="text-xs text-muted-foreground">

@@ -10,6 +10,7 @@ import {
   RefreshCw, MinusCircle, Lock
 } from "lucide-react";
 import ReLoanModal from "./ReLoanModal";
+import { getSuffixHindi } from "./kyc/utils";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -80,7 +81,7 @@ const PersonCard = ({ title, titleHi, data, icon: Icon }) => {
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-3">
           <InfoRow label="Full Name / नाम" value={data.name ? `${data.name}${data.suffix ? ` ${data.suffix}` : ""}` : null} />
-          {data.name_hindi && <InfoRow label="हिंदी नाम" value={`${data.name_hindi}${data.suffix ? ` ${data.suffix}` : ""}`} />}
+          {data.name_hindi && <InfoRow label="हिंदी नाम" value={`${data.name_hindi}${data.suffix ? ` ${getSuffixHindi(data.suffix)}` : ""}`} />}
           {data.suffix && <InfoRow label="Suffix / उपनाम" value={data.suffix} />}
           <InfoRow label="Phone / फ़ोन" value={data.phone} />
           <InfoRow label="Date of Birth / जन्म तिथि" value={data.dob} />
@@ -570,7 +571,7 @@ export default function ClientDetail() {
             </h1>
             {kyc.primary_borrower?.name_hindi && (
               <p className="text-sm text-muted-foreground">
-                {kyc.primary_borrower.name_hindi}{kyc.primary_borrower?.suffix ? ` ${kyc.primary_borrower.suffix}` : ""}
+                {kyc.primary_borrower.name_hindi}{kyc.primary_borrower?.suffix ? ` ${getSuffixHindi(kyc.primary_borrower.suffix)}` : ""}
               </p>
             )}
             <div className="flex items-center gap-2 mt-1">

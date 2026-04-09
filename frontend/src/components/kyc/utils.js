@@ -10,8 +10,25 @@ export const STEPS = [
   { id: 6, title: "Review & Submit", titleHi: "समीक्षा और जमा करें" },
 ];
 
+// Suffix → Hindi display mapping
+export const SUFFIX_HINDI_MAP = {
+  Dhobi: "धोबी", Darji: "दर्जी", Kumhar: "कुम्हार", Lohar: "लोहार",
+  Teli: "तेली", Nai: "नाई", Kori: "कोरी", Mallah: "मल्लाह",
+  Kewat: "केवट", Kahar: "कहार", Yadav: "यादव", Maurya: "मौर्य",
+  Prajapati: "प्रजापति", Kushwaha: "कुशवाहा", Pasi: "पासी", Bind: "बिंद",
+  Rajput: "राजपूत", Thakur: "ठाकुर", Sharma: "शर्मा", Gupta: "गुप्त",
+  Dubey: "दुबे", Mishra: "मिश्रा", Chamar: "चमार",
+};
+
+/** Returns the Hindi equivalent of a suffix string. */
+export const getSuffixHindi = (suffix) => {
+  if (!suffix) return "";
+  if (suffix.startsWith("Urf ")) return "उर्फ़ " + suffix.substring(4);
+  return SUFFIX_HINDI_MAP[suffix] || suffix;
+};
+
 export const emptyPerson = {
-  phone: "", name: "", name_hindi: "", dob: "", address: "",
+  phone: "", name: "", name_hindi: "", suffix: "", dob: "", address: "",
   relative_name: "", relative_name_hindi: "", gender: "",
   aadhaar_number: "", aadhaar_front_path: null, aadhaar_back_path: null,
   document_type: "voter_id", document_front_path: null, document_back_path: null,

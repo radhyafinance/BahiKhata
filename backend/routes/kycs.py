@@ -14,6 +14,23 @@ from models import KYCCreate, KYCStatusUpdate
 
 router = APIRouter()
 
+_SUFFIX_HINDI = {
+    "Dhobi": "धोबी", "Darji": "दर्जी", "Kumhar": "कुम्हार", "Lohar": "लोहार",
+    "Teli": "तेली", "Nai": "नाई", "Kori": "कोरी", "Mallah": "मल्लाह",
+    "Kewat": "केवट", "Kahar": "कहार", "Yadav": "यादव", "Maurya": "मौर्य",
+    "Prajapati": "प्रजापति", "Kushwaha": "कुशवाहा", "Pasi": "पासी", "Bind": "बिंद",
+    "Rajput": "राजपूत", "Thakur": "ठाकुर", "Sharma": "शर्मा", "Gupta": "गुप्त",
+    "Dubey": "दुबे", "Mishra": "मिश्रा", "Chamar": "चमार",
+}
+
+def _suffix_hindi(suffix: str) -> str:
+    """Return Hindi equivalent of suffix. Handles 'Urf XYZ' → 'उर्फ़ XYZ'."""
+    if not suffix:
+        return ""
+    if suffix.startswith("Urf "):
+        return "उर्फ़ " + suffix[4:]
+    return _SUFFIX_HINDI.get(suffix, suffix)
+
 
 @router.get("/kycs")
 async def list_kycs(
@@ -109,7 +126,7 @@ async def create_kyc(data: KYCCreate, request: Request):
         pb = data.primary_borrower
         _suffix = (pb.suffix or "").strip()
         _cn = ((pb.name or "").strip() + (" " + _suffix if _suffix else "")).strip()
-        _cn_hi = ((pb.name_hindi or "").strip() + (" " + _suffix if _suffix else "")).strip()
+        _cn_hi = ((pb.name_hindi or "").strip() + (" " + _suffix_hindi(_suffix) if _suffix else "")).strip()
         loan_doc = {
             "kyc_id": kyc_id_str,
             "customer_id": customer_id,
@@ -199,7 +216,7 @@ async def update_kyc(kyc_id: str, data: KYCCreate, request: Request):
     pb = data.primary_borrower
     _suffix = (pb.suffix or "").strip()
     _cn = ((pb.name or "").strip() + (" " + _suffix if _suffix else "")).strip()
-    _cn_hi = ((pb.name_hindi or "").strip() + (" " + _suffix if _suffix else "")).strip()
+    _cn_hi = ((pb.name_hindi or "").strip() + (" " + _suffix_hindi(_suffix) if _suffix else "")).strip()
     await db.loans.update_many(
         {"kyc_id": kyc_id},
         {"$set": {
