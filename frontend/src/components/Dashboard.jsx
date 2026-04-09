@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
@@ -6,8 +6,12 @@ import { useIllaka } from "./IllakaContext";
 import {
   UserPlus, FileText, Clock, CheckCircle, XCircle, Users,
   TrendingUp, Calendar, BookOpen, Receipt, Gavel, ClipboardList,
-  IndianRupee, ChevronRight
+  IndianRupee, ChevronRight, ArrowUpRight, Landmark, Wallet, BarChart2
 } from "lucide-react";
+import {
+  ComposedChart, Bar, Line, XAxis, YAxis, CartesianGrid, Tooltip,
+  ResponsiveContainer, Legend
+} from "recharts";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -266,117 +270,267 @@ function FieldAgentDashboard({ user, selectedIllaka }) {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// Admin / Maalik Dashboard (unchanged)
+// Admin / Maalik Dashboard — Rich Overview
 // ═══════════════════════════════════════════════════════════════════════════
-function AdminDashboard({ user, selectedIllaka, selectedMaalik }) {
-  const navigate = useNavigate();
-  const [stats, setStats] = useState(null);
-  const [recent, setRecent] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const fetchAll = async () => {
-      try {
-        const p = new URLSearchParams({ limit: "5" });
-        const statsP = new URLSearchParams();
-        if (selectedIllaka) {
-          p.append("illaka_id", selectedIllaka.id);
-          statsP.append("illaka_id", selectedIllaka.id);
-        } else if (selectedMaalik) {
-          p.append("maalik_id", selectedMaalik.id);
-          statsP.append("maalik_id", selectedMaalik.id);
-        }
-        const [s, k] = await Promise.all([
-          axios.get(`${API}/dashboard/stats?${statsP}`, { withCredentials: true }),
-          axios.get(`${API}/kycs?${p}`, { withCredentials: true }),
-        ]);
-        setStats(s.data);
-        setRecent(k.data.kycs || []);
-      } catch {}
-      finally { setLoading(false); }
-    };
-    fetchAll();
-  }, [selectedIllaka, selectedMaalik]);
+const fmtCr = (n) => {
+  const v = Number(n || 0);
+  if (v >= 10000000) return `₹${(v / 10000000).toFixed(2)} Cr`;
+  if (v >= 100000) return `₹${(v / 100000).toFixed(2)} L`;
+  return `₹${v.toLocaleString("en-IN")}`;
+};
 
-  const roleGreeting = { admin: "Administrator", maalik: "Maalik (Owner)" }[user?.role] || "";
+const fmtINR = (n) =>
+  Number(n || 0).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 });
 
+function recBadge(pct) {
+  if (pct === null || pct === undefined) return "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-muted text-muted-foreground";
+  if (pct >= 80) return "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-green-100 text-green-800 border border-green-200 dark:bg-green-900/40 dark:text-green-400 dark:border-green-800";
+  if (pct >= 50) return "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-yellow-100 text-yellow-800 border border-yellow-200 dark:bg-yellow-900/40 dark:text-yellow-400 dark:border-yellow-800";
+  return "inline-flex items-center px-2 py-0.5 rounded text-[11px] font-semibold bg-red-100 text-red-800 border border-red-200 dark:bg-red-900/40 dark:text-red-400 dark:border-red-800";
+}
+
+function MetricCard({ icon: Icon, en, hi, value, sub, color, testId, trend }) {
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-foreground font-['Outfit']">
-            Namaste, {user?.name?.split(" ")[0]} !
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            {roleGreeting} — {new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-          </p>
+    <div className="bk-card relative overflow-hidden flex flex-col justify-between hover:shadow-md hover:border-primary/40 transition-all duration-200" data-testid={testId}>
+      <div className="flex items-start justify-between mb-3">
+        <div className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 ${color}`}>
+          <Icon size={18} className="text-white" strokeWidth={1.5} />
         </div>
-      </div>
-
-      {loading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <div key={i} className="bk-card h-24 animate-pulse bg-muted" />)}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4" data-testid="stats-grid">
-          <StatCard icon={FileText}    label="Total KYCs"    labelHi="कुल KYC"         value={stats?.total}        color="bg-primary"      testId="stat-total" />
-          <StatCard icon={Clock}       label="Pending"       labelHi="लंबित"            value={stats?.pending}      color="bg-yellow-500"   testId="stat-pending" />
-          <StatCard icon={CheckCircle} label="Approved"      labelHi="स्वीकृत"          value={stats?.approved}     color="bg-green-600"    testId="stat-approved" />
-          <StatCard icon={Calendar}    label="Today"         labelHi="आज"               value={stats?.today}        color="bg-accent"       testId="stat-today" />
-        </div>
-      )}
-
-      {!loading && (
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard icon={XCircle}    label="Rejected"      labelHi="अस्वीकृत"  value={stats?.rejected}     color="bg-destructive"  testId="stat-rejected" />
-          <StatCard icon={Users}      label="Sipahi Count"  labelHi="सिपाही"    value={stats?.sipahi_count} color="bg-indigo-600"   testId="stat-officers" />
-          <StatCard icon={TrendingUp} label="Active Loans"  labelHi="सक्रिय कर्ज" value={stats?.active_loans} color="bg-emerald-600" testId="stat-active-loans" />
-          <StatCard icon={TrendingUp} label="Total Loans"   labelHi="कुल कर्ज"  value={stats?.total_loans}  color="bg-amber-600"    testId="stat-total-loans" />
-        </div>
-      )}
-
-      <div className="bk-card">
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h2 className="text-lg font-bold text-foreground font-['Outfit']">Recent KYCs</h2>
-            <p className="text-xs text-muted-foreground">हाल के KYC</p>
-          </div>
-          <button onClick={() => navigate("/clients")} className="text-primary text-sm font-semibold hover:underline" data-testid="view-all-btn">
-            View All →
-          </button>
-        </div>
-        {recent.length === 0 ? (
-          <div className="text-center py-12 text-muted-foreground" data-testid="no-kycs-msg">
-            <FileText size={40} className="mx-auto mb-3 opacity-30" />
-            <p className="font-medium">No KYCs yet / अभी तक कोई KYC नहीं</p>
-            <button onClick={() => navigate("/kyc/new")} className="mt-4 text-primary font-semibold text-sm hover:underline">Start first KYC →</button>
-          </div>
-        ) : (
-          <div className="space-y-3" data-testid="recent-kycs-list">
-            {recent.map((kyc) => (
-              <div key={kyc.id} onClick={() => navigate(`/clients/${kyc.id}`)}
-                className="flex items-center justify-between p-4 rounded-lg border border-border hover:bg-muted/30 cursor-pointer transition-colors"
-                data-testid={`kyc-row-${kyc.id}`}>
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 bg-primary/10 rounded-full flex items-center justify-center flex-shrink-0">
-                    <span className="text-primary font-bold text-sm">{kyc.primary_borrower?.name?.charAt(0)?.toUpperCase() || "?"}</span>
-                  </div>
-                  <div>
-                    <p className="font-semibold text-foreground text-sm">{kyc.primary_borrower?.name || "—"}</p>
-                    <p className="text-xs text-muted-foreground">{kyc.kyc_number} · {kyc.primary_borrower?.phone || "—"}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  <StatusBadge status={kyc.status} />
-                  <span className="text-xs text-muted-foreground hidden sm:block">
-                    {kyc.created_at ? new Date(kyc.created_at).toLocaleDateString("en-IN") : "—"}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+        {trend !== undefined && trend !== null && (
+          <span className={`text-xs font-semibold ${trend >= 0 ? "text-green-600" : "text-red-500"}`}>
+            {trend >= 0 ? "+" : ""}{trend}%
+          </span>
         )}
       </div>
+      <div>
+        <p className="text-2xl lg:text-3xl font-bold text-foreground font-['Outfit'] tracking-tight leading-none">{value}</p>
+        {sub && <p className="text-xs text-muted-foreground mt-1">{sub}</p>}
+        <p className="text-sm font-medium text-foreground mt-2">{en}</p>
+        <p className="text-xs text-muted-foreground/80">{hi}</p>
+      </div>
+    </div>
+  );
+}
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="bg-card border border-border rounded-xl shadow-lg p-3 text-xs space-y-1 min-w-[160px]">
+      <p className="font-semibold text-foreground mb-2">{label}</p>
+      {payload.map((p) => (
+        <div key={p.dataKey} className="flex justify-between gap-4">
+          <span style={{ color: p.color }}>{p.name}</span>
+          <span className="font-medium tabular-nums">
+            {p.dataKey === "recovery_pct" ? `${p.value}%` : fmtCr(p.value)}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+function AdminDashboard({ user, selectedIllaka, selectedMaalik }) {
+  const navigate = useNavigate();
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchOverview = useCallback(async () => {
+    setLoading(true);
+    try {
+      const p = new URLSearchParams();
+      if (selectedIllaka) p.append("illaka_id", selectedIllaka.id);
+      else if (selectedMaalik) p.append("maalik_id", selectedMaalik.id);
+      const res = await axios.get(`${API}/dashboard/overview?${p}`, { withCredentials: true });
+      setData(res.data);
+    } catch {}
+    finally { setLoading(false); }
+  }, [selectedIllaka, selectedMaalik]);
+
+  useEffect(() => { fetchOverview(); }, [fetchOverview]);
+
+  const monthLabel = data
+    ? new Date(data.current_month + "-01").toLocaleString("en-IN", { month: "long", year: "numeric" })
+    : "";
+
+  const fyLabel = data ? `FY ${data.fy_start_year}-${String(data.fy_start_year + 1).slice(2)}` : "";
+
+  const scopeLabel = selectedIllaka
+    ? selectedIllaka.name
+    : selectedMaalik
+    ? `${selectedMaalik.name}`
+    : "All Illakas";
+
+  const Skeleton = () => (
+    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+      {[1,2,3,4,5].map(i => <div key={i} className="bk-card h-32 animate-pulse bg-muted" />)}
+    </div>
+  );
+
+  return (
+    <div className="p-4 md:p-6 max-w-[1600px] mx-auto flex flex-col gap-6">
+
+      {/* ── Header ── */}
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2" data-testid="dashboard-header-greeting">
+        <div>
+          <h1 className="text-2xl sm:text-3xl font-bold text-foreground font-['Outfit'] tracking-tight">
+            Namaste, {user?.name?.split(" ")[0]} !
+          </h1>
+          <p className="text-sm text-muted-foreground mt-0.5">
+            {new Date().toLocaleDateString("en-IN", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            <span className="mx-1.5 opacity-40">·</span>
+            <span className="font-medium text-foreground/70">{scopeLabel}</span>
+          </p>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          <button onClick={() => navigate("/collections")} className="bk-btn-sm flex items-center gap-1.5 bg-green-600 text-white hover:bg-green-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+            <IndianRupee size={13} /> Vasuli
+          </button>
+          <button onClick={() => navigate("/kyc/new")} className="bk-btn-sm flex items-center gap-1.5 bg-primary text-white hover:bg-primary/90 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+            <UserPlus size={13} /> New KYC
+          </button>
+        </div>
+      </div>
+
+      {/* ── Top Metric Cards ── */}
+      {loading ? <Skeleton /> : (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <MetricCard
+            icon={Landmark} en="Total Bakaya" hi="कुल बकाया"
+            value={fmtCr(data?.bakaya)}
+            sub="Outstanding principal + interest"
+            color="bg-primary"
+            testId="card-bakaya-total"
+          />
+          <MetricCard
+            icon={Users} en="Active Clients" hi="सक्रिय ग्राहक"
+            value={(data?.active_clients || 0).toLocaleString("en-IN")}
+            sub="Excludes Gyal (bad debt)"
+            color="bg-indigo-600"
+            testId="card-active-clients"
+          />
+          <MetricCard
+            icon={BarChart2} en={`Utaar — ${monthLabel}`} hi="उतार"
+            value={fmtCr(data?.utaar)}
+            sub={`${data?.utaar_count || 0} EMIs scheduled`}
+            color="bg-amber-600"
+            testId="card-utaar-month"
+          />
+          <MetricCard
+            icon={TrendingUp} en={`Vayda — ${monthLabel}`} hi="वायदा"
+            value={fmtCr(data?.vayda)}
+            sub={data?.recovery_pct !== null ? `${data?.recovery_pct}% recovery` : `${data?.vayda_count || 0} EMIs collected`}
+            color="bg-green-600"
+            testId="card-vayda-month"
+            trend={data?.recovery_pct}
+          />
+          <MetricCard
+            icon={Wallet} en={`देन — ${monthLabel}`} hi="देन"
+            value={fmtCr(data?.den)}
+            sub={`${data?.den_count || 0} loan(s) disbursed`}
+            color="bg-rose-600"
+            testId="card-den-month"
+          />
+        </div>
+      )}
+
+      {/* ── Bottom row: Illaka Table + Year Graph ── */}
+      {!loading && data && (
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+
+          {/* ── Illaka Breakdown Table (2 cols) ── */}
+          <div className="lg:col-span-2" data-testid="table-illaka-breakdown">
+            <div className="bk-card p-0 overflow-hidden">
+              <div className="px-4 py-3 border-b border-border bg-muted/30">
+                <h2 className="text-sm font-bold text-foreground font-['Outfit']">Illaka Breakdown</h2>
+                <p className="text-xs text-muted-foreground">इलाकावार — {monthLabel}</p>
+              </div>
+              {data.illakas.length === 0 ? (
+                <div className="p-8 text-center text-muted-foreground text-sm">No data for current scope</div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-muted/50 text-muted-foreground text-left">
+                        <th className="px-3 py-2 font-medium">Illaka</th>
+                        <th className="px-3 py-2 font-medium text-right">Bakaya</th>
+                        <th className="px-3 py-2 font-medium text-right">Active</th>
+                        <th className="px-3 py-2 font-medium text-right">Utaar</th>
+                        <th className="px-3 py-2 font-medium text-right">Vayda</th>
+                        <th className="px-3 py-2 font-medium text-center">Rec%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.illakas.map((il) => (
+                        <tr key={il.illaka_id} className="border-t border-border hover:bg-muted/30 transition-colors" data-testid={`illaka-row-${il.illaka_id}`}>
+                          <td className="px-3 py-2.5 font-semibold text-foreground max-w-[100px] truncate">{il.name}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-foreground">{fmtCr(il.bakaya)}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums">{il.active_clients}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtCr(il.utaar)}</td>
+                          <td className="px-3 py-2.5 text-right tabular-nums text-green-700 dark:text-green-400">{fmtCr(il.vayda)}</td>
+                          <td className="px-3 py-2.5 text-center">
+                            <span className={recBadge(il.recovery_pct)}>
+                              {il.recovery_pct !== null ? `${il.recovery_pct}%` : "—"}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    {/* Totals row */}
+                    <tfoot>
+                      <tr className="border-t-2 border-border bg-muted/40 font-bold">
+                        <td className="px-3 py-2.5 text-foreground">Total</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{fmtCr(data.bakaya)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums">{data.active_clients}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtCr(data.utaar)}</td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-green-700 dark:text-green-400">{fmtCr(data.vayda)}</td>
+                        <td className="px-3 py-2.5 text-center">
+                          <span className={recBadge(data.recovery_pct)}>
+                            {data.recovery_pct !== null ? `${data.recovery_pct}%` : "—"}
+                          </span>
+                        </td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ── Year Recovery Graph (3 cols) ── */}
+          <div className="lg:col-span-3" data-testid="chart-year-recovery">
+            <div className="bk-card h-full flex flex-col">
+              <div className="flex items-start justify-between mb-4">
+                <div>
+                  <h2 className="text-sm font-bold text-foreground font-['Outfit']">Year Recovery</h2>
+                  <p className="text-xs text-muted-foreground">वार्षिक वसूली — {fyLabel}</p>
+                </div>
+                <div className="flex gap-3 text-[11px] text-muted-foreground">
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-amber-400/60 rounded inline-block" /> Utaar</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-2 bg-green-500 rounded inline-block" /> Vayda</span>
+                  <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-primary inline-block" /> Rec%</span>
+                </div>
+              </div>
+              <div className="flex-1 min-h-[220px]">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={data.year_graph} margin={{ top: 4, right: 20, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis dataKey="month" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
+                    <YAxis yAxisId="amount" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={v => v >= 100000 ? `${(v/100000).toFixed(0)}L` : v >= 1000 ? `${(v/1000).toFixed(0)}k` : v} width={40} />
+                    <YAxis yAxisId="pct" orientation="right" tick={{ fontSize: 10, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} unit="%" width={35} domain={[0, 120]} />
+                    <Tooltip content={<CustomTooltip />} />
+                    <Bar yAxisId="amount" dataKey="utaar" name="Utaar" fill="hsl(43 96% 56% / 0.5)" radius={[3,3,0,0]} maxBarSize={28} />
+                    <Bar yAxisId="amount" dataKey="vayda" name="Vayda" fill="hsl(142 71% 45%)" radius={[3,3,0,0]} maxBarSize={28} />
+                    <Line yAxisId="pct" type="monotone" dataKey="recovery_pct" name="Rec %" stroke="hsl(var(--primary))" strokeWidth={2} dot={{ r: 3, fill: "hsl(var(--primary))" }} activeDot={{ r: 5 }} />
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      )}
+
     </div>
   );
 }
