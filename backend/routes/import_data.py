@@ -99,21 +99,17 @@ async def _create_ob_kyc_and_loan(
             "address": "",
             "father_husband_name": "",
         },
-        "co_borrowers": [],
-        "guarantors": [],
+        "co_borrower": {
+            "name": co_borrower_name.strip(), "phone": "", "address": "", "father_husband_name": ""
+        } if co_borrower_name and co_borrower_name.strip() else None,
+        "guarantor": {
+            "name": guarantor_name.strip(), "phone": "", "address": "", "father_husband_name": ""
+        } if guarantor_name and guarantor_name.strip() else None,
         "created_at": now,
         "updated_at": now,
         "created_by_id": created_by_id,
         "created_by_name": created_by_name,
     }
-    if co_borrower_name and co_borrower_name.strip():
-        kyc_doc["co_borrowers"].append({
-            "name": co_borrower_name.strip(), "phone": "", "address": ""
-        })
-    if guarantor_name and guarantor_name.strip():
-        kyc_doc["guarantors"].append({
-            "name": guarantor_name.strip(), "phone": "", "address": ""
-        })
 
     kyc_result = await db.kycs.insert_one(kyc_doc)
     kyc_id = str(kyc_result.inserted_id)
