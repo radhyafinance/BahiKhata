@@ -43,6 +43,7 @@ class MisalCreate(BaseModel):
 class PersonKYCData(BaseModel):
     name: Optional[str] = None
     name_hindi: Optional[str] = None
+    suffix: Optional[str] = None
     dob: Optional[str] = None
     address: Optional[str] = None
     relative_name: Optional[str] = None
