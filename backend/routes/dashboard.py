@@ -60,6 +60,7 @@ async def dashboard_overview(
     request: Request,
     illaka_id: Optional[str] = None,
     maalik_id: Optional[str] = None,
+    month: Optional[str] = None,
 ):
     """Rich dashboard data: portfolio, monthly stats, year recovery graph — all illaka-wise."""
     current_user = await get_current_user(request)
@@ -72,8 +73,17 @@ async def dashboard_overview(
         loan_query["illaka_id"] = {"$in": ids}
 
     today = date_type.today()
-    current_ym = f"{today.year}-{today.month:02d}"
-    fy_start_year = today.year if today.month >= 4 else today.year - 1
+    if month:
+        try:
+            y, m = int(month[:4]), int(month[5:7])
+            current_ym = f"{y}-{m:02d}"
+        except Exception:
+            current_ym = f"{today.year}-{today.month:02d}"
+    else:
+        current_ym = f"{today.year}-{today.month:02d}"
+
+    cy, cm = int(current_ym[:4]), int(current_ym[5:7])
+    fy_start_year = cy if cm >= 4 else cy - 1
     fy_months = _fy_months(fy_start_year)
 
     # Fetch all relevant loans

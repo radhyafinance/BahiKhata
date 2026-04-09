@@ -334,18 +334,23 @@ function AdminDashboard({ user, selectedIllaka, selectedMaalik }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const defaultMonth = (() => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  })();
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
 
   const fetchOverview = useCallback(async () => {
     setLoading(true);
     try {
-      const p = new URLSearchParams();
+      const p = new URLSearchParams({ month: selectedMonth });
       if (selectedIllaka) p.append("illaka_id", selectedIllaka.id);
       else if (selectedMaalik) p.append("maalik_id", selectedMaalik.id);
       const res = await axios.get(`${API}/dashboard/overview?${p}`, { withCredentials: true });
       setData(res.data);
     } catch {}
     finally { setLoading(false); }
-  }, [selectedIllaka, selectedMaalik]);
+  }, [selectedIllaka, selectedMaalik, selectedMonth]);
 
   useEffect(() => { fetchOverview(); }, [fetchOverview]);
 
@@ -371,7 +376,7 @@ function AdminDashboard({ user, selectedIllaka, selectedMaalik }) {
     <div className="p-4 md:p-6 max-w-[1600px] mx-auto flex flex-col gap-6">
 
       {/* ── Header ── */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2" data-testid="dashboard-header-greeting">
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3" data-testid="dashboard-header-greeting">
         <div>
           <h1 className="text-2xl sm:text-3xl font-bold text-foreground font-['Outfit'] tracking-tight">
             Namaste, {user?.name?.split(" ")[0]} !
@@ -382,11 +387,18 @@ function AdminDashboard({ user, selectedIllaka, selectedMaalik }) {
             <span className="font-medium text-foreground/70">{scopeLabel}</span>
           </p>
         </div>
-        <div className="flex gap-2 flex-wrap">
-          <button onClick={() => navigate("/collections")} className="bk-btn-sm flex items-center gap-1.5 bg-green-600 text-white hover:bg-green-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+        <div className="flex items-center gap-2 flex-wrap">
+          <input
+            type="month"
+            value={selectedMonth}
+            onChange={e => setSelectedMonth(e.target.value)}
+            className="text-xs px-3 py-1.5 rounded-lg border border-border bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            data-testid="dashboard-month-picker"
+          />
+          <button onClick={() => navigate("/collections")} className="flex items-center gap-1.5 bg-green-600 text-white hover:bg-green-700 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
             <IndianRupee size={13} /> Vasuli
           </button>
-          <button onClick={() => navigate("/kyc/new")} className="bk-btn-sm flex items-center gap-1.5 bg-primary text-white hover:bg-primary/90 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
+          <button onClick={() => navigate("/kyc/new")} className="flex items-center gap-1.5 bg-primary text-white hover:bg-primary/90 px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors">
             <UserPlus size={13} /> New KYC
           </button>
         </div>
