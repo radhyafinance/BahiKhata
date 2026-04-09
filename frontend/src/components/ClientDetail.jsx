@@ -79,8 +79,9 @@ const PersonCard = ({ title, titleHi, data, icon: Icon }) => {
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-3">
-          <InfoRow label="Full Name / नाम" value={data.name} />
-          {data.name_hindi && <InfoRow label="हिंदी नाम" value={data.name_hindi} />}
+          <InfoRow label="Full Name / नाम" value={data.name ? `${data.name}${data.suffix ? ` ${data.suffix}` : ""}` : null} />
+          {data.name_hindi && <InfoRow label="हिंदी नाम" value={`${data.name_hindi}${data.suffix ? ` ${data.suffix}` : ""}`} />}
+          {data.suffix && <InfoRow label="Suffix / उपनाम" value={data.suffix} />}
           <InfoRow label="Phone / फ़ोन" value={data.phone} />
           <InfoRow label="Date of Birth / जन्म तिथि" value={data.dob} />
           <InfoRow label="Gender / लिंग" value={data.gender} />
@@ -565,10 +566,12 @@ export default function ClientDetail() {
           </button>
           <div>
             <h1 className="text-xl sm:text-2xl font-bold text-foreground font-['Outfit']">
-              {kyc.primary_borrower?.name || "KYC Detail"}
+              {kyc.primary_borrower?.name || "KYC Detail"}{kyc.primary_borrower?.suffix ? ` ${kyc.primary_borrower.suffix}` : ""}
             </h1>
             {kyc.primary_borrower?.name_hindi && (
-              <p className="text-sm text-muted-foreground">{kyc.primary_borrower.name_hindi}</p>
+              <p className="text-sm text-muted-foreground">
+                {kyc.primary_borrower.name_hindi}{kyc.primary_borrower?.suffix ? ` ${kyc.primary_borrower.suffix}` : ""}
+              </p>
             )}
             <div className="flex items-center gap-2 mt-1">
               <span className="font-mono text-sm text-muted-foreground" data-testid="customer-id-display">{kyc.customer_id || kyc.kyc_number}</span>

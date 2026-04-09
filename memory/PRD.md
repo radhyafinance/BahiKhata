@@ -259,7 +259,18 @@ See CHANGELOG.md for full history.
 - [x] Works even when L1 has no EMIs in the viewed FY (looks up L1 directly from loans collection)
 - [x] Seed data: 10 net-off re-loans created for RA0021–RA0030 in Rampur Testing
 
-### Collection Sheet — FY-Accurate Net-off Calculations (2026-04) ✓
+### Suffix Field for Client KYC (2026-04-09) ✓
+- [x] **Suffix dropdown** — caste/occupation (Dhobi, Darji, Kumhar, Lohar, Teli, Nai, Kori, Mallah, Kewat, Kahar) + caste (Yadav, Maurya, Prajapati, Kushwaha, Pasi, Bind, Rajput, Thakur, Sharma, Gupta, Dubey, Mishra, Chamar) + free-text "Urf..." custom nickname
+- [x] Suffix field is **always visible** in the KYC form (Primary Borrower, Co-borrower, Guarantor) — not gated behind Aadhaar upload
+- [x] Stored in `primary_borrower.suffix` (and co_borrower/guarantor) in MongoDB
+- [x] Auto-appended to `client_name` and `client_name_hindi` in the denormalized loan document on create
+- [x] Propagated to all loans on KYC update via `update_kyc` endpoint
+- [x] Displayed after name in **ClientList** (lighter muted color)
+- [x] Displayed in **ClientDetail header** (e.g. "Ramesh Kumar Dhobi")
+- [x] Shown in **PersonCard** as both the Full Name row and a dedicated "Suffix / उपनाम" row
+- [x] Shows on **Collection Sheet** via denormalized `client_name` in loans
+
+
 - [x] **Bal (शेष)**: outstanding_balance is FY-bounded — uses `paid_through_fy_end` (payments up to FY end only)
 - [x] **पिछली बाक़ी (2-level chain, L2 before FY)**: shows L2's own opening balance + L2's loan_date
 - [x] **पिछली बाक़ी (2-level chain, L2 new in FY)**: shows L1's `netoff_amount` + L1's loan_date (root original loan info)

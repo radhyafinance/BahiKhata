@@ -106,14 +106,18 @@ async def create_kyc(data: KYCCreate, request: Request):
         loan_date_obj = date_type.today()
         emi_amount, schedule = _build_emi_schedule(data.disbursement_amount, loan_date_obj)
         loan_number = await generate_loan_number(customer_id, kyc_id_str)
+        pb = data.primary_borrower
+        _suffix = (pb.suffix or "").strip()
+        _cn = ((pb.name or "").strip() + (" " + _suffix if _suffix else "")).strip()
+        _cn_hi = ((pb.name_hindi or "").strip() + (" " + _suffix if _suffix else "")).strip()
         loan_doc = {
             "kyc_id": kyc_id_str,
             "customer_id": customer_id,
             "loan_number": loan_number,
-            "relative_name": data.primary_borrower.relative_name or "",
-            "relative_name_hindi": data.primary_borrower.relative_name_hindi or "",
-            "client_name": data.primary_borrower.name or "",
-            "client_name_hindi": data.primary_borrower.name_hindi or "",
+            "relative_name": pb.relative_name or "",
+            "relative_name_hindi": pb.relative_name_hindi or "",
+            "client_name": _cn,
+            "client_name_hindi": _cn_hi,
             "client_phone": data.primary_borrower.phone,
             "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
             "misal_id": data.misal_id, "misal_name": data.misal_name,
@@ -190,6 +194,23 @@ async def update_kyc(kyc_id: str, data: KYCCreate, request: Request):
     result = await db.kycs.update_one({"_id": ObjectId(kyc_id)}, {"$set": updates})
     if not result.matched_count:
         raise HTTPException(status_code=404, detail="KYC not found")
+
+    # Propagate name+suffix change to denormalized loan fields
+    pb = data.primary_borrower
+    _suffix = (pb.suffix or "").strip()
+    _cn = ((pb.name or "").strip() + (" " + _suffix if _suffix else "")).strip()
+    _cn_hi = ((pb.name_hindi or "").strip() + (" " + _suffix if _suffix else "")).strip()
+    await db.loans.update_many(
+        {"kyc_id": kyc_id},
+        {"$set": {
+            "client_name": _cn,
+            "client_name_hindi": _cn_hi,
+            "relative_name": pb.relative_name or "",
+            "relative_name_hindi": pb.relative_name_hindi or "",
+            "client_phone": pb.phone or "",
+        }}
+    )
+
     return _doc(await db.kycs.find_one({"_id": ObjectId(kyc_id)}))
 
 

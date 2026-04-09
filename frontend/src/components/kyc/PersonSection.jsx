@@ -151,6 +151,31 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
 
   const slug = title.toLowerCase().replace(/\s+/g, "-");
 
+  // Suffix field state (dropdown + optional urf text)
+  const [suffixSelect, setSuffixSelect] = useState(() => {
+    if (!data.suffix) return "";
+    if (data.suffix.startsWith("Urf ")) return "urf";
+    return data.suffix;
+  });
+  const [urfText, setUrfText] = useState(() => {
+    if (data.suffix?.startsWith("Urf ")) return data.suffix.substring(4);
+    return "";
+  });
+
+  const handleSuffixSelect = (val) => {
+    setSuffixSelect(val);
+    if (val === "urf") {
+      onChange("suffix", urfText ? `Urf ${urfText}` : "");
+    } else {
+      onChange("suffix", val);
+    }
+  };
+
+  const handleUrfText = (text) => {
+    setUrfText(text);
+    onChange("suffix", text ? `Urf ${text}` : "");
+  };
+
   // Reusable locked input wrapper
   const lockedCls = "bg-green-50/80 border-green-300 cursor-not-allowed pr-8";
   const lockedBackCls = "bg-blue-50/60 border-blue-300 cursor-not-allowed pr-8";
@@ -169,18 +194,83 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
         )}
       </div>
 
-      {/* ── STEP 1: Phone ── */}
-      <div>
-        <label className="bk-label">
-          <span className="bk-label-en">Phone Number <span className="text-destructive">*</span></span>
-          <span className="bk-label-hi">फ़ोन नंबर</span>
-        </label>
-        <input
-          type="tel" value={data.phone}
-          onChange={e => onChange("phone", e.target.value)}
-          className="bk-input" placeholder="9876543210" maxLength={10}
-          data-testid={`phone-${slug}`}
-        />
+      {/* ── STEP 1: Phone + Suffix ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <div>
+          <label className="bk-label">
+            <span className="bk-label-en">Phone Number <span className="text-destructive">*</span></span>
+            <span className="bk-label-hi">फ़ोन नंबर</span>
+          </label>
+          <input
+            type="tel" value={data.phone}
+            onChange={e => onChange("phone", e.target.value)}
+            className="bk-input" placeholder="9876543210" maxLength={10}
+            data-testid={`phone-${slug}`}
+          />
+        </div>
+
+        {/* Suffix / उपनाम — caste, occupation, or urf */}
+        <div>
+          <label className="bk-label">
+            <span className="bk-label-en">Suffix — Caste / Occ. / Urf <span className="font-normal text-muted-foreground">(optional)</span></span>
+            <span className="bk-label-hi">उपनाम — जाति / पेशा / उर्फ़</span>
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={suffixSelect}
+              onChange={e => handleSuffixSelect(e.target.value)}
+              className="bk-input flex-1"
+              data-testid={`suffix-select-${slug}`}
+            >
+              <option value="">None / कोई नहीं</option>
+              <optgroup label="— Occupation / पेशा —">
+                <option value="Dhobi">Dhobi / धोबी</option>
+                <option value="Darji">Darji / दर्जी</option>
+                <option value="Kumhar">Kumhar / कुम्हार</option>
+                <option value="Lohar">Lohar / लोहार</option>
+                <option value="Teli">Teli / तेली</option>
+                <option value="Nai">Nai / नाई</option>
+                <option value="Kori">Kori / कोरी</option>
+                <option value="Mallah">Mallah / मल्लाह</option>
+                <option value="Kewat">Kewat / केवट</option>
+                <option value="Kahar">Kahar / कहार</option>
+              </optgroup>
+              <optgroup label="— Caste / जाति —">
+                <option value="Yadav">Yadav / यादव</option>
+                <option value="Maurya">Maurya / मौर्य</option>
+                <option value="Prajapati">Prajapati / प्रजापति</option>
+                <option value="Kushwaha">Kushwaha / कुशवाहा</option>
+                <option value="Pasi">Pasi / पासी</option>
+                <option value="Bind">Bind / बिंद</option>
+                <option value="Rajput">Rajput / राजपूत</option>
+                <option value="Thakur">Thakur / ठाकुर</option>
+                <option value="Sharma">Sharma / शर्मा</option>
+                <option value="Gupta">Gupta / गुप्त</option>
+                <option value="Dubey">Dubey / दुबे</option>
+                <option value="Mishra">Mishra / मिश्रा</option>
+                <option value="Chamar">Chamar / चमार</option>
+              </optgroup>
+              <optgroup label="— Nickname / उर्फ़ —">
+                <option value="urf">Urf... / उर्फ़... (Custom)</option>
+              </optgroup>
+            </select>
+            {suffixSelect === "urf" && (
+              <input
+                type="text"
+                value={urfText}
+                onChange={e => handleUrfText(e.target.value)}
+                className="bk-input flex-1"
+                placeholder="Nickname / उपनाम"
+                data-testid={`suffix-urf-input-${slug}`}
+              />
+            )}
+          </div>
+          {data.suffix && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Preview: <span className="font-semibold text-foreground">{data.name || "…"} {data.suffix}</span>
+            </p>
+          )}
+        </div>
       </div>
 
       {/* ── STEP 2: Aadhaar Front ── */}

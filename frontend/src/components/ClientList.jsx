@@ -170,9 +170,12 @@ export default function ClientList() {
                       {(user?.role === "muneem" || user?.role === "sipahi")
                         ? (kyc.primary_borrower?.name_hindi || kyc.primary_borrower?.name || "—")
                         : (kyc.primary_borrower?.name || "—")}
+                      {kyc.primary_borrower?.suffix ? <span className="font-normal text-muted-foreground"> {kyc.primary_borrower.suffix}</span> : null}
                     </p>
                     {(user?.role === "muneem" || user?.role === "sipahi") && kyc.primary_borrower?.name_hindi && (
-                      <p className="text-xs text-muted-foreground">{kyc.primary_borrower.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {kyc.primary_borrower.name}{kyc.primary_borrower?.suffix ? ` ${kyc.primary_borrower.suffix}` : ""}
+                      </p>
                     )}
                     <p className="text-xs text-muted-foreground sm:hidden">
                       {kyc.primary_borrower?.phone} · {kyc.customer_id || kyc.kyc_number}
