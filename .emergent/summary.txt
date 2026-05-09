@@ -1,106 +1,107 @@
 <analysis>**original_problem_statement**: 
-Build a software solution for an NBFC-MFI app named Bahi Khata transitioning to a Sahukar Illaka model. Add Passkey (WebAuthn) authentication as an optional login method alongside the existing Phone + Password form.
-
-**PRODUCT REQUIREMENTS:**
-- **Roles Hierarchy**: Admin -> Maalik -> Muneem -> Sipahi.
-- **Accounts Module**: Full double-entry accounting. Custom expense templates. Auto-journal entries on Loan Disbursement and EMI Collection.
-- **Gyal (Bad Debt)**: Manual year-end closing per illaka.
-- **Global Context**: Force Illaka selection right after 10-digit mobile login.
-- **Collection Sheet (Vasuli)**: Operates on a full Financial Year (FY) view. Combines Net-off loans (Old + New) into a single row. Automatically calculates retroactive Opening Balances based on the selected FY. Must support full desktop view on mobile when in landscape mode.
-- **Authentication**: Phone + Password (Primary), Passkey/WebAuthn (Optional/Biometric for field agents).
+Build a software solution for an NBFC-MFI app named Bahi Khata transitioning to a Sahukar Illaka model. Ensure the Collection Sheet (Vasuli) strictly operates on a Financial Year (FY) view, handling complex Net-off loans gracefully.
+PRODUCT REQUIREMENTS:
+- Roles Hierarchy: Admin -> Maalik -> Muneem -> Sipahi.
+- Accounts Module: Full double-entry accounting.
+- Collection Sheet: FY view, combines Net-off loans, calculates retroactive balances.
+- Comprehensive Maalik-level filtering, Dashboard Analytics, and Legacy Data Import capabilities.
+- Client KYC: Support occupational/nickname suffix fields.
+- CRIF High Mark Integration for credit bureau checks prior to disbursements (UAT and Production).
 
 **User's preferred language**: English (INSTRUCT next agent to respond in English only)
 
 **what currently exists?** 
-A robust, production-ready React + FastAPI + MongoDB MFI application. Core accounting, KYC, and Illaka-based hierarchy are fully functional. The Collection Sheet (Vasuli) operates on a Financial Year basis, merges Net-off loans, and now dynamically switches to a full horizontal desktop layout when a mobile device is rotated to landscape. Passkey (WebAuthn) login has been fully integrated on the frontend and backend, serving as an optional biometric login method without replacing the standard phone+password flow.
+A production-ready React + FastAPI + MongoDB MFI application with double-entry accounting, WebAuthn passkey login, and Vasuli Sheets. The CRIF High Mark Integration is now fully polished. It handles both UAT (IOI/CNS) and Production XML structures, rendering the loans in an intuitive per-loan accordion card format with a colored DPD payment history matrix. The app includes a Download PDF function for CRIF reports and strictly enforces a 30-day cooldown between pulls for a single client.
 
 **Last working item**: 
-    - Last item agent was working: Implementing responsive landscape view on mobile for the Collection Sheet, providing the same UI as desktop when the phone orientation is landscape.
-    - Status: NONE (Completed and verified via compilation and css checks).
-    - Agent Testing Done: Y (Bash compilation/logs checks)
-    - Which testing method agent to use? NA
+    - Last item agent was working: Enforcing a 30-day cooldown on pulling new CRIF reports for a client to save API costs. The backend was updated to return a 429 with cooldown info, and the frontend Re-check button was updated to display a locked state (Locked · 30d) and an informative banner.
+    - Status: COMPLETED
+    - Agent Testing Done: Y
+    - Which testing method agent to use? manual testing by curl/bash and screenshot tool.
     - User Testing Done: N
 
 **All Pending/In progress Issue list**:  
-None. The 500 error reported during Passkey login was successfully debugged and fixed (it was a  variable naming change in  v2.7.1).
+None.
 
 **In progress Task List**: 
-None. 
+None.
 
 **Upcoming and Future Tasks**
-    Future Tasks:
-    - Task 1 (P2): **WhatsApp Todays Collection Summary"** share on the Vasuli page (native device share using wa.me).
+    Upcoming Tasks:
+    - Task 1 (P2): **WhatsApp Todays Collection Summary" share** on the Vasuli page (native device share using wa.me).
     - Task 2 (P2): **Print Passbook** (PDF/WhatsApp share) on the Client Detail tab.
-    - Task 3 (P3): **Misal-level Filtering** dropdown next to the top-right Illaka Context selector.
-    - Task 4 (P3): **Forgot Password OTP Flow** via SMS (Requires Twilio/Paid Gateway).
-    - Task 5 (Enhancement): **Gyal Summary Dashboard Card** (Total bad debt amount/count overview).
-    - Task 6 (Enhancement): **Manage Passkeys UI** section under the user profile page so field agents can view and delete registered devices without needing admin access.
+    - Task 3 (P3): **Forgot Password OTP Flow** via SMS (Requires Twilio/Paid Gateway. Remember to use `integration_playbook_expert_v2` for the SMS/Auth integration).
+    
+    Future Tasks:
+    - Task 4 (Enhancement): **Gyal Summary Dashboard Card** (Total bad debt amount/count overview).
+    - Task 5 (Enhancement): **Manage Passkeys UI** section under the user profile page so field agents can view and delete registered devices without needing admin access.
 
 **Completed work in this session**
-- **Passkey (WebAuthn) Integration (DONE)**: Endpoints added (`passkeys.py`), MongoDB TTL index added, and frontend `Login.jsx` and `AuthContext.jsx` updated. Supports biometric register/login.
-- **Py_WebAuthn Bug Fix (DONE)**: Fixed a 500 server error during authentication verification by using `verification.new_sign_count` instead of `sign_count` (due to `py_webauthn` 2.7.1 schema updates).
-- **Collection Sheet Mobile Landscape View (DONE)**: Added a custom `landscape: { raw: "(orientation: landscape)" }` media query variant to `tailwind.config.js`. Updated `CollectionSheet.jsx` to append `landscape:` equivalents of all `lg:` classes, ensuring the 12-month FY strip table appears seamlessly when users rotate their phones horizontally. Added a horizontal scroll container (`min-w-[1024px] overflow-x-auto`) for small landscape devices.
+- Fixed PROD CRIF XML parser truncation issue by increasing the string limit to 500,000 characters (`/app/backend/routes/crif.py`).
+- Implemented accordion-style `LoanAccountCard` component for rendering both PROD and UAT/IOI loans with DPD payment history matrices (`/app/frontend/src/components/CrifCheck.jsx`).
+- Changed CRIF Inquiry purpose code to "JLG Group" instead of "Housing Loan" (`/app/backend/routes/crif.py`).
+- Added "Download PDF" button for the CRIF tab using custom print-media CSS (`/app/frontend/src/components/CrifCheck.jsx`, `/app/frontend/src/index.css`).
+- Implemented a 30-day cooldown logic for fetching new CRIF reports (`/app/backend/routes/crif.py`, `/app/frontend/src/components/CrifCheck.jsx`).
 
 **Earlier issues found/mentioned but not fixed**
-None.
+   Issue 1: IP Whitelisting Stability
+   - Debug checklist: The outbound IP currently used (`34.170.12.145`) is not guaranteed to remain stable across forks/deployments. The user was warned about this.
+   - Why to solve this issue and what will be achieved with this? If the IP changes, CRIF API requests will fail due to their IP whitelisting rules. The agent suggested implementing a proxy service or contacting support.
+   - Should Test frontend/backend/both after fix: Backend.
+   - Is recurring issue? N
 
 **Known issue recurrence from previous fork**
   - Issue recurrence in previous fork: None
   - Recurrence count: 0
+  - Status: RESOLVED
 
 **Code Architecture**
 ```text
 /app/
 ├── backend/
-│   ├── core/ (database.py, auth.py)
-│   ├── routes/ (collections.py, passkeys.py, accounts.py, auth.py, etc.)
+│   ├── core/
+│   ├── routes/ (collections.py, loans.py, kycs.py, crif.py)
 │   ├── models.py, helpers.py, server.py
-│   └── tests/ 
 ├── frontend/
-│   ├── tailwind.config.js (Added landscape screen variant)
 │   └── src/
-│       ├── components/ (CollectionSheet.jsx, Login.jsx, AuthContext.jsx)
+│       ├── components/ (CrifCheck.jsx, ClientDetail.jsx, ClientList.jsx)
 ```
 
 **Key Technical Concepts**
-React, Tailwind CSS, FastAPI, MongoDB, JWT Auth, Double-Entry Accounting, WebAuthn (Passkeys standard via `navigator.credentials` and `py_webauthn`).
+React, Tailwind CSS, FastAPI, MongoDB, JWT Auth, CRIF High Mark XML SOAP Integration.
 
 **key DB schema**
-  - `users`: {phone, role, assigned_illaka_ids, passkeys: [{id, public_key, sign_count, name}]}
-  - `loans`: {loan_number, principal, emi_schedule, is_gyal, status, parent_loan_id, reloan_id, netoff_closed}
+  - `kycs`: Stores customer details.
+  - `crif_checks`: Stores `checked_at`, `raw_xml_response`, and `kyc_id`.
 
 **changes in tech stack**
-  - `py_webauthn` added to the backend for Passkey registration and signature verification.
+  - None.
 
 **All files of reference** 
-  - `/app/backend/routes/passkeys.py` (Created: Handles all WebAuthn registration/auth options and verifications)
-  - `/app/frontend/src/components/Login.jsx` (Modified: Includes passkey fingerprint login UI and logic)
-  - `/app/frontend/src/components/AuthContext.jsx` (Modified: Passkey wrapper functions added)
-  - `/app/frontend/tailwind.config.js` (Modified: Added `landscape` media query extension)
-  - `/app/frontend/src/components/CollectionSheet.jsx` (Modified: Replaced strict `lg:` classes with dual `lg:` + `landscape:` classes for horizontal orientation responsiveness).
+  - `/app/backend/routes/crif.py` (Updated XML limits, Inquiry Purpose, and Cooldown Logic).
+  - `/app/frontend/src/components/CrifCheck.jsx` (Added `LoanAccountCard`, Payment matrix, PDF Download, and Cooldown lock states).
+  - `/app/frontend/src/index.css` (Added `@media print` styling for the CRIF tab).
+  - `/app/memory/PRD.md` (Updated).
 
 **Areas that need refactoring**: 
-- `collections.py` and `CollectionSheet.jsx` are growing quite large due to complex MFI business rules. No immediate refactor required, but edit carefully to avoid breaking the Net-off merging, FY boundaries, or the new landscape responsiveness.
+- `CrifCheck.jsx` is growing very large (>800 lines). The `LoanAccountCard` component and `parsePaymentHistory` helper could be extracted into their own files to improve maintainability.
 
 **key api endpoints**
-- `GET /api/auth/passkey/auth-options`
-- `GET /api/auth/passkey/register-options`
-- `POST /api/auth/passkey/register-verify`
-- `POST /api/auth/passkey/auth-verify`
-- `GET /api/collections/sheet`
+- `POST /api/crif/check/{kyc_id}` (Initiate a new CRIF check, now blocks if within 30 days)
+- `GET /api/crif/result/{kyc_id}` (Fetch latest stored CRIF result and cooldown state)
+- `GET /api/crif/report-html/{kyc_id}` (Fallback for raw HTML reports)
 
 **Critical Info for New Agent**
-- **Passkey Validation Data Structs**: Note that `py_webauthn 2.7.1` uses `new_sign_count` on the `VerifiedAuthentication` object. The backend code reflects this fix, do not revert to `sign_count`.
-- **Landscape Styling Strategy**: If adding new columns or expanding views in `CollectionSheet.jsx`, always remember to add `landscape:xxx` classes alongside `lg:xxx` classes to ensure the changes are reflected on mobile devices held horizontally.
+- **CRIF Cooldown**: There is now a strict 30-day cooldown logic on the `POST /api/crif/check` endpoint. Testing multiple checks for the same client will result in a 429 error.
+- **Login Credentials**: The admin login expects a Mobile Number (`9999999999`) and Password (`Admin@123`).
+- **IP Proxy Potential**: Be prepared to wire up a `CRIF_PROXY_URL` in the future if the user decides to solve the IP whitelisting instability with a static-IP proxy service.
 
 **documents and test reports created in this job** 
   - `/app/memory/PRD.md` (Updated)
-  - `/app/test_reports/iteration_22.json` (Passkey endpoint test results; all 32 WebAuthn backend tests passed)
+  - `/app/memory/test_credentials.md`
 
 **Last 10 User Messages and any pending HUMAN messages** 
- - *User*: "Do P0" (Passkeys implementation initiated)
- - *User*: "Passkey registered successfully. But when I try to login with it, I get the following error: Request failed with status code 500" (Agent debugged backend attribute error and fixed `new_sign_count`)
- - *User*: "Collection sheet: Is it possible to have the same UI as the desktop for the phone when the phone is held in landscape mode." (Agent successfully implemented tailwind orientation logic).
+ - *User*: "Do not allow CRIF report to be pulled again for a particular client before 30 days have passed." (COMPLETED).
 
 **Project Health Check:**
 Healthy.
@@ -108,18 +109,25 @@ Healthy.
 **3rd Party Integrations** 
   - Emergent Object Storage — requires Emergent Storage setup
   - Google Gemini (Aadhaar OCR) — uses Emergent LLM Key
-  - WebAuthn (Passkeys) — Requires browser standards and `py_webauthn` (No 3rd party API key required).
+  - WebAuthn (Passkeys) — browser standards/py_webauthn
+  - CRIF High Mark (Credit Bureau) — requires User Credentials
 
 **Testing status**
-  - Testing agent used after significant changes: YES (Testing agent validated WebAuthn integration completely).
+  - Testing agent used after significant changes: NO (Iterative manual testing used due to external API costs)
   - Troubleshoot agent used after agent stuck in loop: NO
-  - Test files created: `/app/backend/tests/test_passkey_webauthn.py` (via testing agent).
+  - Test files created: None
   - Known regressions: None
 
 **Credentials to test flow:**
-Available in `/app/memory/test_credentials.md`. 
-Admin: `9999999999` / `Admin@123`
-Muneem Test: `7777000001` / `Test@1234`
+Available in `/app/memory/test_credentials.md` (Admin: Mobile `9999999999` / `Admin@123`)
 
 **What agent forgot to execute**
-The agent fulfilled all requests flawlessly, including debugging an obscure library struct error and handling the UI orientation request. The new agent should pick up the P2/P3 upcoming tasks from the backlog, prioritizing the "Todays Collection Summary WhatsApp share or Print Passbook features based on user confirmation.</analysis>
+Everything requested was thoroughly executed and tested.
+
+**Debugging checklist for current issue**
+No active issue. For upcoming Task 1 (WhatsApp "Todays Collection Summary share):
+    Frontend files to check: 
+    -  (or equivalent Collection page where the summary is rendered).
+  
+    Backend files to check:
+    - None required if purely extracting data from existing frontend state and generating a  link.</analysis>
