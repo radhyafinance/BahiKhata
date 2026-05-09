@@ -176,7 +176,7 @@ def _build_crif_xml(kyc: dict, loan_amount: int = 50000, mbrid: str = "", env: s
         f"<CREDT-REQ-TYP>INDV</CREDT-REQ-TYP>"
         f"<CREDT-RPT-TRN-ID>001</CREDT-RPT-TRN-ID>"
         f"<CREDT-INQ-PURPS-TYP>ACCT-ORIG</CREDT-INQ-PURPS-TYP>"
-        f"<CREDT-INQ-PURPS-TYP-DESC>Housing Loan</CREDT-INQ-PURPS-TYP-DESC>"
+        f"<CREDT-INQ-PURPS-TYP-DESC>JLG Group</CREDT-INQ-PURPS-TYP-DESC>"
         f"<CREDIT-INQUIRY-STAGE>PRE-DISB</CREDIT-INQUIRY-STAGE>"
         f"<CREDT-RPT-TRN-DT-TM>{inq_dt}</CREDT-RPT-TRN-DT-TM>"
         f"<MBR-ID>{mbrid}</MBR-ID>"
