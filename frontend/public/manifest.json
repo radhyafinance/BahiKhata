@@ -1,0 +1,45 @@
+{
+  "short_name": "Bahi Khata",
+  "name": "Bahi Khata — NBFC-MFI Platform",
+  "description": "Microfinance management: KYC, collections, loans, and accounts for field agents.",
+  "icons": [
+    {
+      "src": "icons/icon-72.png",
+      "sizes": "72x72",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-96.png",
+      "sizes": "96x96",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-144.png",
+      "sizes": "144x144",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "orientation": "portrait",
+  "theme_color": "#166534",
+  "background_color": "#ffffff",
+  "scope": "/",
+  "lang": "hi-IN",
+  "categories": ["finance", "business", "productivity"]
+}
