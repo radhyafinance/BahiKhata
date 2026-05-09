@@ -161,7 +161,16 @@ export default function Layout() {
   );
 
   return (
-    <div className="flex h-screen bg-background overflow-hidden">
+    <div
+      className="flex bg-background overflow-hidden"
+      style={{
+        height: "100dvh",
+        paddingTop: "env(safe-area-inset-top)",
+        paddingBottom: "env(safe-area-inset-bottom)",
+        paddingLeft: "env(safe-area-inset-left)",
+        paddingRight: "env(safe-area-inset-right)",
+      }}
+    >
       {/* Desktop Sidebar */}
       <aside className="hidden lg:flex flex-col w-64 border-r border-border bg-card flex-shrink-0">
         <SidebarContent />
@@ -171,7 +180,10 @@ export default function Layout() {
       {sidebarOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div className="absolute inset-0 bg-black/40" onClick={() => setSidebarOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-72 bg-card border-r border-border shadow-xl z-10">
+          <aside
+            className="absolute left-0 top-0 h-full w-72 bg-card border-r border-border shadow-xl z-10"
+            style={{ paddingTop: "env(safe-area-inset-top)" }}
+          >
             <div className="absolute top-4 right-4">
               <button onClick={() => setSidebarOpen(false)} className="p-2 rounded-lg hover:bg-muted">
                 <X size={20} />
