@@ -320,6 +320,14 @@ export default function CrifCheck({ kycId, hasDob }) {
   const serviceStatuses = r?.service_statuses || {};
   const errors = r?.errors || [];
 
+  // Cooldown — server-computed; UI derives the friendly date string
+  const cooldownActive = !!result?.cooldown_active;
+  const nextCheckDateStr = result?.next_check_allowed_at
+    ? new Date(result.next_check_allowed_at).toLocaleDateString("en-IN", {
+        day: "2-digit", month: "short", year: "numeric"
+      })
+    : "";
+
   // ── Derive PROD-format summary from prod_accounts when ACCOUNTS-SUMMARY is empty ──
   const toNum = (v) => parseInt(String(v || "0").replace(/[^\d.-]/g, "")) || 0;
   const prodDerivedSummary = prodAccounts.length > 0 ? prodAccounts.reduce(
@@ -387,19 +395,43 @@ export default function CrifCheck({ kycId, hasDob }) {
           )}
           <button
             onClick={runCheck}
-            disabled={checking || !hasDob}
+            disabled={checking || !hasDob || cooldownActive}
             className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-primary text-primary-foreground hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             data-testid="crif-run-check-btn"
-            title={!hasDob ? "Add Date of Birth to KYC first" : ""}
+            title={
+              !hasDob
+                ? "Add Date of Birth to KYC first"
+                : cooldownActive
+                ? `Next check available on ${nextCheckDateStr} (${result.cooldown_days_remaining} day(s) remaining)`
+                : ""
+            }
           >
             {checking ? (
               <><RefreshCw size={14} className="animate-spin" /> Checking...</>
+            ) : cooldownActive ? (
+              <><Clock size={14} /> Locked · {result.cooldown_days_remaining}d</>
             ) : (
               <><ShieldCheck size={14} /> {result ? "Re-check" : "Run CRIF Check"}</>
             )}
           </button>
         </div>
       </div>
+
+      {/* Cooldown info banner */}
+      {cooldownActive && (
+        <div className="bk-card flex items-start gap-3 border-l-4 border-blue-400 bg-blue-50">
+          <Clock size={18} className="text-blue-600 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-semibold text-blue-800">
+              Re-check locked for {result.cooldown_days_remaining} more day(s)
+            </p>
+            <p className="text-xs text-blue-700 mt-0.5">
+              CRIF reports for the same client can only be pulled once every {result.cooldown_days || 30} days.
+              Next check will be available on <strong>{nextCheckDateStr}</strong>.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* No DOB warning */}
       {!hasDob && (

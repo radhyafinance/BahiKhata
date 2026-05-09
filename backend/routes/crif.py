@@ -8,7 +8,7 @@ import uuid
 import logging
 import requests
 import xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from bson import ObjectId
 
@@ -34,6 +34,10 @@ _PROD_PASSWORD = os.environ.get("CRIF_PROD_PASSWORD")
 _PROD_MBRID    = os.environ.get("CRIF_PROD_MBRID")
 
 CRIF_SUB_MBR_ID = os.environ.get("CRIF_SUB_MBR_ID", "RADHYA MICRO FINANCE PRIVATE LIMITED")
+
+# Re-check cooldown: a CRIF report cannot be pulled again for the same client
+# until this many days have passed since the last successful check.
+CRIF_COOLDOWN_DAYS = 30
 
 def _active_config():
     """Return (url, user_id, password, mbrid, env_label) for the active environment."""
@@ -478,6 +482,33 @@ async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_u
             detail="Date of Birth is required for CRIF check. Please update the KYC with DOB first."
         )
 
+    # ── 30-day cooldown — block if a successful check was already pulled recently ──
+    last_success = await db.crif_checks.find_one(
+        {"kyc_id": kyc_id, "result.status": "success"},
+        sort=[("checked_at", -1)],
+        projection={"checked_at": 1, "_id": 0},
+    )
+    if last_success and last_success.get("checked_at"):
+        try:
+            last_dt = datetime.fromisoformat(last_success["checked_at"])
+        except (ValueError, TypeError):
+            last_dt = None
+        if last_dt is not None:
+            now = datetime.now(timezone.utc)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            elapsed = (now - last_dt).days
+            if elapsed < CRIF_COOLDOWN_DAYS:
+                next_allowed = last_dt + timedelta(days=CRIF_COOLDOWN_DAYS)
+                raise HTTPException(
+                    status_code=429,
+                    detail=(
+                        f"CRIF check already pulled {elapsed} day(s) ago. "
+                        f"Next check allowed on {next_allowed.strftime('%d-%m-%Y')} "
+                        f"({CRIF_COOLDOWN_DAYS - elapsed} day(s) remaining)."
+                    ),
+                )
+
     # Get loan amount from associated loan
     loan_amount = 50000
     loan = await db.loans.find_one({"kyc_id": kyc_id})
@@ -554,9 +585,32 @@ async def get_crif_result(kyc_id: str, current_user: dict = Depends(get_current_
         projection={"raw_xml_request": 0, "_id": 0}
     )
     if not check:
-        return {"has_result": False}
+        return {"has_result": False, "cooldown_days": CRIF_COOLDOWN_DAYS}
     result = check.get("result", {})
     _, _, _, _, current_env = _active_config()
+
+    # Compute cooldown info — based on most recent SUCCESSFUL check
+    next_check_at, days_remaining, cooldown_active = None, 0, False
+    last_success = await db.crif_checks.find_one(
+        {"kyc_id": kyc_id, "result.status": "success"},
+        sort=[("checked_at", -1)],
+        projection={"checked_at": 1, "_id": 0},
+    )
+    if last_success and last_success.get("checked_at"):
+        try:
+            last_dt = datetime.fromisoformat(last_success["checked_at"])
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            now = datetime.now(timezone.utc)
+            elapsed = (now - last_dt).days
+            if elapsed < CRIF_COOLDOWN_DAYS:
+                next_dt = last_dt + timedelta(days=CRIF_COOLDOWN_DAYS)
+                next_check_at = next_dt.isoformat()
+                days_remaining = CRIF_COOLDOWN_DAYS - elapsed
+                cooldown_active = True
+        except (ValueError, TypeError):
+            pass
+
     return {
         "has_result": True,
         "kyc_id": check.get("kyc_id"),
@@ -566,6 +620,10 @@ async def get_crif_result(kyc_id: str, current_user: dict = Depends(get_current_
         "env": check.get("env", "UAT"),
         "current_env": current_env,
         "result": result,
+        "cooldown_active": cooldown_active,
+        "cooldown_days": CRIF_COOLDOWN_DAYS,
+        "cooldown_days_remaining": days_remaining,
+        "next_check_allowed_at": next_check_at,
     }
 
 
