@@ -28,7 +28,14 @@
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@600&display=swap" rel="stylesheet" />
 
         <title>Bahi Khata</title>
-        <script>window.addEventListener("error",function(e){if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault()}},true);</script>
+        <script>window.addEventListener("error",function(e){
+          // Suppress cross-origin "Script error." — browsers hide details of errors from
+          // third-party scripts (Emergent badge, PostHog, etc.) for security reasons.
+          // These are never errors from the app's own code.
+          if(e.message==="Script error."||(!e.message&&!e.filename)){e.stopImmediatePropagation();e.preventDefault();return;}
+          // Suppress DataCloneError for PerformanceServerTiming
+          if(e.error instanceof DOMException&&e.error.name==="DataCloneError"&&e.message&&e.message.includes("PerformanceServerTiming")){e.stopImmediatePropagation();e.preventDefault();}
+        },true);</script>
         <script src="https://assets.emergent.sh/scripts/emergent-main.js"></script>
     </head>
     <body>
