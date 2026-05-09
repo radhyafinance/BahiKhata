@@ -59,6 +59,7 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 /**
  * Parse CRIF COMBINED-PAYMENT-HISTORY string → { year: { monthIdx: dpd } }
  * Format: "Jan:2025,000|Dec:2024,000|Nov:2024,XXX|..."
+ * IOI/CNS variant: "Apr:2026,011/XXX|..."  (DPD/asset-classification — keep DPD only)
  */
 function parsePaymentHistory(raw) {
   if (!raw || typeof raw !== "string") return {};
@@ -71,8 +72,11 @@ function parsePaymentHistory(raw) {
     const [mon, year] = monYear.split(":");
     const mi = MONTHS.indexOf((mon || "").slice(0, 3));
     if (mi === -1 || !year) return;
+    // CNS variant: "DPD/CLASSIFICATION" — take DPD part only
+    let dpd = (dpdRaw ?? "").trim();
+    if (dpd.includes("/")) dpd = dpd.split("/")[0].trim();
     if (!grid[year]) grid[year] = {};
-    grid[year][mi] = (dpdRaw ?? "").trim();
+    grid[year][mi] = dpd;
   });
   return grid;
 }
@@ -151,6 +155,8 @@ function LoanAccountCard({ acct, index }) {
   const isActive = (acct.status || "").toUpperCase() === "ACTIVE";
   const overdueNum = parseInt(String(acct.overdue || "0").replace(/[^\d]/g, "")) || 0;
   const dpdNum = parseInt(acct.dpd || "0") || 0;
+  // CNS/IOI accounts use ownership+security+interest_rate; PROD/MFI uses fldg+worst_delinq+kendra
+  const isCns = !!(acct.ownership || acct.security_status || acct.interest_rate);
 
   return (
     <div className="bk-card overflow-hidden" data-testid={`crif-loan-card-${index}`}>
@@ -170,6 +176,7 @@ function LoanAccountCard({ acct, index }) {
               {acct.loan_type || "—"}
               {acct.frequency && ` • ${acct.frequency}`}
               {acct.loan_cycle && ` • Cycle ${acct.loan_cycle}`}
+              {acct.ownership && ` • ${acct.ownership}`}
             </p>
           </div>
         </div>
@@ -191,7 +198,7 @@ function LoanAccountCard({ acct, index }) {
         <DetailField
           label="Current Balance"
           value={acct.current_balance ? `₹${acct.current_balance}` : "₹0"}
-          valueClass={parseInt(acct.current_balance?.replace(/,/g, "")) > 0 ? "font-semibold" : ""}
+          valueClass={parseInt((acct.current_balance || "").replace(/,/g, "")) > 0 ? "font-semibold" : ""}
         />
         <DetailField label="Write-Off" value={acct.write_off ? `₹${acct.write_off}` : "₹0"} />
         <DetailField label="Last Payment Date" value={acct.last_payment} />
@@ -209,10 +216,21 @@ function LoanAccountCard({ acct, index }) {
         />
         <DetailField label="Tenure (months)" value={acct.term_months} />
 
-        <DetailField label="FLDG" value={acct.fldg} />
-        <DetailField label="Account in Dispute" value={acct.dispute || "No"} />
-        <DetailField label="Worst Delinquency" value={acct.worst_delinq || "0"} />
-        <DetailField label="Branch / Kendra" value={[acct.branch, acct.kendra].filter(Boolean).join(" / ") || "—"} />
+        {isCns ? (
+          <>
+            <DetailField label="Security" value={acct.security_status} />
+            <DetailField label="Interest Rate" value={acct.interest_rate ? `${acct.interest_rate}%` : "—"} />
+            <DetailField label="Ownership" value={acct.ownership} />
+            <DetailField label="Account in Dispute" value={acct.dispute || "No"} />
+          </>
+        ) : (
+          <>
+            <DetailField label="FLDG" value={acct.fldg} />
+            <DetailField label="Account in Dispute" value={acct.dispute || "No"} />
+            <DetailField label="Worst Delinquency" value={acct.worst_delinq || "0"} />
+            <DetailField label="Branch / Kendra" value={[acct.branch, acct.kendra].filter(Boolean).join(" / ") || "—"} />
+          </>
+        )}
       </div>
 
       {/* Payment History matrix */}
@@ -697,56 +715,18 @@ export default function CrifCheck({ kycId, hasDob }) {
             </div>
           )}
 
-          {/* IOI Loan History (IOI=true response format) */}
+          {/* IOI / CNS Loan History (RESPONSES/RESPONSE/LOAN-DETAILS format) */}
           {ioiAccounts.length > 0 && (
-            <div className="bk-card space-y-3">
-              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <Building2 size={15} /> Loan History ({ioiAccounts.length} accounts)
-              </h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-border text-muted-foreground text-xs uppercase">
-                      <th className="text-left py-2 pr-3">Lender</th>
-                      <th className="text-left py-2 pr-3">Type</th>
-                      <th className="text-right py-2 pr-3">Disbursed</th>
-                      <th className="text-right py-2 pr-3">Balance</th>
-                      <th className="text-right py-2 pr-3">Overdue</th>
-                      <th className="text-left py-2 pr-3">Status</th>
-                      <th className="text-left py-2">Disbursed On</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {ioiAccounts.map((acct, i) => (
-                      <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
-                        <td className="py-2 pr-3 font-medium">{acct.lender || "XXXX"}</td>
-                        <td className="py-2 pr-3 text-muted-foreground text-xs">{acct.loan_type || "—"}</td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-xs">
-                          {acct.disbursed ? `₹${acct.disbursed}` : "—"}
-                        </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-xs font-semibold">
-                          {acct.current_balance ? `₹${acct.current_balance}` : "₹0"}
-                        </td>
-                        <td className="py-2 pr-3 text-right tabular-nums text-xs">
-                          <span className={parseInt(acct.overdue) > 0 ? "text-red-600 font-semibold" : "text-muted-foreground"}>
-                            {acct.overdue ? `₹${acct.overdue}` : "₹0"}
-                          </span>
-                        </td>
-                        <td className="py-2 pr-3">
-                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                            (acct.status || "").toLowerCase() === "active"
-                              ? "bg-green-100 text-green-700"
-                              : "bg-muted text-muted-foreground"
-                          }`}>
-                            {acct.status || "—"}
-                          </span>
-                        </td>
-                        <td className="py-2 text-muted-foreground text-xs">{acct.date_disbursed || "—"}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            <div className="space-y-3" data-testid="crif-ioi-accounts-list">
+              <div className="flex items-center gap-2 px-1">
+                <Building2 size={15} className="text-foreground" />
+                <h4 className="text-sm font-semibold text-foreground">
+                  {prodAccounts.length > 0 ? "Bank/NBFC Loan History" : "Loan History"} ({ioiAccounts.length} accounts)
+                </h4>
               </div>
+              {ioiAccounts.map((acct, i) => (
+                <LoanAccountCard key={i} acct={acct} index={`ioi-${i}`} />
+              ))}
             </div>
           )}
 

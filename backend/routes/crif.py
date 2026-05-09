@@ -356,27 +356,43 @@ def _parse_crif_response(xml_text: str) -> dict:
         })
     result["cns_accounts"] = cns_accounts
 
-    # ── UAT IOI: <RESPONSES>/<RESPONSE>/<LOAN-DETAILS> ───────────────────────
+    # ── UAT IOI / CNS: <RESPONSES>/<RESPONSE>/<LOAN-DETAILS> ─────────────────
     ioi_accounts = []
     for resp_node in report.findall(".//RESPONSES/RESPONSE"):
         loan = resp_node.find("LOAN-DETAILS")
         if loan is None:
             continue
+        # INSTALLMENT-AMT is sometimes "12,270/Monthly" — split on "/"
+        instl_raw = _get_text(loan, "INSTALLMENT-AMT")
+        instl_parts = instl_raw.split("/", 1) if "/" in instl_raw else [instl_raw, ""]
         ioi_accounts.append({
-            "lender":          _get_text(loan, "CREDIT-GUARANTOR"),
+            "lender":          _get_text(loan, "CREDIT-GUARANTOR") or _get_text(loan, "CREDIT-GRANTOR-NAME"),
             "loan_type":       _get_text(loan, "ACCT-TYPE"),
+            "frequency":       instl_parts[1].strip(),
             "status":          _get_text(loan, "ACCOUNT-STATUS"),
+            "acct_number":     _get_text(loan, "ACCT-NUMBER"),
+            "ownership":       _get_text(loan, "OWNERSHIP-IND"),
+            "matched_type":    _get_text(loan, "MATCHED-TYPE"),
+            "security_status": _get_text(loan, "SECURITY-STATUS"),
+            "interest_rate":   _get_text(loan, "INTEREST-RATE"),
             "disbursed":       _get_text(loan, "DISBURSED-AMT"),
             "current_balance": _get_text(loan, "CURRENT-BAL"),
             "overdue":         _get_text(loan, "OVERDUE-AMT"),
             "write_off":       _get_text(loan, "WRITE-OFF-AMT"),
+            "installment":     instl_parts[0].strip(),
+            "term_months":     _get_text(loan, "ORIGINAL-TERM"),
+            "fldg":            "",
+            "dispute":         _get_text(loan, "ACCT-IN-DISPUTE"),
+            "info_as_on":      _get_text(loan, "DATE-REPORTED"),
+            "loan_cycle":      "",
+            "worst_delinq":    "",
             "date_disbursed":  _get_text(loan, "DISBURSED-DATE"),
             "date_closed":     _get_text(loan, "CLOSED-DATE"),
             "last_payment":    _get_text(loan, "LAST-PAYMENT-DATE"),
-            "installment":     _get_text(loan, "INSTALLMENT-AMT"),
-            "interest_rate":   _get_text(loan, "INTEREST-RATE"),
-            "term_months":     _get_text(loan, "ORIGINAL-TERM"),
-            "payment_history": _get_text(loan, "COMBINED-PAYMENT-HISTORY"),
+            "dpd":             "",
+            "payment_history": _get_text(loan, "COMBINED-PAYMENT-HISTORY") or _get_text(loan, "AMT-PAID-HISTORY"),
+            "branch":          "",
+            "kendra":          "",
         })
     result["ioi_accounts"] = ioi_accounts
 
