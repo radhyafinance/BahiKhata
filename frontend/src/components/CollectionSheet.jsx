@@ -674,7 +674,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {/* Misal Header — sticky below the page controls bar */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className={`w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors sticky top-14 z-20 ${expanded ? "rounded-t-xl" : "rounded-xl"}`}
+        className={`w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors sticky top-[88px] sm:top-14 z-20 ${expanded ? "rounded-t-xl" : "rounded-xl"}`}
         data-testid={`misal-header-${misal.misal_id}`}
       >
         <div className="flex items-center gap-2">
@@ -695,7 +695,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {expanded && (
         <div className="divide-y divide-border/60">
           {/* Column Header — sticky below toggle */}
-          <div className="grid grid-cols-[52px_1fr_68px_80px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-[100px] z-10">
+          <div className="grid grid-cols-[52px_1fr_68px_80px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sticky top-[136px] sm:top-[100px] z-10">
             <span className="text-right pr-2 pl-3 py-2 self-center">EMI</span>
             <span className="pl-2 py-2 self-center">नाम / Name</span>
             {/* New columns — desktop or landscape */}
@@ -887,14 +887,14 @@ export default function CollectionSheet() {
     <div>
       {/* ── STICKY CONTROLS BAR ── */}
       <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border" data-testid="vasuli-sticky-header">
-        <div className="px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <h1 className="text-xl font-bold text-foreground font-['Outfit'] whitespace-nowrap">Vasuli / वसूली</h1>
-            <span className="hidden sm:inline text-xs px-2 py-0.5 bg-primary/10 text-primary font-semibold rounded-full whitespace-nowrap">
-              FY {getFyLabel(selectedFyStart)} · Apr {selectedFyStart}→Mar {selectedFyStart + 1}
-            </span>
-          </div>
-          <div className="flex items-center gap-2 flex-shrink-0" data-testid="sheet-controls">
+        {/* Row 1: Title + FY badge — always full width */}
+        <div className="px-4 sm:px-6 pt-2.5 pb-0 sm:pt-0 sm:pb-0 sm:h-14 flex items-center gap-2.5 sm:justify-between">
+          <h1 className="text-xl font-bold text-foreground font-['Outfit'] whitespace-nowrap">Vasuli / वसूली</h1>
+          <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary font-semibold rounded-full whitespace-nowrap">
+            FY {getFyLabel(selectedFyStart)}
+          </span>
+          {/* Desktop: controls inline in the same row */}
+          <div className="hidden sm:flex items-center gap-2 ml-auto flex-shrink-0" data-testid="sheet-controls">
             {allMisals.length > 1 && (
               <select
                 value={selectedMisalId}
@@ -908,16 +908,13 @@ export default function CollectionSheet() {
                 ))}
               </select>
             )}
-            <div className="flex items-center gap-1" title="Collection date — used when pressing Enter to collect">
-              <span className="hidden sm:inline text-[10px] font-semibold text-muted-foreground whitespace-nowrap">तारीख</span>
-              <input
-                type="date"
-                value={collectDate}
-                onChange={(e) => setCollectDate(e.target.value)}
-                className="bk-input h-9 py-0 text-sm w-[7.5rem]"
-                data-testid="global-collect-date"
-              />
-            </div>
+            <input
+              type="date"
+              value={collectDate}
+              onChange={(e) => setCollectDate(e.target.value)}
+              className="bk-input h-9 py-0 text-sm w-[7.5rem]"
+              data-testid="global-collect-date"
+            />
             <select
               value={selectedFyStart}
               onChange={(e) => setSelectedFyStart(Number(e.target.value))}
@@ -938,10 +935,54 @@ export default function CollectionSheet() {
                 data-testid="print-sheet-btn"
               >
                 <Printer size={15} />
-                <span className="hidden sm:inline">Print</span>
+                <span>Print</span>
               </button>
             )}
           </div>
+        </div>
+
+        {/* Row 2: Controls — mobile only, compact */}
+        <div className="sm:hidden px-4 py-2 flex items-center gap-2" data-testid="sheet-controls">
+          {allMisals.length > 1 && (
+            <select
+              value={selectedMisalId}
+              onChange={(e) => setSelectedMisalId(e.target.value)}
+              className="bk-input h-8 py-0 text-xs font-semibold flex-1 min-w-0"
+              data-testid="misal-filter-select"
+            >
+              <option value="all">All Misals</option>
+              {allMisals.map((ms) => (
+                <option key={ms.id} value={ms.id}>{ms.name}</option>
+              ))}
+            </select>
+          )}
+          <input
+            type="date"
+            value={collectDate}
+            onChange={(e) => setCollectDate(e.target.value)}
+            className="bk-input h-8 py-0 text-xs w-[7.5rem] shrink-0"
+            data-testid="global-collect-date"
+          />
+          <select
+            value={selectedFyStart}
+            onChange={(e) => setSelectedFyStart(Number(e.target.value))}
+            className="bk-input h-8 py-0 text-xs font-semibold shrink-0"
+            data-testid="fy-select"
+          >
+            {availableFys.map((fy) => (
+              <option key={fy} value={fy}>{getFyLabel(fy)}</option>
+            ))}
+          </select>
+          {user?.role === "admin" && (
+            <button
+              onClick={() => setPrintModalOpen(true)}
+              className="flex items-center justify-center bk-btn-secondary h-8 w-8 p-0 shrink-0"
+              title="Print"
+              data-testid="print-sheet-btn"
+            >
+              <Printer size={14} />
+            </button>
+          )}
         </div>
       </div>
 
