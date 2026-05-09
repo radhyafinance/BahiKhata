@@ -294,3 +294,10 @@ See CHANGELOG.md for full history.
 - [x] **CRIF tab** added to ClientDetail page (3rd tab: CRIF / क्रेडिट)
 - [x] **CrifCheck.jsx** component with: Run/Re-check button, score display, MFI summary cards, account history tables, service status chips, "Full Report" button (HTML), DOB missing warning
 - [x] Live UAT API tested — Report ID: RADH260509CR385504415 successfully generated
+- [x] **PROD environment toggle** (CRIF_ENV=PROD, IP `34.170.12.145` whitelisted) — `_active_config()` switches creds based on env, `/api/crif/env` endpoint exposes active env to UI
+- [x] **PROD XML schema parser** — handles `<INDV-RESPONSE><LOAN-DETAIL>` (PROD) alongside UAT's `<RESPONSES><RESPONSE>` (IOI) format. Extracts lender, loan_type, status, disbursed, current_balance, overdue, write_off, installment, term, dpd, dates, payment_history, branch, kendra
+- [x] **PROD-derived Account Summary** in CrifCheck.jsx — when PROD response has no `<MFI-SUMMARY>`, frontend computes Total/Active/Disbursed/Balance/Overdue/Write-off from `prod_accounts` array; old UAT/IOI summary panels are hidden to avoid showing zero-value duplicates
+- [x] **PROD Loan History table** (10-column: Lender, Type, Disbursed, Balance, EMI, Overdue, DPD, Status, Disbursed date, Last Paid) with green ACTIVE/grey CLOSED status chips and red highlighting for non-zero overdue/DPD
+- [x] **Raw XML save limit** increased from 100 KB to 5 MB (Mongo doc limit is 16 MB) so `/api/crif/report-html/{kyc_id}` can re-parse the full HTML printable report without CDATA truncation
+- [x] **Verified end-to-end** with PROD response for client TE0014 (Tabassum) — Report `RADH260509CR064906888`, score 689, 10 prod_accounts (2 ACTIVE / 8 CLOSED), ₹4,20,558 disbursed, ₹88,029 current balance, 20 inquiries history rendered correctly on UI
+

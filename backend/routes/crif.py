@@ -200,28 +200,27 @@ def _get_text(elem, tag: str, default="") -> str:
 
 
 def _parse_crif_response(xml_text: str) -> dict:
-    """Parse CRIF XML response into structured dict."""
+    """Parse CRIF XML response into structured dict — handles both UAT and PROD formats."""
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as e:
-        return {"error": f"XML parse error: {e}", "raw_xml": xml_text[:2000]}
+        # Try fixing truncated CDATA before giving up
+        import re as _re
+        cleaned = _re.sub(r'<!\[CDATA\[[^\]]*$', '', xml_text, flags=_re.DOTALL)
+        # Close unclosed tags heuristically
+        try:
+            root = ET.fromstring(cleaned + "</INDV-REPORT></INDV-REPORTS></INDV-REPORT-FILE>")
+        except ET.ParseError:
+            return {"error": f"XML parse error: {e}", "raw_xml": xml_text[:2000]}
 
-    # Handle error response (REPORT-FILE with INQUIRY-STATUS/ERRORS)
+    # Handle error response
     inquiry_status = root.find(".//INQUIRY-STATUS")
     if inquiry_status is not None:
-        errors = []
-        for err in inquiry_status.findall(".//ERROR"):
-            errors.append({
-                "code": _get_text(err, "CODE"),
-                "description": _get_text(err, "DESCRIPTION"),
-            })
-        return {
-            "status": "error",
-            "errors": errors,
-            "response_type": _get_text(root, ".//RESPONSE-TYPE", "ERROR"),
-        }
+        errors = [{"code": _get_text(e, "CODE"), "description": _get_text(e, "DESCRIPTION")}
+                  for e in inquiry_status.findall(".//ERROR")]
+        return {"status": "error", "errors": errors,
+                "response_type": _get_text(root, ".//RESPONSE-TYPE", "ERROR")}
 
-    # Extract from INDV-REPORT
     report = root.find(".//INDV-REPORT")
     if report is None:
         return {"status": "no_report", "raw_xml": xml_text[:500]}
@@ -237,165 +236,180 @@ def _parse_crif_response(xml_text: str) -> dict:
         "prepared_for": _get_text(header, "PREPARED-FOR"),
     }
 
-    # Status details
+    # Service statuses
     statuses = {}
     for s in report.findall(".//STATUS-DETAILS/STATUS"):
         option = _get_text(s, "OPTION")
-        status_val = _get_text(s, "OPTION-STATUS")
         if option:
-            statuses[option] = status_val
+            statuses[option] = _get_text(s, "OPTION-STATUS")
     result["service_statuses"] = statuses
 
-    # Scores
+    # Scores — works for both UAT and PROD
     scores = []
     for score in report.findall(".//SCORES/SCORE"):
-        name = _get_text(score, "NAME") or _get_text(score, "SCORE-TYPE")
+        name  = _get_text(score, "NAME") or _get_text(score, "SCORE-TYPE")
         value = _get_text(score, "VALUE") or _get_text(score, "SCORE-VALUE")
-        desc = _get_text(score, "DESCRIPTION") or _get_text(score, "SCORE-COMMENTS")
+        desc  = _get_text(score, "DESCRIPTION") or _get_text(score, "SCORE-COMMENTS") or _get_text(score, "SCORE-FACTORS")
         if name:
             scores.append({"name": name, "value": value, "description": desc})
-    # Also check PERFORM-CONSUMER score location
-    for score in report.findall(".//CNS-ACCOUNT-DETAILS/PERFORM-CONSUMER-SCORE"):
-        name = "PERFORM CONSUMER"
-        value = _get_text(score, "SCORE-VALUE")
-        desc = _get_text(score, "SCORE-COMMENTS")
-        scores.append({"name": name, "value": value, "description": desc})
     result["scores"] = scores
 
-    # Account summary
+    # Account summary (DERIVED-ATTRIBUTES — same in both UAT & PROD)
     acc_summary = report.find(".//ACCOUNTS-SUMMARY")
     if acc_summary is not None:
-        derived = acc_summary.find("DERIVED-ATTRIBUTES") or ET.Element("X")
-        mfi_summ = acc_summary.find("MFI-SUMMARY") or ET.Element("X")
-        cns_summ = acc_summary.find("CNS-SUMMARY") or ET.Element("X")
-        cns_data = cns_summ.find("CNS-ACCOUNT-DETAILS") or ET.Element("X")
-
+        derived  = acc_summary.find("DERIVED-ATTRIBUTES") or ET.Element("X")
+        mfi_summ = acc_summary.find("MFI-SUMMARY")        or ET.Element("X")
+        cns_summ = acc_summary.find("CNS-SUMMARY")        or ET.Element("X")
+        cns_data = cns_summ.find("CNS-ACCOUNT-DETAILS")   or ET.Element("X")
         result["account_summary"] = {
-            "inquiries_last_6m": _get_text(derived, "INQUIRIES-IN-LAST-SIX-MONTHS", "0"),
-            "credit_history_months": _get_text(derived, "LENGTH-OF-CREDIT-HISTORY-MONTH", "0"),
-            "credit_history_years": _get_text(derived, "LENGTH-OF-CREDIT-HISTORY-YEAR", "0"),
-            "new_accounts_6m": _get_text(derived, "NEW-ACCOUNTS-IN-LAST-SIX-MONTHS", "0"),
+            "inquiries_last_6m":      _get_text(derived, "INQUIRIES-IN-LAST-SIX-MONTHS", "0"),
+            "credit_history_months":  _get_text(derived, "LENGTH-OF-CREDIT-HISTORY-MONTH", "0"),
+            "credit_history_years":   _get_text(derived, "LENGTH-OF-CREDIT-HISTORY-YEAR", "0"),
+            "new_accounts_6m":        _get_text(derived, "NEW-ACCOUNTS-IN-LAST-SIX-MONTHS", "0"),
             "delinquent_accounts_6m": _get_text(derived, "NEW-DELINQ-ACCOUNT-IN-LAST-SIX-MONTHS", "0"),
-            # MFI summary
-            "mfi_total_accounts": _get_text(mfi_summ, "TOTAL-NO-OF-ACCOUNTS"),
-            "mfi_active_accounts": _get_text(mfi_summ, "NO-OF-ACTIVE-ACCOUNTS"),
-            "mfi_disbursed_amount": _get_text(mfi_summ, "TOTAL-DISBURSED-AMOUNT"),
-            "mfi_current_balance": _get_text(mfi_summ, "CURRENT-BALANCE"),
-            "mfi_overdue_amount": _get_text(mfi_summ, "OVERDUE-AMOUNT"),
-            # CNS summary
-            "cns_total_accounts": _get_text(cns_data, "TOTAL-NO-OF-ACCOUNTS"),
-            "cns_active_accounts": _get_text(cns_data, "NO-OF-ACTIVE-ACCOUNTS"),
-            "cns_disbursed_amount": _get_text(cns_data, "TOTAL-DISBURSED-AMOUNT"),
-            "cns_current_balance": _get_text(cns_data, "CURRENT-BALANCE"),
-            "cns_overdue_amount": _get_text(cns_data, "OVERDUE-AMOUNT"),
-            "cns_write_off_amount": _get_text(cns_data, "TOTAL-WRITE-OFF-AMOUNT"),
+            "mfi_total_accounts":     _get_text(mfi_summ, "TOTAL-NO-OF-ACCOUNTS"),
+            "mfi_active_accounts":    _get_text(mfi_summ, "NO-OF-ACTIVE-ACCOUNTS"),
+            "mfi_disbursed_amount":   _get_text(mfi_summ, "TOTAL-DISBURSED-AMOUNT"),
+            "mfi_current_balance":    _get_text(mfi_summ, "CURRENT-BALANCE"),
+            "mfi_overdue_amount":     _get_text(mfi_summ, "OVERDUE-AMOUNT"),
+            "cns_total_accounts":     _get_text(cns_data, "TOTAL-NO-OF-ACCOUNTS"),
+            "cns_active_accounts":    _get_text(cns_data, "NO-OF-ACTIVE-ACCOUNTS"),
+            "cns_disbursed_amount":   _get_text(cns_data, "TOTAL-DISBURSED-AMOUNT"),
+            "cns_current_balance":    _get_text(cns_data, "CURRENT-BALANCE"),
+            "cns_overdue_amount":     _get_text(cns_data, "OVERDUE-AMOUNT"),
+            "cns_write_off_amount":   _get_text(cns_data, "TOTAL-WRITE-OFF-AMOUNT"),
         }
 
-    # MFI Accounts list (CONSUMER=true path)
+    # ── PROD format: <INDV-RESPONSE> / <LOAN-DETAIL> ──────────────────────────
+    # Each INDV-RESPONSE = one MFI lender's record for this borrower
+    prod_accounts = []
+    for resp_node in report.findall(".//INDV-RESPONSE"):
+        lender = _get_text(resp_node, "MFI")               # lender name
+        branch = _get_text(resp_node, "BRANCH")
+        kendra = _get_text(resp_node, "KENDRA")
+        loan   = resp_node.find("LOAN-DETAIL")
+        group  = resp_node.find("GROUP-DETAILS")
+        if loan is not None:
+            status = _get_text(loan, "STATUS")
+            prod_accounts.append({
+                "lender":         lender,
+                "loan_type":      _get_text(loan, "ACCT-TYPE"),
+                "status":         status,
+                "disbursed":      _get_text(loan, "DISBURSED-AMT"),
+                "current_balance": _get_text(loan, "CURRENT-BAL"),
+                "overdue":        _get_text(loan, "OVERDUE-AMT"),
+                "write_off":      _get_text(loan, "WRITE-OFF-AMT"),
+                "installment":    _get_text(loan, "INSTALLMENT-AMT"),
+                "term_months":    _get_text(loan, "ORIGINAL-TERM"),
+                "date_disbursed": _get_text(loan, "DISBURSED-DT"),
+                "date_closed":    _get_text(loan, "CLOSED-DT"),
+                "last_payment":   _get_text(loan, "LAST-PAYMENT-DATE"),
+                "dpd":            _get_text(loan, "DPD"),
+                "payment_history": _get_text(loan, "AMOUNT-PAID-HISTORY"),
+                "branch":         branch,
+                "kendra":         kendra,
+                "group_tot_balance": _get_text(group, "TOT-CURRENT-BAL") if group is not None else "",
+                "group_tot_disbursed": _get_text(group, "TOT-DISBURSED-AMT") if group is not None else "",
+            })
+    result["prod_accounts"] = prod_accounts
+
+    # ── UAT / CONSUMER=true: <MFI-ACCOUNTS> / <CNS-ACCOUNTS> ─────────────────
     mfi_accounts = []
     for acct in report.findall(".//MFI-ACCOUNTS//INDV-ACCOUNT-DETAILS"):
         mfi_accounts.append({
-            "lender": _get_text(acct, "CREDIT-GRANTOR-NAME"),
-            "loan_type": _get_text(acct, "ACCT-TYPE"),
-            "status": _get_text(acct, "ACCT-STATUS"),
-            "disbursed": _get_text(acct, "DISBURSED-AMOUNT"),
+            "lender":          _get_text(acct, "CREDIT-GRANTOR-NAME"),
+            "loan_type":       _get_text(acct, "ACCT-TYPE"),
+            "status":          _get_text(acct, "ACCT-STATUS"),
+            "disbursed":       _get_text(acct, "DISBURSED-AMOUNT"),
             "current_balance": _get_text(acct, "CURRENT-BALANCE"),
-            "overdue": _get_text(acct, "OVERDUE-AMOUNT"),
-            "date_opened": _get_text(acct, "OPEN-DATE"),
-            "date_closed": _get_text(acct, "CLOSE-DATE"),
+            "overdue":         _get_text(acct, "OVERDUE-AMOUNT"),
+            "date_opened":     _get_text(acct, "OPEN-DATE"),
+            "date_closed":     _get_text(acct, "CLOSE-DATE"),
         })
     result["mfi_accounts"] = mfi_accounts
 
-    # Commercial Accounts list (CNS / CONSUMER=true path)
     cns_accounts = []
     for acct in report.findall(".//CNS-ACCOUNTS//INDV-ACCOUNT-DETAILS"):
         cns_accounts.append({
-            "lender": _get_text(acct, "CREDIT-GRANTOR-NAME"),
-            "loan_type": _get_text(acct, "ACCT-TYPE"),
-            "status": _get_text(acct, "ACCT-STATUS"),
-            "disbursed": _get_text(acct, "DISBURSED-AMOUNT"),
+            "lender":          _get_text(acct, "CREDIT-GRANTOR-NAME"),
+            "loan_type":       _get_text(acct, "ACCT-TYPE"),
+            "status":          _get_text(acct, "ACCT-STATUS"),
+            "disbursed":       _get_text(acct, "DISBURSED-AMOUNT"),
             "current_balance": _get_text(acct, "CURRENT-BALANCE"),
-            "overdue": _get_text(acct, "OVERDUE-AMOUNT"),
-            "date_opened": _get_text(acct, "OPEN-DATE"),
+            "overdue":         _get_text(acct, "OVERDUE-AMOUNT"),
+            "date_opened":     _get_text(acct, "OPEN-DATE"),
         })
     result["cns_accounts"] = cns_accounts
 
-    # IOI Accounts — under RESPONSES/RESPONSE/LOAN-DETAILS (when IOI=true)
+    # ── UAT IOI: <RESPONSES>/<RESPONSE>/<LOAN-DETAILS> ───────────────────────
     ioi_accounts = []
     for resp_node in report.findall(".//RESPONSES/RESPONSE"):
         loan = resp_node.find("LOAN-DETAILS")
         if loan is None:
             continue
         ioi_accounts.append({
-            "lender": _get_text(loan, "CREDIT-GUARANTOR"),
-            "loan_type": _get_text(loan, "ACCT-TYPE"),
-            "status": _get_text(loan, "ACCOUNT-STATUS"),
-            "disbursed": _get_text(loan, "DISBURSED-AMT"),
+            "lender":          _get_text(loan, "CREDIT-GUARANTOR"),
+            "loan_type":       _get_text(loan, "ACCT-TYPE"),
+            "status":          _get_text(loan, "ACCOUNT-STATUS"),
+            "disbursed":       _get_text(loan, "DISBURSED-AMT"),
             "current_balance": _get_text(loan, "CURRENT-BAL"),
-            "overdue": _get_text(loan, "OVERDUE-AMT"),
-            "write_off": _get_text(loan, "WRITE-OFF-AMT"),
-            "date_disbursed": _get_text(loan, "DISBURSED-DATE"),
-            "date_closed": _get_text(loan, "CLOSED-DATE"),
-            "last_payment": _get_text(loan, "LAST-PAYMENT-DATE"),
-            "installment": _get_text(loan, "INSTALLMENT-AMT"),
-            "interest_rate": _get_text(loan, "INTEREST-RATE"),
-            "term_months": _get_text(loan, "ORIGINAL-TERM"),
+            "overdue":         _get_text(loan, "OVERDUE-AMT"),
+            "write_off":       _get_text(loan, "WRITE-OFF-AMT"),
+            "date_disbursed":  _get_text(loan, "DISBURSED-DATE"),
+            "date_closed":     _get_text(loan, "CLOSED-DATE"),
+            "last_payment":    _get_text(loan, "LAST-PAYMENT-DATE"),
+            "installment":     _get_text(loan, "INSTALLMENT-AMT"),
+            "interest_rate":   _get_text(loan, "INTEREST-RATE"),
+            "term_months":     _get_text(loan, "ORIGINAL-TERM"),
             "payment_history": _get_text(loan, "COMBINED-PAYMENT-HISTORY"),
         })
     result["ioi_accounts"] = ioi_accounts
 
-    # Primary account summary (present in IOI response)
+    # Primary account summary (IOI format)
     primary_summ = report.find(".//PRIMARY-ACCOUNTS-SUMMARY")
     if primary_summ is not None:
         result["primary_summary"] = {
-            "total_accounts": _get_text(primary_summ, "PRIMARY-NUMBER-OF-ACCOUNTS"),
-            "active_accounts": _get_text(primary_summ, "PRIMARY-ACTIVE-NUMBER-OF-ACCOUNTS"),
-            "overdue_accounts": _get_text(primary_summ, "PRIMARY-OVERDUE-NUMBER-OF-ACCOUNTS"),
-            "current_balance": _get_text(primary_summ, "PRIMARY-CURRENT-BALANCE"),
+            "total_accounts":    _get_text(primary_summ, "PRIMARY-NUMBER-OF-ACCOUNTS"),
+            "active_accounts":   _get_text(primary_summ, "PRIMARY-ACTIVE-NUMBER-OF-ACCOUNTS"),
+            "overdue_accounts":  _get_text(primary_summ, "PRIMARY-OVERDUE-NUMBER-OF-ACCOUNTS"),
+            "current_balance":   _get_text(primary_summ, "PRIMARY-CURRENT-BALANCE"),
             "sanctioned_amount": _get_text(primary_summ, "PRIMARY-SANCTIONED-AMOUNT"),
-            "disbursed_amount": _get_text(primary_summ, "PRIMARY-DISBURSED-AMOUNT"),
+            "disbursed_amount":  _get_text(primary_summ, "PRIMARY-DISBURSED-AMOUNT"),
         }
 
-    # Inquiry history
+    # Inquiry history (same tag in both UAT & PROD)
     inq_history = []
     for h in report.findall(".//INQUIRY-HISTORY/HISTORY"):
         inq_history.append({
-            "member": _get_text(h, "MEMBER-NAME"),
-            "date": _get_text(h, "INQUIRY-DATE"),
+            "member":  _get_text(h, "MEMBER-NAME"),
+            "date":    _get_text(h, "INQUIRY-DATE"),
             "purpose": _get_text(h, "PURPOSE"),
-            "amount": _get_text(h, "AMOUNT"),
+            "amount":  _get_text(h, "AMOUNT"),
         })
     result["inquiry_history"] = inq_history
 
-    # Personal info variations (name, address, DOB variations over time)
+    # Personal info variations
     piv = report.find(".//PERSONAL-INFO-VARIATION")
     if piv is not None:
         variations = {}
         for section in piv:
-            items = []
-            for v in section.findall("VARIATION"):
-                val = _get_text(v, "VALUE")
-                reported = _get_text(v, "REPORTED-DATE")
-                if val:
-                    items.append({"value": val, "reported_date": reported})
+            items = [{"value": _get_text(v, "VALUE"), "reported_date": _get_text(v, "REPORTED-DATE")}
+                     for v in section.findall("VARIATION") if _get_text(v, "VALUE")]
             if items:
                 variations[section.tag] = items
         result["personal_info_variations"] = variations
 
     # Verification responses
     verifications = {}
-    for resp in report.findall(".//VERIFICATION-RESPONSES/RESPONSE"):
-        svc_type = _get_text(resp, "REQ-SERVICE-TYPE")
-        status_v = _get_text(resp, "STATUS")
-        desc = _get_text(resp, "DESCRIPTION")
-        if svc_type:
-            verifications[svc_type] = {"status": status_v, "description": desc}
+    for v in report.findall(".//VERIFICATION-RESPONSES/RESPONSE"):
+        svc = _get_text(v, "REQ-SERVICE-TYPE")
+        if svc:
+            verifications[svc] = {"status": _get_text(v, "STATUS"), "description": _get_text(v, "DESCRIPTION")}
     result["verifications"] = verifications
 
     # HTML report
     printable = report.find(".//PRINTABLE-REPORT")
     if printable is not None:
-        # Get the raw HTML - it's in a CDATA or child element
         html_content = ""
         for child in printable:
             if child.tag in ("HTML", "html"):
@@ -473,7 +487,7 @@ async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_u
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "result": parsed,
         "raw_xml_request": request_xml,
-        "raw_xml_response": response.text[:100000],
+        "raw_xml_response": response.text[:5_000_000],   # 5 MB cap (Mongo limit is 16 MB)
     }
     await db.crif_checks.insert_one(check_doc)
 
