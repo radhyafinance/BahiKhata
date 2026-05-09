@@ -126,7 +126,18 @@ export default function CrifCheck({ kycId, hasDob }) {
             <ShieldCheck size={20} className="text-blue-600" />
           </div>
           <div>
-            <h3 className="font-bold text-foreground text-sm">CRIF High Mark</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-bold text-foreground text-sm">CRIF High Mark</h3>
+              {result?.env && (
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                  result.env === "PROD" || result.current_env === "PROD"
+                    ? "bg-green-100 text-green-700 border border-green-300"
+                    : "bg-amber-100 text-amber-700 border border-amber-300"
+                }`}>
+                  {result.env || result.current_env}
+                </span>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">
               {result
                 ? `Last checked: ${new Date(result.checked_at).toLocaleString("en-IN")} by ${result.checked_by_name || "—"}`

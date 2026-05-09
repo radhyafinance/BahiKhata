@@ -19,11 +19,27 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/crif", tags=["crif"])
 
 # ── Config ─────────────────────────────────────────────────────────────────────
-CRIF_URL = os.environ.get("CRIF_URL")
-CRIF_USER_ID = os.environ.get("CRIF_USER_ID")
-CRIF_PASSWORD = os.environ.get("CRIF_PASSWORD")
-CRIF_MBRID = os.environ.get("CRIF_MBRID")
+_CRIF_ENV = os.environ.get("CRIF_ENV", "UAT").upper()   # UAT or PROD
+
+# UAT
+_UAT_URL      = os.environ.get("CRIF_URL")
+_UAT_USER_ID  = os.environ.get("CRIF_USER_ID")
+_UAT_PASSWORD = os.environ.get("CRIF_PASSWORD")
+_UAT_MBRID    = os.environ.get("CRIF_MBRID")
+
+# PROD
+_PROD_URL      = os.environ.get("CRIF_PROD_URL")
+_PROD_USER_ID  = os.environ.get("CRIF_PROD_USER_ID")
+_PROD_PASSWORD = os.environ.get("CRIF_PROD_PASSWORD")
+_PROD_MBRID    = os.environ.get("CRIF_PROD_MBRID")
+
 CRIF_SUB_MBR_ID = os.environ.get("CRIF_SUB_MBR_ID", "RADHYA MICRO FINANCE PRIVATE LIMITED")
+
+def _active_config():
+    """Return (url, user_id, password, mbrid, env_label) for the active environment."""
+    if _CRIF_ENV == "PROD":
+        return _PROD_URL, _PROD_USER_ID, _PROD_PASSWORD, _PROD_MBRID, "PROD"
+    return _UAT_URL, _UAT_USER_ID, _UAT_PASSWORD, _UAT_MBRID, "UAT"
 
 # Indian state name → 2-letter code mapping
 STATE_MAP = {
@@ -397,7 +413,8 @@ def _parse_crif_response(xml_text: str) -> dict:
 @router.post("/check/{kyc_id}")
 async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_user)):
     """Run a CRIF INDV 2.0 credit check for a KYC record."""
-    if not all([CRIF_URL, CRIF_USER_ID, CRIF_PASSWORD, CRIF_MBRID]):
+    crif_url, crif_user_id, crif_password, crif_mbrid, env_label = _active_config()
+    if not all([crif_url, crif_user_id, crif_password, crif_mbrid]):
         raise HTTPException(status_code=503, detail="CRIF credentials not configured")
 
     # Fetch KYC
@@ -428,9 +445,9 @@ async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_u
     # Call CRIF API
     headers = {
         "requestXML": request_xml,
-        "userId": CRIF_USER_ID,
-        "password": CRIF_PASSWORD,
-        "mbrid": CRIF_MBRID,
+        "userId": crif_user_id,
+        "password": crif_password,
+        "mbrid": crif_mbrid,
         "productType": "INDV",
         "productVersion": "2.0",
         "reqVolType": "INDV",
@@ -450,21 +467,36 @@ async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_u
     check_doc = {
         "kyc_id": kyc_id,
         "customer_id": kyc.get("customer_id"),
+        "env": env_label,
         "checked_by": current_user.get("id") or current_user.get("_id"),
         "checked_by_name": current_user.get("name"),
         "checked_at": datetime.now(timezone.utc).isoformat(),
         "result": parsed,
         "raw_xml_request": request_xml,
-        "raw_xml_response": response.text[:100000],  # store first 100KB
+        "raw_xml_response": response.text[:100000],
     }
     await db.crif_checks.insert_one(check_doc)
 
     return {
         "kyc_id": kyc_id,
         "customer_id": kyc.get("customer_id"),
+        "env": env_label,
         "checked_at": check_doc["checked_at"],
         "checked_by_name": check_doc["checked_by_name"],
         "result": parsed,
+    }
+
+
+@router.get("/env")
+async def get_crif_env(current_user: dict = Depends(get_current_user)):
+    """Get current CRIF environment (UAT / PROD)."""
+    _, _, _, _, env_label = _active_config()
+    return {
+        "env": env_label,
+        "uat_url": _UAT_URL,
+        "prod_url": _PROD_URL,
+        "active_url": _active_config()[0],
+        "active_mbrid": _active_config()[3],
     }
 
 
@@ -478,14 +510,16 @@ async def get_crif_result(kyc_id: str, current_user: dict = Depends(get_current_
     )
     if not check:
         return {"has_result": False}
-    # Remove large HTML from list response (frontend can fetch separately)
     result = check.get("result", {})
+    _, _, _, _, current_env = _active_config()
     return {
         "has_result": True,
         "kyc_id": check.get("kyc_id"),
         "customer_id": check.get("customer_id"),
         "checked_at": check.get("checked_at"),
         "checked_by_name": check.get("checked_by_name"),
+        "env": check.get("env", "UAT"),
+        "current_env": current_env,
         "result": result,
     }
 
