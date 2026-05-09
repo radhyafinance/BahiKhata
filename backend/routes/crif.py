@@ -204,14 +204,22 @@ def _parse_crif_response(xml_text: str) -> dict:
     try:
         root = ET.fromstring(xml_text)
     except ET.ParseError as e:
-        # Try fixing truncated CDATA before giving up
-        import re as _re
-        cleaned = _re.sub(r'<!\[CDATA\[[^\]]*$', '', xml_text, flags=_re.DOTALL)
-        # Close unclosed tags heuristically
+        # Truncated XML (commonly inside <PRINTABLE-REPORT> CDATA): drop the report
+        # section and retry. Loan/score data lives BEFORE the printable report.
+        cleaned = xml_text
+        idx = cleaned.find("<PRINTABLE-REPORT")
+        if idx > 0:
+            cleaned = cleaned[:idx] + "</INDV-REPORT></INDV-REPORTS></INDV-REPORT-FILE>"
         try:
-            root = ET.fromstring(cleaned + "</INDV-REPORT></INDV-REPORTS></INDV-REPORT-FILE>")
+            root = ET.fromstring(cleaned)
         except ET.ParseError:
-            return {"error": f"XML parse error: {e}", "raw_xml": xml_text[:2000]}
+            # Last resort: aggressive CDATA strip
+            import re as _re
+            cleaned2 = _re.sub(r'<!\[CDATA\[[^\]]*$', '', xml_text, flags=_re.DOTALL)
+            try:
+                root = ET.fromstring(cleaned2 + "</INDV-REPORT></INDV-REPORTS></INDV-REPORT-FILE>")
+            except ET.ParseError:
+                return {"error": f"XML parse error: {e}", "raw_xml": xml_text[:2000]}
 
     # Handle error response
     inquiry_status = root.find(".//INQUIRY-STATUS")
@@ -290,22 +298,29 @@ def _parse_crif_response(xml_text: str) -> dict:
         loan   = resp_node.find("LOAN-DETAIL")
         group  = resp_node.find("GROUP-DETAILS")
         if loan is not None:
-            status = _get_text(loan, "STATUS")
             prod_accounts.append({
                 "lender":         lender,
                 "loan_type":      _get_text(loan, "ACCT-TYPE"),
-                "status":         status,
+                "frequency":      _get_text(loan, "FREQ"),
+                "status":         _get_text(loan, "STATUS"),
+                "acct_number":    _get_text(loan, "ACCT-NUMBER"),
                 "disbursed":      _get_text(loan, "DISBURSED-AMT"),
                 "current_balance": _get_text(loan, "CURRENT-BAL"),
                 "overdue":        _get_text(loan, "OVERDUE-AMT"),
                 "write_off":      _get_text(loan, "WRITE-OFF-AMT"),
                 "installment":    _get_text(loan, "INSTALLMENT-AMT"),
                 "term_months":    _get_text(loan, "ORIGINAL-TERM"),
+                "fldg":           _get_text(loan, "FLDG"),
+                "dispute":        _get_text(loan, "ACCT-IN-DISPUTE"),
+                "info_as_on":     _get_text(loan, "INFO-AS-ON"),
+                "loan_cycle":     _get_text(loan, "LOAN-CYCLE-ID"),
+                "worst_delinq":   _get_text(loan, "WORST-DELEQUENCY-AMOUNT"),
                 "date_disbursed": _get_text(loan, "DISBURSED-DT"),
                 "date_closed":    _get_text(loan, "CLOSED-DT"),
                 "last_payment":   _get_text(loan, "LAST-PAYMENT-DATE"),
                 "dpd":            _get_text(loan, "DPD"),
-                "payment_history": _get_text(loan, "AMOUNT-PAID-HISTORY"),
+                # Combined Payment History has DPD values per month — preferred for grid
+                "payment_history": _get_text(loan, "COMBINED-PAYMENT-HISTORY") or _get_text(loan, "AMOUNT-PAID-HISTORY"),
                 "branch":         branch,
                 "kendra":         kendra,
                 "group_tot_balance": _get_text(group, "TOT-CURRENT-BAL") if group is not None else "",

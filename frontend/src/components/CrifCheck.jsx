@@ -53,6 +53,177 @@ function SummaryCard({ label, value, sub }) {
   );
 }
 
+// ── Per-Loan Card with Payment History matrix ─────────────────────────────────
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * Parse CRIF COMBINED-PAYMENT-HISTORY string → { year: { monthIdx: dpd } }
+ * Format: "Jan:2025,000|Dec:2024,000|Nov:2024,XXX|..."
+ */
+function parsePaymentHistory(raw) {
+  if (!raw || typeof raw !== "string") return {};
+  const grid = {};
+  raw.split("|").forEach((entry) => {
+    const trimmed = entry.trim();
+    if (!trimmed) return;
+    const [monYear, dpdRaw] = trimmed.split(",");
+    if (!monYear) return;
+    const [mon, year] = monYear.split(":");
+    const mi = MONTHS.indexOf((mon || "").slice(0, 3));
+    if (mi === -1 || !year) return;
+    if (!grid[year]) grid[year] = {};
+    grid[year][mi] = (dpdRaw ?? "").trim();
+  });
+  return grid;
+}
+
+/** Map DPD value → cell style (matches CRIF report colour scheme) */
+function dpdCellStyle(dpd) {
+  if (dpd === undefined || dpd === null || dpd === "" || dpd === "-") {
+    return "bg-muted/30 text-muted-foreground";
+  }
+  const upper = String(dpd).toUpperCase();
+  if (upper === "XXX") return "bg-gray-100 text-gray-400";
+  const n = parseInt(dpd, 10);
+  if (Number.isNaN(n)) return "bg-muted/30 text-muted-foreground";
+  if (n === 0)   return "bg-emerald-50 text-emerald-700";
+  if (n <= 29)   return "bg-yellow-100 text-yellow-800 font-semibold";
+  if (n <= 59)   return "bg-orange-200 text-orange-900 font-semibold";
+  if (n <= 89)   return "bg-orange-400 text-white font-bold";
+  return "bg-red-500 text-white font-bold";
+}
+
+function PaymentHistoryGrid({ raw }) {
+  const grid = parsePaymentHistory(raw);
+  const years = Object.keys(grid).sort((a, b) => Number(b) - Number(a)); // newest first
+  if (years.length === 0) {
+    return <p className="text-xs text-muted-foreground italic">No payment history reported.</p>;
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="border-collapse text-[10px] sm:text-xs" data-testid="crif-payment-history-grid">
+        <thead>
+          <tr>
+            <th className="px-1.5 py-1 text-left text-muted-foreground font-semibold w-12"></th>
+            {MONTHS.map((m) => (
+              <th key={m} className="px-1.5 py-1 text-muted-foreground font-medium w-10 text-center">{m}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {years.map((y) => (
+            <tr key={y} className="border-t border-border/40">
+              <td className="px-1.5 py-1 font-bold text-foreground bg-muted/40 text-center w-12">{y}</td>
+              {MONTHS.map((_, mi) => {
+                const dpd = grid[y][mi];
+                return (
+                  <td key={mi} className={`px-1 py-1 text-center tabular-nums border border-white/60 ${dpdCellStyle(dpd)}`}>
+                    {dpd === undefined ? "—" : dpd}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="flex flex-wrap gap-3 mt-2 text-[10px] text-muted-foreground">
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-emerald-50 border border-emerald-200" /> 0 days (on-time)</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-yellow-100" /> 1–29 days</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-orange-200" /> 30–59</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-orange-400" /> 60–89</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-red-500" /> 90+</span>
+        <span className="inline-flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-sm bg-gray-100 border border-gray-200" /> XXX (not reported)</span>
+      </div>
+    </div>
+  );
+}
+
+function DetailField({ label, value, valueClass = "" }) {
+  return (
+    <div className="flex flex-col gap-0.5">
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium">{label}</span>
+      <span className={`text-sm tabular-nums text-foreground ${valueClass}`}>{value || "—"}</span>
+    </div>
+  );
+}
+
+function LoanAccountCard({ acct, index }) {
+  const isActive = (acct.status || "").toUpperCase() === "ACTIVE";
+  const overdueNum = parseInt(String(acct.overdue || "0").replace(/[^\d]/g, "")) || 0;
+  const dpdNum = parseInt(acct.dpd || "0") || 0;
+
+  return (
+    <div className="bk-card overflow-hidden" data-testid={`crif-loan-card-${index}`}>
+      {/* Header bar — lender + status */}
+      <div className="flex items-center justify-between gap-3 pb-3 mb-3 border-b border-border">
+        <div className="flex items-center gap-3 min-w-0">
+          <span className={`shrink-0 px-2.5 py-1 rounded-md text-xs font-bold tracking-wide ${
+            isActive
+              ? "bg-emerald-100 text-emerald-700 border border-emerald-200"
+              : "bg-muted text-muted-foreground border border-border"
+          }`}>
+            {acct.status || "—"}
+          </span>
+          <div className="min-w-0">
+            <p className="font-semibold text-sm text-foreground truncate">{acct.lender || "—"}</p>
+            <p className="text-xs text-muted-foreground truncate">
+              {acct.loan_type || "—"}
+              {acct.frequency && ` • ${acct.frequency}`}
+              {acct.loan_cycle && ` • Cycle ${acct.loan_cycle}`}
+            </p>
+          </div>
+        </div>
+        {(overdueNum > 0 || dpdNum > 0) && (
+          <span className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-50 text-red-700 text-xs font-semibold border border-red-200">
+            <AlertCircle size={11} /> Delinquent
+          </span>
+        )}
+      </div>
+
+      {/* Detail grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-5 gap-y-3 mb-4">
+        <DetailField label="Account #" value={acct.acct_number} />
+        <DetailField label="Disbursed Date" value={acct.date_disbursed} />
+        <DetailField label="Disbursed Amount" value={acct.disbursed ? `₹${acct.disbursed}` : "—"} />
+        <DetailField label="Info As On" value={acct.info_as_on} />
+
+        <DetailField label="Closed Date" value={acct.date_closed} />
+        <DetailField
+          label="Current Balance"
+          value={acct.current_balance ? `₹${acct.current_balance}` : "₹0"}
+          valueClass={parseInt(acct.current_balance?.replace(/,/g, "")) > 0 ? "font-semibold" : ""}
+        />
+        <DetailField label="Write-Off" value={acct.write_off ? `₹${acct.write_off}` : "₹0"} />
+        <DetailField label="Last Payment Date" value={acct.last_payment} />
+
+        <DetailField label="Instalment" value={acct.installment ? `₹${acct.installment}` : "—"} />
+        <DetailField
+          label="Amount Overdue"
+          value={acct.overdue ? `₹${acct.overdue}` : "₹0"}
+          valueClass={overdueNum > 0 ? "text-red-600 font-bold" : ""}
+        />
+        <DetailField
+          label="DPD"
+          value={acct.dpd || "0"}
+          valueClass={dpdNum > 0 ? "text-red-600 font-bold" : ""}
+        />
+        <DetailField label="Tenure (months)" value={acct.term_months} />
+
+        <DetailField label="FLDG" value={acct.fldg} />
+        <DetailField label="Account in Dispute" value={acct.dispute || "No"} />
+        <DetailField label="Worst Delinquency" value={acct.worst_delinq || "0"} />
+        <DetailField label="Branch / Kendra" value={[acct.branch, acct.kendra].filter(Boolean).join(" / ") || "—"} />
+      </div>
+
+      {/* Payment History matrix */}
+      <div className="pt-3 border-t border-border">
+        <p className="text-xs font-semibold text-foreground mb-2 uppercase tracking-wide">Payment History (DPD)</p>
+        <PaymentHistoryGrid raw={acct.payment_history} />
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function CrifCheck({ kycId, hasDob }) {
   const [result, setResult] = useState(null);
@@ -487,72 +658,18 @@ export default function CrifCheck({ kycId, hasDob }) {
             </div>
           )}
 
-          {/* PROD Loan History (INDV-RESPONSE / LOAN-DETAIL) */}
+          {/* PROD Per-Loan Cards (INDV-RESPONSE / LOAN-DETAIL) */}
           {prodAccounts.length > 0 && (
-            <div className="bk-card space-y-3">
-              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
-                <Building2 size={15} /> Loan History ({prodAccounts.length} accounts)
-              </h4>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm" data-testid="crif-prod-accounts-table">
-                  <thead>
-                    <tr className="border-b border-border text-muted-foreground text-xs uppercase">
-                      <th className="text-left py-2 pr-3">Lender</th>
-                      <th className="text-left py-2 pr-3">Type</th>
-                      <th className="text-right py-2 pr-3">Disbursed</th>
-                      <th className="text-right py-2 pr-3">Balance</th>
-                      <th className="text-right py-2 pr-3">EMI</th>
-                      <th className="text-right py-2 pr-3">Overdue</th>
-                      <th className="text-right py-2 pr-3">DPD</th>
-                      <th className="text-left py-2 pr-3">Status</th>
-                      <th className="text-left py-2 pr-3">Disbursed</th>
-                      <th className="text-left py-2">Last Paid</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {prodAccounts.map((acct, i) => {
-                      const overdueNum = toNum(acct.overdue);
-                      const dpdNum = toNum(acct.dpd);
-                      return (
-                        <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
-                          <td className="py-2 pr-3 font-medium text-xs">{acct.lender || "—"}</td>
-                          <td className="py-2 pr-3 text-muted-foreground text-xs">{acct.loan_type || "—"}</td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-xs">
-                            {acct.disbursed ? `₹${acct.disbursed}` : "—"}
-                          </td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-xs font-semibold">
-                            {acct.current_balance ? `₹${acct.current_balance}` : "₹0"}
-                          </td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-xs">
-                            {acct.installment ? `₹${acct.installment}` : "—"}
-                          </td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-xs">
-                            <span className={overdueNum > 0 ? "text-red-600 font-semibold" : "text-muted-foreground"}>
-                              {acct.overdue ? `₹${acct.overdue}` : "₹0"}
-                            </span>
-                          </td>
-                          <td className="py-2 pr-3 text-right tabular-nums text-xs">
-                            <span className={dpdNum > 0 ? "text-red-600 font-semibold" : "text-muted-foreground"}>
-                              {acct.dpd || "0"}
-                            </span>
-                          </td>
-                          <td className="py-2 pr-3">
-                            <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                              (acct.status || "").toUpperCase() === "ACTIVE"
-                                ? "bg-green-100 text-green-700"
-                                : "bg-muted text-muted-foreground"
-                            }`}>
-                              {acct.status || "—"}
-                            </span>
-                          </td>
-                          <td className="py-2 pr-3 text-muted-foreground text-xs">{acct.date_disbursed || "—"}</td>
-                          <td className="py-2 text-muted-foreground text-xs">{acct.last_payment || "—"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+            <div className="space-y-3" data-testid="crif-prod-accounts-list">
+              <div className="flex items-center gap-2 px-1">
+                <Building2 size={15} className="text-foreground" />
+                <h4 className="text-sm font-semibold text-foreground">
+                  Loan History ({prodAccounts.length} accounts)
+                </h4>
               </div>
+              {prodAccounts.map((acct, i) => (
+                <LoanAccountCard key={i} acct={acct} index={i} />
+              ))}
             </div>
           )}
 

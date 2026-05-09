@@ -301,3 +301,10 @@ See CHANGELOG.md for full history.
 - [x] **Raw XML save limit** increased from 100 KB to 5 MB (Mongo doc limit is 16 MB) so `/api/crif/report-html/{kyc_id}` can re-parse the full HTML printable report without CDATA truncation
 - [x] **Verified end-to-end** with PROD response for client TE0014 (Tabassum) — Report `RADH260509CR064906888`, score 689, 10 prod_accounts (2 ACTIVE / 8 CLOSED), ₹4,20,558 disbursed, ₹88,029 current balance, 20 inquiries history rendered correctly on UI
 
+### CRIF Per-Loan Card Layout (2026-05-09) ✓
+- [x] **Replaced flat loan-history table** with per-loan accordion-style cards (matches CRIF official report layout)
+- [x] **Loan card shows 16 fields** in a 4-column detail grid: Account #, Disbursed Date/Amount, Info As On, Closed Date, Current Balance, Write-Off, Last Payment Date, Instalment, Amount Overdue, DPD, Tenure, FLDG, Account in Dispute, Worst Delinquency, Branch/Kendra; status badge (CLOSED grey / ACTIVE green) and "Delinquent" red chip when DPD/overdue > 0
+- [x] **Payment History DPD matrix** (year × 12 months) parses `COMBINED-PAYMENT-HISTORY` (e.g. `Jan:2025,000|Dec:2024,XXX|...`); color-coded cells per DPD severity (green=0, yellow=1-29, orange-light=30-59, orange-dark=60-89, red=90+, grey=XXX) with legend below each grid
+- [x] **Backend parser** captures additional fields (`acct_number`, `frequency`, `fldg`, `dispute`, `info_as_on`, `loan_cycle`, `worst_delinq`) from `<LOAN-DETAIL>` and uses `COMBINED-PAYMENT-HISTORY` instead of `AMOUNT-PAID-HISTORY` for proper DPD time-series
+- [x] **Smarter XML truncation recovery**: when stored XML is truncated mid-CDATA inside `<PRINTABLE-REPORT>`, parser drops the printable section and re-parses (loan/score data lives BEFORE the printable section) — this also makes legacy 100k-truncated docs re-parseable
+
