@@ -85,7 +85,7 @@ def _extract_state(address: str) -> str:
     return ""
 
 
-def _build_crif_xml(kyc: dict, loan_amount: int = 50000) -> str:
+def _build_crif_xml(kyc: dict, loan_amount: int = 50000, mbrid: str = "", env: str = "UAT") -> str:
     """Build CRIF INDV 2.0 request XML from KYC document."""
     now = datetime.now()
     inq_dt = now.strftime("%d-%m-%Y %H:%M:%S")
@@ -134,7 +134,7 @@ def _build_crif_xml(kyc: dict, loan_amount: int = 50000) -> str:
         f"<INQ-DT-TM>{inq_dt}</INQ-DT-TM>"
         f"<REQ-VOL-TYP>C01</REQ-VOL-TYP>"
         f"<REQ-ACTN-TYP>SUBMIT</REQ-ACTN-TYP>"
-        f"<TEST-FLG>HMTEST</TEST-FLG>"
+        f"<TEST-FLG>{'HMTEST' if env == 'UAT' else 'N'}</TEST-FLG>"
         f"<AUTH-FLG>Y</AUTH-FLG>"
         f"<AUTH-TITLE>USER</AUTH-TITLE>"
         f"<RES-FRMT>XML/HTML</RES-FRMT>"
@@ -179,7 +179,7 @@ def _build_crif_xml(kyc: dict, loan_amount: int = 50000) -> str:
         f"<CREDT-INQ-PURPS-TYP-DESC>Housing Loan</CREDT-INQ-PURPS-TYP-DESC>"
         f"<CREDIT-INQUIRY-STAGE>PRE-DISB</CREDIT-INQUIRY-STAGE>"
         f"<CREDT-RPT-TRN-DT-TM>{inq_dt}</CREDT-RPT-TRN-DT-TM>"
-        f"<MBR-ID>{CRIF_MBRID}</MBR-ID>"
+        f"<MBR-ID>{mbrid}</MBR-ID>"
         f"<KENDRA-ID>{illaka_id}</KENDRA-ID>"
         f"<BRANCH-ID>{misal_id}</BRANCH-ID>"
         f"<LOS-APP-ID>{loan_id}</LOS-APP-ID>"
@@ -440,7 +440,7 @@ async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_u
         loan_amount = int(loan.get("principal_amount", 50000))
 
     # Build request XML
-    request_xml = _build_crif_xml(kyc, loan_amount=loan_amount)
+    request_xml = _build_crif_xml(kyc, loan_amount=loan_amount, mbrid=crif_mbrid, env=env_label)
 
     # Call CRIF API
     headers = {
@@ -453,7 +453,7 @@ async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_u
         "reqVolType": "INDV",
     }
     try:
-        response = requests.post(CRIF_URL, headers=headers, timeout=45)
+        response = requests.post(crif_url, headers=headers, timeout=45)
         response.raise_for_status()
     except requests.Timeout:
         raise HTTPException(status_code=504, detail="CRIF API timeout. Please retry.")
