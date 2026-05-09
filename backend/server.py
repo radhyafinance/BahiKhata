@@ -9,7 +9,7 @@ from starlette.middleware.cors import CORSMiddleware
 from core.database import client, db
 from core.auth import hash_password, verify_password
 from core.storage import init_storage
-from routes import auth, users, illakas, kycs, loans, ocr, collections, dashboard, accounts, passkeys, import_data
+from routes import auth, users, illakas, kycs, loans, ocr, collections, dashboard, accounts, passkeys, import_data, crif
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -29,6 +29,7 @@ api_router.include_router(dashboard.router)
 api_router.include_router(accounts.router)
 api_router.include_router(passkeys.router)
 api_router.include_router(import_data.router)
+api_router.include_router(crif.router)
 
 app.include_router(api_router)
 

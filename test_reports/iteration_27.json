@@ -1,0 +1,61 @@
+{
+  "summary": "Iteration 27: CRIF High Mark INDV 2.0 integration testing. Backend: 18/19 tests PASS (1 skipped - HTML content-type; UAT doesn't return HTML). Frontend: All CRIF flows verified - tab visible, prior result loaded, Re-check button works, DOB warning shown, disabled button for no-DOB KYC. Live CRIF UAT API successfully called (Report ID: RADH260509CR385504415).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/crif/check/{kyc_id}",
+        "issue": "Response does not include 'checked_by_name' field. GET /result includes it, but POST response omits it. This causes UI to show 'by —' after a Re-check instead of the user's name.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "CrifCheck header",
+        "issue": "After clicking 'Re-check', the 'Last checked: ... by —' shows '—' for user name instead of 'Super Admin'. Root cause: POST /api/crif/check response doesn't include checked_by_name, only GET /result does. Fix: Add checked_by_name to POST response in crif.py",
+        "selector": "[data-testid='crif-tab']",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "CRIF Tab",
+        "issues": ["UI is clean. DOB warning amber styling is clear. Service statuses are well-labeled. No significant design issues."]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_crif.py",
+    "/app/test_reports/pytest/crif_results.xml"
+  ],
+  "action_items": [
+    "MINOR: Add 'checked_by_name' to POST /api/crif/check/{kyc_id} return dict in crif.py (one-line fix: add 'checked_by_name': check_doc['checked_by_name'] to the return statement at line ~395)",
+    "OPTIONAL: DOB stored as DD/MM/YYYY (e.g., '01/01/1987') but _build_crif_xml() only converts YYYY-MM-DD format. CRIF UAT accepts DD/MM/YYYY as-is so no functional break, but worth aligning."
+  ],
+  "critical_code_review_comments": [
+    "POST /api/crif/check response (line 395-400) is missing 'checked_by_name' field that GET /result includes. Should add checked_by_name to response for UI consistency.",
+    "DOB format: KYC stores as 'DD/MM/YYYY' (01/01/1987), but _build_crif_xml converts only 'YYYY-MM-DD'. The current format passes through unchanged to CRIF XML. CRIF UAT accepts it, but production might be stricter.",
+    "crif.py is 448 lines - acceptable size, no split needed.",
+    "raw_xml_response is stored up to 100KB per check - could grow large; consider cleanup strategy.",
+    "No _id leakage in CRIF responses - projection={'raw_xml_request': 0, '_id': 0} on find_one is correct."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_crif.py"
+  ],
+  "success_rate": {
+    "backend": "95% — 18/19 tests pass (1 skipped: HTML content-type, expected for UAT)",
+    "frontend": "100% — all CRIF UI flows verified"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "crif_uat": "userId=radhya_cpu_uat@radhyamicro.in configured in backend/.env"
+  },
+  "seed_data_creation": "No seed data created. Used existing KYC: 69d7561cefd5a127f84854b1 (Pinki Yadav, DOB=01/01/1987) for DOB tests and 69d74eb0f42856df533f4fc0 (Ramesh Kumar, no DOB) for no-DOB tests.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "CRIF integration fully tested. Backend test file: /app/backend/tests/test_crif.py (19 tests). Key: KYC 69d7561cefd5a127f84854b1 has DOB=01/01/1987 (Pinki Yadav). KYC 69d74eb0f42856df533f4fc0 has no DOB (Ramesh Kumar). CRIF UAT live API called - report_id stored as RADH260509CR385504415. sessionStorage key 'bk_illaka_sel' must be set with {userId: '69c66f9d13c8048c1fe4b95a', illaka: null} via page.evaluate after login to bypass illaka selection in Playwright tests. All CRIF backend routes registered: POST /api/crif/check/{id}, GET /api/crif/result/{id}, GET /api/crif/report-html/{id}.",
+  "rca_of_issues": "checked_by_name missing from POST response: The backend stores checked_by_name in DB correctly and GET /result returns it. However, POST /check returns only {kyc_id, customer_id, checked_at, result} without checked_by_name. Frontend sets state directly from POST response, so UI shows 'by —'. Fix: Add 'checked_by_name': check_doc['checked_by_name'] to POST return dict at line ~395 in crif.py."
+}

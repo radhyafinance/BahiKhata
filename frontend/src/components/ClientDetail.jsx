@@ -7,9 +7,10 @@ import {
   ArrowLeft, Edit, CheckCircle, XCircle, Clock, MapPin, Camera,
   Phone, User, Shield, Users, FileText, TrendingUp, AlertCircle,
   X, Loader2, PlusCircle, BookOpen, Undo2, ExternalLink, Pencil,
-  RefreshCw, MinusCircle, Lock
+  RefreshCw, MinusCircle, Lock, ShieldCheck
 } from "lucide-react";
 import ReLoanModal from "./ReLoanModal";
+import CrifCheck from "./CrifCheck";
 import { getSuffixHindi } from "./kyc/utils";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -606,6 +607,7 @@ export default function ClientDetail() {
         {[
           { id: "kyc", label: "KYC", labelHi: "पहचान", icon: User },
           { id: "passbook", label: "Passbook", labelHi: "पासबुक", icon: BookOpen },
+          { id: "crif", label: "CRIF", labelHi: "क्रेडिट", icon: ShieldCheck },
         ].map((tab) => (
           <button
             key={tab.id}
@@ -796,6 +798,14 @@ export default function ClientDetail() {
           />
         );
       })()}
+
+      {/* ── CRIF Tab ── */}
+      {activeTab === "crif" && (
+        <CrifCheck
+          kycId={id}
+          hasDob={!!(kyc?.primary_borrower?.dob)}
+        />
+      )}
     </div>
   );
 }
