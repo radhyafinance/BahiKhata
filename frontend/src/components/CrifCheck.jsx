@@ -106,9 +106,12 @@ export default function CrifCheck({ kycId, hasDob }) {
 
   const r = result?.result;
   const summary = r?.account_summary || {};
+  const primarySummary = r?.primary_summary || {};
   const scores = r?.scores || [];
   const mfiAccounts = r?.mfi_accounts || [];
   const cnsAccounts = r?.cns_accounts || [];
+  const ioiAccounts = r?.ioi_accounts || [];
+  const inquiryHistory = r?.inquiry_history || [];
   const verifications = r?.verifications || {};
   const serviceStatuses = r?.service_statuses || {};
   const errors = r?.errors || [];
@@ -393,8 +396,119 @@ export default function CrifCheck({ kycId, hasDob }) {
             </div>
           )}
 
-          {/* No data found state */}
-          {!scores.length && !mfiAccounts.length && !cnsAccounts.length && (
+          {/* Primary Account Summary (IOI format) */}
+          {Object.keys(primarySummary).length > 0 && (
+            <div className="bk-card space-y-4">
+              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <CreditCard size={15} /> Account Summary
+              </h4>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <SummaryCard label="Total Accounts" value={primarySummary.total_accounts} />
+                <SummaryCard label="Active Accounts" value={primarySummary.active_accounts} />
+                <SummaryCard label="Overdue Accounts" value={primarySummary.overdue_accounts} />
+                <SummaryCard
+                  label="Current Balance"
+                  value={primarySummary.current_balance ? `₹${primarySummary.current_balance}` : "₹0"}
+                />
+                <SummaryCard
+                  label="Total Disbursed"
+                  value={primarySummary.disbursed_amount ? `₹${primarySummary.disbursed_amount}` : "₹0"}
+                />
+                <SummaryCard
+                  label="Total Sanctioned"
+                  value={primarySummary.sanctioned_amount ? `₹${primarySummary.sanctioned_amount}` : "₹0"}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* IOI Loan History (IOI=true response format) */}
+          {ioiAccounts.length > 0 && (
+            <div className="bk-card space-y-3">
+              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Building2 size={15} /> Loan History ({ioiAccounts.length} accounts)
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground text-xs uppercase">
+                      <th className="text-left py-2 pr-3">Lender</th>
+                      <th className="text-left py-2 pr-3">Type</th>
+                      <th className="text-right py-2 pr-3">Disbursed</th>
+                      <th className="text-right py-2 pr-3">Balance</th>
+                      <th className="text-right py-2 pr-3">Overdue</th>
+                      <th className="text-left py-2 pr-3">Status</th>
+                      <th className="text-left py-2">Disbursed On</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ioiAccounts.map((acct, i) => (
+                      <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
+                        <td className="py-2 pr-3 font-medium">{acct.lender || "XXXX"}</td>
+                        <td className="py-2 pr-3 text-muted-foreground text-xs">{acct.loan_type || "—"}</td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-xs">
+                          {acct.disbursed ? `₹${acct.disbursed}` : "—"}
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-xs font-semibold">
+                          {acct.current_balance ? `₹${acct.current_balance}` : "₹0"}
+                        </td>
+                        <td className="py-2 pr-3 text-right tabular-nums text-xs">
+                          <span className={parseInt(acct.overdue) > 0 ? "text-red-600 font-semibold" : "text-muted-foreground"}>
+                            {acct.overdue ? `₹${acct.overdue}` : "₹0"}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-3">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                            (acct.status || "").toLowerCase() === "active"
+                              ? "bg-green-100 text-green-700"
+                              : "bg-muted text-muted-foreground"
+                          }`}>
+                            {acct.status || "—"}
+                          </span>
+                        </td>
+                        <td className="py-2 text-muted-foreground text-xs">{acct.date_disbursed || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Inquiry History */}
+          {inquiryHistory.length > 0 && (
+            <div className="bk-card space-y-3">
+              <h4 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <Clock size={15} /> Inquiry History ({inquiryHistory.length})
+              </h4>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-muted-foreground text-xs uppercase">
+                      <th className="text-left py-2 pr-3">Institution</th>
+                      <th className="text-left py-2 pr-3">Date</th>
+                      <th className="text-left py-2 pr-3">Purpose</th>
+                      <th className="text-right py-2">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inquiryHistory.slice(0, 10).map((h, i) => (
+                      <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
+                        <td className="py-2 pr-3 font-medium text-xs">{h.member || "—"}</td>
+                        <td className="py-2 pr-3 text-xs text-muted-foreground">{h.date || "—"}</td>
+                        <td className="py-2 pr-3 text-xs text-muted-foreground">{h.purpose || "—"}</td>
+                        <td className="py-2 text-right text-xs tabular-nums">{h.amount ? `₹${h.amount}` : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {inquiryHistory.length > 10 && (
+                  <p className="text-xs text-muted-foreground mt-2">Showing latest 10 of {inquiryHistory.length} inquiries</p>
+                )}
+              </div>
+            </div>
+          )}
+          {!scores.length && !mfiAccounts.length && !cnsAccounts.length && !ioiAccounts.length && !primarySummary.total_accounts && (
             <div className="bk-card text-center py-8 text-muted-foreground">
               <ShieldCheck size={32} className="mx-auto mb-2 opacity-40" />
               <p className="font-semibold">No credit history found</p>

@@ -275,7 +275,7 @@ def _parse_crif_response(xml_text: str) -> dict:
             "cns_write_off_amount": _get_text(cns_data, "TOTAL-WRITE-OFF-AMOUNT"),
         }
 
-    # MFI Accounts list
+    # MFI Accounts list (CONSUMER=true path)
     mfi_accounts = []
     for acct in report.findall(".//MFI-ACCOUNTS//INDV-ACCOUNT-DETAILS"):
         mfi_accounts.append({
@@ -290,7 +290,7 @@ def _parse_crif_response(xml_text: str) -> dict:
         })
     result["mfi_accounts"] = mfi_accounts
 
-    # Commercial Accounts list (CNS)
+    # Commercial Accounts list (CNS / CONSUMER=true path)
     cns_accounts = []
     for acct in report.findall(".//CNS-ACCOUNTS//INDV-ACCOUNT-DETAILS"):
         cns_accounts.append({
@@ -303,6 +303,68 @@ def _parse_crif_response(xml_text: str) -> dict:
             "date_opened": _get_text(acct, "OPEN-DATE"),
         })
     result["cns_accounts"] = cns_accounts
+
+    # IOI Accounts — under RESPONSES/RESPONSE/LOAN-DETAILS (when IOI=true)
+    ioi_accounts = []
+    for resp_node in report.findall(".//RESPONSES/RESPONSE"):
+        loan = resp_node.find("LOAN-DETAILS")
+        if loan is None:
+            continue
+        ioi_accounts.append({
+            "lender": _get_text(loan, "CREDIT-GUARANTOR"),
+            "loan_type": _get_text(loan, "ACCT-TYPE"),
+            "status": _get_text(loan, "ACCOUNT-STATUS"),
+            "disbursed": _get_text(loan, "DISBURSED-AMT"),
+            "current_balance": _get_text(loan, "CURRENT-BAL"),
+            "overdue": _get_text(loan, "OVERDUE-AMT"),
+            "write_off": _get_text(loan, "WRITE-OFF-AMT"),
+            "date_disbursed": _get_text(loan, "DISBURSED-DATE"),
+            "date_closed": _get_text(loan, "CLOSED-DATE"),
+            "last_payment": _get_text(loan, "LAST-PAYMENT-DATE"),
+            "installment": _get_text(loan, "INSTALLMENT-AMT"),
+            "interest_rate": _get_text(loan, "INTEREST-RATE"),
+            "term_months": _get_text(loan, "ORIGINAL-TERM"),
+            "payment_history": _get_text(loan, "COMBINED-PAYMENT-HISTORY"),
+        })
+    result["ioi_accounts"] = ioi_accounts
+
+    # Primary account summary (present in IOI response)
+    primary_summ = report.find(".//PRIMARY-ACCOUNTS-SUMMARY")
+    if primary_summ is not None:
+        result["primary_summary"] = {
+            "total_accounts": _get_text(primary_summ, "PRIMARY-NUMBER-OF-ACCOUNTS"),
+            "active_accounts": _get_text(primary_summ, "PRIMARY-ACTIVE-NUMBER-OF-ACCOUNTS"),
+            "overdue_accounts": _get_text(primary_summ, "PRIMARY-OVERDUE-NUMBER-OF-ACCOUNTS"),
+            "current_balance": _get_text(primary_summ, "PRIMARY-CURRENT-BALANCE"),
+            "sanctioned_amount": _get_text(primary_summ, "PRIMARY-SANCTIONED-AMOUNT"),
+            "disbursed_amount": _get_text(primary_summ, "PRIMARY-DISBURSED-AMOUNT"),
+        }
+
+    # Inquiry history
+    inq_history = []
+    for h in report.findall(".//INQUIRY-HISTORY/HISTORY"):
+        inq_history.append({
+            "member": _get_text(h, "MEMBER-NAME"),
+            "date": _get_text(h, "INQUIRY-DATE"),
+            "purpose": _get_text(h, "PURPOSE"),
+            "amount": _get_text(h, "AMOUNT"),
+        })
+    result["inquiry_history"] = inq_history
+
+    # Personal info variations (name, address, DOB variations over time)
+    piv = report.find(".//PERSONAL-INFO-VARIATION")
+    if piv is not None:
+        variations = {}
+        for section in piv:
+            items = []
+            for v in section.findall("VARIATION"):
+                val = _get_text(v, "VALUE")
+                reported = _get_text(v, "REPORTED-DATE")
+                if val:
+                    items.append({"value": val, "reported_date": reported})
+            if items:
+                variations[section.tag] = items
+        result["personal_info_variations"] = variations
 
     # Verification responses
     verifications = {}
