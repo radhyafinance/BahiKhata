@@ -284,3 +284,13 @@ See CHANGELOG.md for full history.
 - [ ] Forgot Password OTP Flow (Twilio/Paid Gateway)
 - [ ] Misal-level Filtering dropdown on Vasuli
 - [ ] Gyal Summary Dashboard Card (NPA overview)
+
+### CRIF High Mark INDV 2.0 Integration (2026-05-09) ✓
+- [x] **UAT credentials** configured in `backend/.env` (CRIF_URL, CRIF_USER_ID, CRIF_PASSWORD, CRIF_MBRID, CRIF_SUB_MBR_ID)
+- [x] **Backend route** `/app/backend/routes/crif.py` with `POST /api/crif/check/{kyc_id}`, `GET /api/crif/result/{kyc_id}`, `GET /api/crif/report-html/{kyc_id}`
+- [x] **XML builder** `_build_crif_xml()` — maps KYC data → CRIF INDV 2.0 XML format, handles DOB (DD/MM/YYYY and YYYY-MM-DD), Aadhaar as ID08, misal_name as city
+- [x] **Response parser** `_parse_crif_response()` — extracts report_id, scores, service statuses, account summary (MFI + CNS), MFI loan history, CNS loan history, identity verifications
+- [x] **Results stored** in `crif_checks` MongoDB collection (includes raw XML for HTML report)
+- [x] **CRIF tab** added to ClientDetail page (3rd tab: CRIF / क्रेडिट)
+- [x] **CrifCheck.jsx** component with: Run/Re-check button, score display, MFI summary cards, account history tables, service status chips, "Full Report" button (HTML), DOB missing warning
+- [x] Live UAT API tested — Report ID: RADH260509CR385504415 successfully generated

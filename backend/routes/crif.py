@@ -78,11 +78,16 @@ def _build_crif_xml(kyc: dict, loan_amount: int = 50000) -> str:
     pb = kyc.get("primary_borrower", {})
     name = (pb.get("name") or "").upper().strip()
     dob = pb.get("dob") or ""
-    # DOB format: YYYY-MM-DD → DD-MM-YYYY
-    if dob and len(dob) == 10 and "-" in dob:
-        parts = dob.split("-")
-        if len(parts[0]) == 4:
-            dob = f"{parts[2]}-{parts[1]}-{parts[0]}"
+    # DOB format normalization: accept YYYY-MM-DD or DD/MM/YYYY → output DD-MM-YYYY
+    if dob and len(dob) == 10:
+        if "-" in dob:
+            parts = dob.split("-")
+            if len(parts[0]) == 4:  # YYYY-MM-DD
+                dob = f"{parts[2]}-{parts[1]}-{parts[0]}"
+        elif "/" in dob:
+            parts = dob.split("/")
+            if len(parts[2]) == 4:  # DD/MM/YYYY
+                dob = f"{parts[0]}-{parts[1]}-{parts[2]}"
 
     phone = (pb.get("phone") or "").strip().replace("+91", "").replace(" ", "")[-10:]
     address = (pb.get("address") or "").strip()
@@ -396,6 +401,7 @@ async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_u
         "kyc_id": kyc_id,
         "customer_id": kyc.get("customer_id"),
         "checked_at": check_doc["checked_at"],
+        "checked_by_name": check_doc["checked_by_name"],
         "result": parsed,
     }
 
