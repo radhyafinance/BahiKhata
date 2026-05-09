@@ -89,3 +89,39 @@
   60% { transform: translateX(-5px); }
   80% { transform: translateX(5px); }
 }
+
+/* ── Print styles for CRIF tab — used by Download PDF button ────────────── */
+@media print {
+  /* Hide everything by default… */
+  body * { visibility: hidden; }
+  /* …except the CRIF tab and its descendants */
+  [data-testid="crif-tab"],
+  [data-testid="crif-tab"] * { visibility: visible; }
+  /* Pull the CRIF tab to top of page */
+  [data-testid="crif-tab"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    padding: 16px;
+    background: white;
+  }
+  /* Hide buttons & interactive controls in the print view */
+  .crif-no-print { display: none !important; }
+  /* Each loan card on a fresh page when overflowing */
+  [data-testid^="crif-loan-card-"] {
+    page-break-inside: avoid;
+    break-inside: avoid;
+    margin-bottom: 12px;
+    border: 1px solid #ddd !important;
+    box-shadow: none !important;
+  }
+  /* Ensure colored payment-history cells print with backgrounds */
+  [data-testid="crif-payment-history-grid"] td {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Page margins */
+  @page { size: A4; margin: 12mm; }
+}
+

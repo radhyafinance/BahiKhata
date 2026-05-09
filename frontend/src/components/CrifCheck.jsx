@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import {
   ShieldCheck, AlertTriangle, RefreshCw, ExternalLink,
   CheckCircle, XCircle, Clock, TrendingUp, CreditCard,
-  Building2, AlertCircle, Info
+  Building2, AlertCircle, Info, Download
 } from "lucide-react";
 
 const API = process.env.REACT_APP_BACKEND_URL + "/api";
@@ -267,6 +267,20 @@ export default function CrifCheck({ kycId, hasDob }) {
     window.open(`${API}/crif/report-html/${kycId}`, "_blank");
   };
 
+  const downloadPdf = () => {
+    // Set a meaningful filename for the browser's "Save as PDF" dialog,
+    // restore the original title afterwards.
+    const customerId = result?.customer_id || "client";
+    const checkedDate = result?.checked_at
+      ? new Date(result.checked_at).toISOString().slice(0, 10)
+      : new Date().toISOString().slice(0, 10);
+    const originalTitle = document.title;
+    document.title = `CRIF_${customerId}_${checkedDate}`;
+    window.print();
+    // Browsers handle the dialog asynchronously — restore after a tick
+    setTimeout(() => { document.title = originalTitle; }, 1000);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-40">
@@ -333,7 +347,7 @@ export default function CrifCheck({ kycId, hasDob }) {
             </p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 crif-no-print">
           {result?.result?.html_report && (
             <button
               onClick={openHtmlReport}
@@ -341,6 +355,16 @@ export default function CrifCheck({ kycId, hasDob }) {
               data-testid="crif-full-report-btn"
             >
               <ExternalLink size={13} /> Full Report
+            </button>
+          )}
+          {result && r?.status === "success" && (
+            <button
+              onClick={downloadPdf}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold bg-muted hover:bg-muted/70 border border-border transition-colors"
+              data-testid="crif-download-pdf-btn"
+              title="Print / Save as PDF"
+            >
+              <Download size={13} /> Download PDF
             </button>
           )}
           <button
