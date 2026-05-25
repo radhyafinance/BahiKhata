@@ -76,7 +76,7 @@ class TestFY202223RA0022:
         assert row.get("new_loan_in_fy") is True, (
             f"Expected new_loan_in_fy=True for RA0022 in FY 2022-23, got {row.get('new_loan_in_fy')}"
         )
-        print(f"PASS: RA0022 new_loan_in_fy=True in FY 2022-23 (L2 disbursed Dec 2022)")
+        print("PASS: RA0022 new_loan_in_fy=True in FY 2022-23 (L2 disbursed Dec 2022)")
 
 
 # ── Test 2: FY 2023-24 — RA0022 पिछली बाक़ी = 18000, date=Dec 2022, किस्त हाल=blank ──
@@ -122,7 +122,7 @@ class TestFY202324RA0022:
         assert row.get("new_loan_in_fy") is False, (
             f"Expected new_loan_in_fy=False (किस्त हाल blank) for RA0022 in FY 2023-24, got {row.get('new_loan_in_fy')}"
         )
-        print(f"PASS: RA0022 new_loan_in_fy=False in FY 2023-24 (किस्त हाल blank)")
+        print("PASS: RA0022 new_loan_in_fy=False in FY 2023-24 (किस्त हाल blank)")
 
     def test_ra0022_is_netoff_combined(self, session):
         resp = session.get(f"{BASE_URL}/api/collections/sheet?month=2024-03")
@@ -140,7 +140,7 @@ class TestFY202324RA0030:
         resp = session.get(f"{BASE_URL}/api/collections/sheet?month=2024-03")
         rows = _find_rows_by_customer_id(resp.json(), "RA0030")
         assert len(rows) > 0, "RA0030 not found in FY 2023-24"
-        print(f"PASS: RA0030 found")
+        print("PASS: RA0030 found")
 
     def test_ra0030_new_loan_in_fy_true(self, session):
         """L2 disbursed Aug 2023 is within FY 2023-24 (Apr 2023-Mar 2024) → new_loan_in_fy=True."""

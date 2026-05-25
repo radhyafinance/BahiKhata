@@ -599,7 +599,7 @@ class TestInterestIncomeSourceInBid:
                 f"EMI entry should NOT have interest lines, but found: {interest_lines_in_emi}"
             )
         print(f"  Interest Income in Bid for {month}: {interest_before}")
-        print(f"  No interest lines found in EMI entry — PASS")
+        print("  No interest lines found in EMI entry — PASS")
 
 
 # ─── Test: Formula Verification ───────────────────────────────────────────────

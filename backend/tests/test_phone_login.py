@@ -76,7 +76,7 @@ class TestPhoneLogin:
         )
         # Should fail because model expects 'phone' not 'email'
         assert resp.status_code == 422, f"Expected 422 (validation error), got {resp.status_code}: {resp.text}"
-        print(f"PASS: Login with 'email' field (not 'phone') returns 422 validation error")
+        print("PASS: Login with 'email' field (not 'phone') returns 422 validation error")
 
     def test_login_missing_phone_field_returns_422(self):
         """Missing phone field returns validation error"""
@@ -85,7 +85,7 @@ class TestPhoneLogin:
             json={"password": "Admin@123"},
         )
         assert resp.status_code == 422, f"Expected 422, got {resp.status_code}: {resp.text}"
-        print(f"PASS: Missing phone field returns 422")
+        print("PASS: Missing phone field returns 422")
 
     def test_login_empty_phone_returns_401(self):
         """Empty phone string returns 401"""
@@ -112,7 +112,7 @@ class TestPhoneLoginCookieSession:
         assert "access_token" in set_cookie or "access_token" in resp.cookies, (
             f"access_token cookie not found in response. set-cookie: {set_cookie}"
         )
-        print(f"PASS: Login sets access_token cookie")
+        print("PASS: Login sets access_token cookie")
 
     def test_auth_me_after_login(self):
         """GET /auth/me returns user data after successful login"""
@@ -135,7 +135,7 @@ class TestPhoneLoginCookieSession:
         session = requests.Session()  # fresh session, no cookies
         resp = session.get(f"{BASE_URL}/api/auth/me")
         assert resp.status_code == 401, f"Expected 401, got {resp.status_code}: {resp.text}"
-        print(f"PASS: /auth/me without login returns 401")
+        print("PASS: /auth/me without login returns 401")
 
 
 class TestUserCreationWithPhone:
@@ -180,7 +180,7 @@ class TestUserCreationWithPhone:
         resp = session.post(f"{BASE_URL}/api/users", json=payload)
         # phone is required in UserCreate, so should fail with 422
         assert resp.status_code == 422, f"Expected 422 (phone required), got {resp.status_code}: {resp.text}"
-        print(f"PASS: Creating user without phone returns 422")
+        print("PASS: Creating user without phone returns 422")
 
     def test_create_user_with_phone_and_email(self):
         """Creating a user with both phone and email works (email optional)"""

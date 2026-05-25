@@ -83,14 +83,18 @@ export function IllakaProvider({ children }) {
   const setSelectedIllaka = (illaka) => {
     setSelectedIllakaState(illaka);
     if (user) {
-      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ userId: user.id, illaka }));
+      // Store only essential fields — not the full object — to minimise sessionStorage footprint
+      const slim = illaka ? { id: illaka.id, name: illaka.name } : null;
+      sessionStorage.setItem(STORAGE_KEY, JSON.stringify({ userId: user.id, illaka: slim }));
     }
   };
 
   const setSelectedMaalik = (maalik) => {
     setSelectedMaalikState(maalik);
     if (user) {
-      sessionStorage.setItem(MAALIK_KEY, JSON.stringify({ userId: user.id, maalik }));
+      // Store only essential fields
+      const slim = maalik ? { id: maalik.id, name: maalik.name } : null;
+      sessionStorage.setItem(MAALIK_KEY, JSON.stringify({ userId: user.id, maalik: slim }));
     }
     // Reset illaka if it's no longer in the filtered list
     if (maalik && selectedIllaka?.id) {

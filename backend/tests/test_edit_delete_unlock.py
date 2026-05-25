@@ -221,7 +221,7 @@ class TestUpdateEntry:
         data = put_resp.json()
         assert data["narration"] == "TEST_updated_narration"
         assert data["total_amount"] == 750.0
-        print(f"PASS: Admin PUT entry → narration and amount updated")
+        print("PASS: Admin PUT entry → narration and amount updated")
         # Cleanup
         admin_session.delete(f"{BASE_URL}/api/accounts/entries/{entry_id}")
 
@@ -378,7 +378,7 @@ class TestUnlockExpenseSubmission:
         sub = data["submission"]
         assert sub["status"] == "draft", f"Expected draft after unlock, got {sub['status']}"
         assert sub.get("journal_entry_id") is None, "journal_entry_id should be None after unlock"
-        print(f"PASS: Admin PATCH /unlock → status reverted to draft, journal_entry_id cleared")
+        print("PASS: Admin PATCH /unlock → status reverted to draft, journal_entry_id cleared")
 
         # Cleanup
         admin_session.delete(f"{BASE_URL}/api/accounts/expense-submissions/{sub_id}")

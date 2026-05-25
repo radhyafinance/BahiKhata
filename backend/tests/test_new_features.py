@@ -14,10 +14,10 @@ import time
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
-ADMIN_EMAIL = "admin@bahikhata.com"
-ADMIN_PASSWORD = "Admin@123"
-SIPAHI_EMAIL = "TEST_sipahi_loans@bahikhata.com"
-SIPAHI_PASSWORD = "Test@1234"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@bahikhata.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@123")
+SIPAHI_EMAIL = os.getenv("TEST_SIPAHI_EMAIL", "TEST_sipahi_loans@bahikhata.com")
+SIPAHI_PASSWORD = os.getenv("TEST_USER_PASSWORD", "Test@1234")
 
 # Timestamp for unique test data
 TS = str(int(time.time()))[-6:]
@@ -88,9 +88,9 @@ def illaka_and_misal(admin_session, sipahi_session):
                 )
                 print(f"Assigned Delhi to sipahi: {ar.status_code}")
             else:
-                print(f"Sipahi already has Delhi illaka assigned")
+                print("Sipahi already has Delhi illaka assigned")
         else:
-            print(f"WARNING: Sipahi user not found in users list")
+            print("WARNING: Sipahi user not found in users list")
 
     return delhi_illaka, misal
 
@@ -384,7 +384,7 @@ class TestMobileUniqueness:
             }
         })
         assert r2.status_code == 200, f"Second unique phone KYC failed: {r2.text}"
-        print(f"PASS: Two different phones both succeed")
+        print("PASS: Two different phones both succeed")
 
     def test_no_phone_kyc_allowed(self, sipahi_session, illaka_and_misal):
         """KYC without phone should not fail mobile uniqueness check"""
@@ -400,7 +400,7 @@ class TestMobileUniqueness:
             }
         })
         assert r.status_code == 200, f"KYC without phone failed: {r.text}"
-        print(f"PASS: KYC without phone creates successfully")
+        print("PASS: KYC without phone creates successfully")
 
 
 class TestCollectionSheetAPI:
@@ -450,7 +450,7 @@ class TestCollectionSheetAPI:
                     assert "emi_status" in row, f"emi_status missing: {row.keys()}"
                     assert "loan_number" in row, f"loan_number missing: {row.keys()}"
                     assert "customer_id" in row, f"customer_id missing in row: {row.keys()}"
-        print(f"PASS: Collection sheet illakas structure correct")
+        print("PASS: Collection sheet illakas structure correct")
 
     def test_collection_sheet_collected_count(self, admin_session):
         """collected count should be <= total"""

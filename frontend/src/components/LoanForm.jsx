@@ -55,6 +55,7 @@ export default function LoanForm() {
       });
       setSelectedClient({ id: l.kyc_id, name: l.client_name });
     }).catch(() => toast.error("Failed to load loan"));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/axios/toast/setState are stable
   }, [id, isEdit]);
 
   // Auto-select client when kyc_id is passed as a query param (e.g. from passbook)
@@ -82,6 +83,7 @@ export default function LoanForm() {
       finally { setSearchLoading(false); }
     }, 400);
     return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/axios/setState are stable
   }, [clientSearch]);
 
   const selectClient = (kyc) => {

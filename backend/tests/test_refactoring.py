@@ -11,10 +11,10 @@ BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 if not BASE_URL:
     raise RuntimeError("REACT_APP_BACKEND_URL env var not set")
 
-ADMIN_EMAIL = "admin@bahikhata.com"
-ADMIN_PASSWORD = "Admin@123"
-SIPAHI_EMAIL = "TEST_sipahi_loans@bahikhata.com"
-SIPAHI_PASSWORD = "Test@1234"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@bahikhata.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@123")
+SIPAHI_EMAIL = os.getenv("TEST_SIPAHI_EMAIL", "TEST_sipahi_loans@bahikhata.com")
+SIPAHI_PASSWORD = os.getenv("TEST_USER_PASSWORD", "Test@1234")
 
 
 # ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -361,7 +361,7 @@ class TestEmiNoteEndpoint:
         persisted_emi = next((e for e in get_data["emi_schedule"] if e["due_month"] == emi_month), None)
         assert persisted_emi is not None
         assert persisted_emi.get("note") == note_text, "Note not persisted after GET"
-        print(f"PASS: Note persisted in DB — verified via GET")
+        print("PASS: Note persisted in DB — verified via GET")
 
         # Clean up: clear the note
         admin_session.patch(
@@ -392,7 +392,7 @@ class TestEmiNoteEndpoint:
             json={"emi_month": "1900-01", "note": "test"}
         )
         assert patch_resp.status_code == 404, f"Expected 404, got {patch_resp.status_code}"
-        print(f"PASS: non-existent EMI month returns 404")
+        print("PASS: non-existent EMI month returns 404")
 
 
 # ─── Collection Sheet (/api/collections/sheet) ───────────────────────────────

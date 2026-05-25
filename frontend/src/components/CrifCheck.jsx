@@ -260,8 +260,8 @@ export default function CrifCheck({ kycId, hasDob }) {
       {r?.status === "error" && errors.length > 0 && (
         <div className="bk-card border-l-4 border-red-400 bg-red-50 space-y-2">
           <p className="text-sm font-semibold text-red-800 flex items-center gap-2"><XCircle size={14} /> CRIF returned errors</p>
-          {errors.map((e, i) => (
-            <div key={i} className="text-xs text-red-700">
+          {errors.map((e) => (
+            <div key={e.code} className="text-xs text-red-700">
               <span className="font-mono font-bold">{e.code}</span> — {e.description}
             </div>
           ))}
@@ -287,8 +287,8 @@ export default function CrifCheck({ kycId, hasDob }) {
                 <TrendingUp size={15} /> Credit Score
               </h4>
               <div className="flex flex-wrap gap-4">
-                {scores.map((s, i) => (
-                  <div key={i} className="flex flex-col gap-1">
+                {scores.map((s) => (
+                  <div key={s.name} className="flex flex-col gap-1">
                     <p className="text-xs text-muted-foreground uppercase tracking-wide">{s.name}</p>
                     <ScoreBadge value={s.value} />
                     {s.description && <p className="text-xs text-muted-foreground max-w-xs">{s.description}</p>}
@@ -388,8 +388,8 @@ export default function CrifCheck({ kycId, hasDob }) {
                     </tr>
                   </thead>
                   <tbody>
-                    {mfiAccounts.map((acct, i) => (
-                      <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
+                    {mfiAccounts.map((acct) => (
+                      <tr key={acct.acct_number || acct.lender} className="border-b border-border/50 hover:bg-muted/30">
                         <td className="py-2 pr-3 font-medium">{acct.lender || "XXXX"}</td>
                         <td className="py-2 pr-3 text-muted-foreground">{acct.loan_type || "—"}</td>
                         <td className="py-2 pr-3 text-right tabular-nums">
@@ -554,7 +554,7 @@ export default function CrifCheck({ kycId, hasDob }) {
                 </h4>
               </div>
               {prodAccounts.map((acct, i) => (
-                <LoanAccountCard key={i} acct={acct} index={i} />
+                <LoanAccountCard key={acct.acct_number || `prod-${i}`} acct={acct} index={i} />
               ))}
             </div>
           )}
@@ -569,7 +569,7 @@ export default function CrifCheck({ kycId, hasDob }) {
                 </h4>
               </div>
               {ioiAccounts.map((acct, i) => (
-                <LoanAccountCard key={i} acct={acct} index={`ioi-${i}`} />
+                <LoanAccountCard key={acct.acct_number || `ioi-${i}`} acct={acct} index={`ioi-${i}`} />
               ))}
             </div>
           )}
@@ -592,7 +592,7 @@ export default function CrifCheck({ kycId, hasDob }) {
                   </thead>
                   <tbody>
                     {inquiryHistory.slice(0, 10).map((h, i) => (
-                      <tr key={i} className="border-b border-border/50 hover:bg-muted/30">
+                      <tr key={`${h.date}-${h.member}-${i}`} className="border-b border-border/50 hover:bg-muted/30">
                         <td className="py-2 pr-3 font-medium text-xs">{h.member || "—"}</td>
                         <td className="py-2 pr-3 text-xs text-muted-foreground">{h.date || "—"}</td>
                         <td className="py-2 pr-3 text-xs text-muted-foreground">{h.purpose || "—"}</td>

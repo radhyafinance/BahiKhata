@@ -260,8 +260,8 @@ function ExcelImport() {
         </div>
         {result.failed?.length > 0 && (
           <div className="text-left mt-4 space-y-1">
-            {result.failed.map((f, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 rounded px-3 py-1.5">
+            {result.failed.map((f) => (
+              <div key={f.client_name} className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 rounded px-3 py-1.5">
                 <XCircle size={13} /> {f.client_name}: {f.error}
               </div>
             ))}
@@ -343,8 +343,8 @@ function ExcelImport() {
                   </tr>
                 </thead>
                 <tbody>
-                  {preview.valid_rows.map((r, i) => (
-                    <tr key={i} className="border-t border-border hover:bg-muted/20" data-testid={`preview-row-${r.row}`}>
+                  {preview.valid_rows.map((r) => (
+                    <tr key={r.row} className="border-t border-border hover:bg-muted/20" data-testid={`preview-row-${r.row}`}>
                       <td className="px-3 py-2 text-muted-foreground">{r.row}</td>
                       <td className="px-3 py-2 font-medium text-foreground">
                         {r.client_name}
@@ -368,8 +368,8 @@ function ExcelImport() {
               <p className="text-xs font-semibold text-destructive uppercase tracking-wide flex items-center gap-1.5">
                 <AlertTriangle size={13} /> Rows with errors (fix in Excel and re-upload)
               </p>
-              {preview.error_rows.map((r, i) => (
-                <div key={i} className="border border-destructive/30 bg-destructive/5 rounded-lg px-3 py-2.5" data-testid={`error-row-${r.row}`}>
+              {preview.error_rows.map((r) => (
+                <div key={r.row} className="border border-destructive/30 bg-destructive/5 rounded-lg px-3 py-2.5" data-testid={`error-row-${r.row}`}>
                   <p className="text-xs font-semibold text-foreground">Row {r.row}: {r.data.client_name || "(blank)"}</p>
                   <ul className="mt-1 space-y-0.5">
                     {r.errors.map((e, j) => <li key={j} className="text-xs text-destructive">• {e}</li>)}

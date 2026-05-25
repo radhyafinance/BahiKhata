@@ -139,6 +139,7 @@ export default function FullJournalEntryModal({ open, onClose, onSave, heads, il
                 </thead>
                 <tbody>
                   {lines.map((line, i) => (
+                    // key={i} intentional: ordered journal entry lines with no external stable ID
                     <tr key={i} className="border-b border-border">
                       <td className="px-2 py-1.5">
                         <select value={line.account_head_id} onChange={e => updateLine(i, "account_head_id", e.target.value)}

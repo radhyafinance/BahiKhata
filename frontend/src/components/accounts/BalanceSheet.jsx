@@ -2,6 +2,34 @@ import { useState, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import { API, fmt, MONTHS } from "./utils";
 
+function SideSection({ title, color, items, footer }) {
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className={`px-4 py-3 ${color} border-b border-border`}>
+        <span className="font-bold text-sm">{title}</span>
+      </div>
+      <table className="w-full text-sm">
+        <tbody>
+          {items.map((item) => (
+            <tr key={item.account_head_name} className="border-b border-border hover:bg-muted/20">
+              <td className="px-4 py-2.5">
+                <div className="font-medium">{item.account_head_name}</div>
+                <div className="text-xs text-muted-foreground">{item.group_name}</div>
+              </td>
+              <td className={`px-4 py-2.5 text-right font-bold font-mono ${item.amount < 0 ? "text-red-600" : ""}`}>
+                {fmt(Math.abs(item.amount))}
+                {item.amount < 0 && <span className="text-xs ml-1">(Dr)</span>}
+              </td>
+            </tr>
+          ))}
+          {items.length === 0 && <tr><td colSpan={2} className="px-4 py-6 text-center text-muted-foreground text-xs">Nil</td></tr>}
+        </tbody>
+      </table>
+      {footer}
+    </div>
+  );
+}
+
 export function BalanceSheet({ month, illakaId, maalikId, refresh }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -18,6 +46,7 @@ export function BalanceSheet({ month, illakaId, maalikId, refresh }) {
       setData(await res.json());
     } catch { toast.error("Failed to load Balance Sheet"); }
     finally { setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/toast/setState are stable module-level constants
   }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
@@ -29,34 +58,6 @@ export function BalanceSheet({ month, illakaId, maalikId, refresh }) {
   const equityItems = data?.equity_items || [];
   const netProfit = data?.net_profit || 0;
   const openingCapital = data?.opening_capital || 0;
-
-  function SideSection({ title, color, items, footer }) {
-    return (
-      <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className={`px-4 py-3 ${color} border-b border-border`}>
-          <span className="font-bold text-sm">{title}</span>
-        </div>
-        <table className="w-full text-sm">
-          <tbody>
-            {items.map((item, i) => (
-              <tr key={i} className="border-b border-border hover:bg-muted/20">
-                <td className="px-4 py-2.5">
-                  <div className="font-medium">{item.account_head_name}</div>
-                  <div className="text-xs text-muted-foreground">{item.group_name}</div>
-                </td>
-                <td className={`px-4 py-2.5 text-right font-bold font-mono ${item.amount < 0 ? "text-red-600" : ""}`}>
-                  {fmt(Math.abs(item.amount))}
-                  {item.amount < 0 && <span className="text-xs ml-1">(Dr)</span>}
-                </td>
-              </tr>
-            ))}
-            {items.length === 0 && <tr><td colSpan={2} className="px-4 py-6 text-center text-muted-foreground text-xs">Nil</td></tr>}
-          </tbody>
-        </table>
-        {footer}
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-4">
@@ -81,8 +82,8 @@ export function BalanceSheet({ month, illakaId, maalikId, refresh }) {
             </div>
             <table className="w-full text-sm">
               <tbody>
-                {equityItems.map((e, i) => (
-                  <tr key={i} className="border-b border-border hover:bg-muted/20">
+                {equityItems.map((e) => (
+                  <tr key={e.account_head_name} className="border-b border-border hover:bg-muted/20">
                     <td className="px-4 py-2.5 font-medium">{e.account_head_name}</td>
                     <td className="px-4 py-2.5 text-right font-bold font-mono">{fmt(e.amount)}</td>
                   </tr>

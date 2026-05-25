@@ -9,10 +9,10 @@ from datetime import date, datetime
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
-ADMIN_EMAIL = "admin@bahikhata.com"
-ADMIN_PASSWORD = "Admin@123"
-SIPAHI_EMAIL = "TEST_sipahi_loans@bahikhata.com"
-SIPAHI_PASSWORD = "Test@1234"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@bahikhata.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@123")
+SIPAHI_EMAIL = os.getenv("TEST_SIPAHI_EMAIL", "TEST_sipahi_loans@bahikhata.com")
+SIPAHI_PASSWORD = os.getenv("TEST_USER_PASSWORD", "Test@1234")
 
 
 @pytest.fixture(scope="module")
@@ -200,7 +200,7 @@ class TestCollectEMI:
             "payment_date": date.today().isoformat()
         })
         assert r.status_code == 400
-        print(f"PASS: Double collect returns 400")
+        print("PASS: Double collect returns 400")
 
 
 class TestUndoEMI:
@@ -271,7 +271,7 @@ class TestDuplicateAadhaar:
         r2 = sipahi_session.post(f"{BASE_URL}/api/kycs", json=kyc_payload)
         assert r2.status_code == 400
         assert "duplicate" in r2.text.lower() or "KYC already exists" in r2.text
-        print(f"PASS: Duplicate Aadhaar returns 400")
+        print("PASS: Duplicate Aadhaar returns 400")
 
 
 class TestLoanList:
@@ -316,4 +316,4 @@ class TestLoanList:
         loan = r2.json()
         assert loan['emi_amount'] == 1000
         assert loan['total_repayable'] == 12000
-        print(f"PASS: Auto-created loan has correct EMI values")
+        print("PASS: Auto-created loan has correct EMI values")

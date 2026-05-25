@@ -8,13 +8,13 @@ import os
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://maalik-portal.preview.emergentagent.com').rstrip('/')
 
-ADMIN_EMAIL = "admin@bahikhata.com"
-ADMIN_PASSWORD = "Admin@123"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@bahikhata.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@123")
 
 # We'll create a sipahi user for loan creation tests
-TEST_SIPAHI_EMAIL = "TEST_sipahi_loans@bahikhata.com"
+TEST_SIPAHI_EMAIL = os.getenv("TEST_SIPAHI_EMAIL", "TEST_sipahi_loans@bahikhata.com")
 TEST_SIPAHI_PASSWORD = "Test@1234"
-TEST_MUNEEM_EMAIL = "TEST_muneem_loans@bahikhata.com"
+TEST_MUNEEM_EMAIL = os.getenv("TEST_MUNEEM_EMAIL", "TEST_muneem_loans@bahikhata.com")
 TEST_MUNEEM_PASSWORD = "Test@1234"
 
 
@@ -325,4 +325,4 @@ class TestKYCSearch:
         assert "primary_borrower" in kyc
         assert "illaka_id" in kyc
         assert "misal_id" in kyc
-        print(f"PASS: KYC has required fields for loan form")
+        print("PASS: KYC has required fields for loan form")

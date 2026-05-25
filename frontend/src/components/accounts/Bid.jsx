@@ -20,6 +20,7 @@ export function Bid({ month, illakaId, maalikId, refresh }) {
       setData(await res.json());
     } catch { toast.error("Failed to load Bid"); }
     finally { setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/toast/setState are stable module-level constants
   }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
@@ -68,7 +69,7 @@ export function Bid({ month, illakaId, maalikId, refresh }) {
             </div>
             <div className="divide-y divide-border">
               {drTotals.map((item, i) => (
-                <div key={i} className="p-4">
+                <div key={item.type === "emi_total" ? "emi_total" : (item.label || i)} className="p-4">
                   {item.type === "emi_total" ? (
                     <div>
                       <div className="flex items-center justify-between mb-2">
@@ -111,8 +112,8 @@ export function Bid({ month, illakaId, maalikId, refresh }) {
               <span className="font-bold text-red-700">{fmt(data?.total_cr)}</span>
             </div>
             <div className="divide-y divide-border">
-              {crTotals.map((item, i) => (
-                <div key={i} className="flex items-center justify-between px-4 py-3">
+              {crTotals.map((item) => (
+                <div key={item.account_head_name} className="flex items-center justify-between px-4 py-3">
                   <div>
                     <p className="text-sm font-medium">{item.account_head_name}</p>
                     <p className="text-xs text-muted-foreground">{item.group_name}</p>

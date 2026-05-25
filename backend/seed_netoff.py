@@ -3,7 +3,7 @@ Net-off re-loans for 10 clients in Rampur Testing (RA0021–RA0030).
 Old loan: remaining overdue EMIs → status="netoff", loan closed.
 New loan: principal ₹20,600 disbursed after the old loan's last paid EMI.
 """
-import asyncio, calendar, random
+import asyncio, calendar, random  # noqa: S311 — intentional: seeded PRNG for reproducible test data
 from datetime import date as date_type, timedelta
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorClient

@@ -17,6 +17,7 @@ export function PLSummary({ month, illakaId, maalikId, refresh }) {
       setData(await res.json());
     } catch { toast.error("Failed to load summary"); }
     finally { setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/toast/setState are stable module-level constants
   }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
@@ -59,8 +60,8 @@ export function PLSummary({ month, illakaId, maalikId, refresh }) {
           {income.length === 0 ? <p className="text-center text-sm text-muted-foreground py-8">No income entries</p> : (
             <table className="w-full text-sm">
               <tbody>
-                {income.map((h, i) => (
-                  <tr key={i} className="border-b border-border hover:bg-muted/30">
+                {income.map((h) => (
+                  <tr key={h.account_head_name} className="border-b border-border hover:bg-muted/30">
                     <td className="px-4 py-2.5">
                       <div className="font-medium">{h.account_head_name}</div>
                       <div className="text-xs text-muted-foreground">{h.group_name}</div>
@@ -83,8 +84,8 @@ export function PLSummary({ month, illakaId, maalikId, refresh }) {
           {expenses.length === 0 ? <p className="text-center text-sm text-muted-foreground py-8">No expense entries</p> : (
             <table className="w-full text-sm">
               <tbody>
-                {expenses.map((h, i) => (
-                  <tr key={i} className="border-b border-border hover:bg-muted/30">
+                {expenses.map((h) => (
+                  <tr key={h.account_head_name} className="border-b border-border hover:bg-muted/30">
                     <td className="px-4 py-2.5">
                       <div className="font-medium">{h.account_head_name}</div>
                       <div className="text-xs text-muted-foreground">{h.group_name}</div>

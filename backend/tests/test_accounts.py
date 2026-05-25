@@ -139,7 +139,7 @@ class TestAccountHeads:
         assert resp.status_code == 200
         heads = resp.json()
         cash_heads = [h for h in heads if h.get("name") == "Cash in Hand"]
-        assert len(cash_heads) == 1, f"'Cash in Hand' head not found or duplicated"
+        assert len(cash_heads) == 1, "'Cash in Hand' head not found or duplicated"
         assert cash_heads[0].get("is_system") is True, "Cash in Hand should be system head"
         assert cash_heads[0].get("system_key") == "cash_in_hand", "Should have system_key=cash_in_hand"
 

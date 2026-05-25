@@ -134,7 +134,7 @@ class TestCollectionSheetFields:
                 for row in m["rows"]:
                     if row.get("emi_status") == "paid":
                         assert "emi_paid_amount" in row, f"Row {row.get('loan_db_id')} missing emi_paid_amount"
-                        assert row["emi_paid_amount"] > 0, f"emi_paid_amount should be > 0 for paid row"
+                        assert row["emi_paid_amount"] > 0, "emi_paid_amount should be > 0 for paid row"
                         paid_found = True
         if not paid_found:
             pytest.skip("No paid rows found in 2026-03 for Delhi illaka")
@@ -267,7 +267,7 @@ class TestEditEmiPayment:
             json={"amount": new_amount}
         )
         assert resp.status_code == 200, f"Expected 200, got {resp.status_code}: {resp.text}"
-        print(f"PASS: PATCH with only amount → 200")
+        print("PASS: PATCH with only amount → 200")
 
         # Restore
         admin_session.patch(
@@ -329,7 +329,7 @@ class TestYearClosingLock:
         assert resp.status_code == 403, (
             f"Expected 403 for closing month {closing_emi_month}, got {resp.status_code}: {resp.text}"
         )
-        print(f"PASS: Admin editing closing month 2024-03 → 403")
+        print("PASS: Admin editing closing month 2024-03 → 403")
 
     def test_admin_edit_month_after_closing_not_blocked(self, admin_session, paid_emi_row):
         """Admin editing emi_month > '2024-03' should NOT be blocked by year-closing lock"""
@@ -387,7 +387,7 @@ class TestMuneemPermissions:
         assert resp.status_code == 403, (
             f"Expected 403 for muneem editing future month, got {resp.status_code}: {resp.text}"
         )
-        print(f"PASS: Muneem editing future month 2026-06 → 403")
+        print("PASS: Muneem editing future month 2026-06 → 403")
 
     def test_muneem_edit_current_month_reaches_schedule_lookup(self, muneem_session, paid_emi_row):
         """Muneem editing current month (2026-03) should pass role check (may fail on paid status for real data)"""

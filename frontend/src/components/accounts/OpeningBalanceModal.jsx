@@ -64,6 +64,7 @@ export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
       finally { setLoadingHeads(false); }
     }
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/fetch/toast/setState are stable; only illakaId triggers reload
   }, [illakaId]);
 
   const totalDr = heads

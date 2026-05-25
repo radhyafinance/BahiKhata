@@ -14,10 +14,10 @@ import datetime
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', '').rstrip('/')
 
-ADMIN_EMAIL = "admin@bahikhata.com"
-ADMIN_PASSWORD = "Admin@123"
-SIPAHI_EMAIL = "TEST_sipahi_loans@bahikhata.com"
-SIPAHI_PASSWORD = "Test@1234"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@bahikhata.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@123")
+SIPAHI_EMAIL = os.getenv("TEST_SIPAHI_EMAIL", "TEST_sipahi_loans@bahikhata.com")
+SIPAHI_PASSWORD = os.getenv("TEST_USER_PASSWORD", "Test@1234")
 
 # Timestamp suffix to avoid collisions
 TS = str(int(time.time()))[-6:]
@@ -29,7 +29,7 @@ def admin_session():
     s = requests.Session()
     r = s.post(f"{BASE_URL}/api/auth/login", json={"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD})
     assert r.status_code == 200, f"Admin login failed: {r.text}"
-    print(f"Admin login OK")
+    print("Admin login OK")
     return s
 
 
@@ -40,7 +40,7 @@ def sipahi_session():
     r = s.post(f"{BASE_URL}/api/auth/login", json={"email": SIPAHI_EMAIL, "password": SIPAHI_PASSWORD})
     if r.status_code != 200:
         pytest.skip(f"Sipahi login failed: {r.text}")
-    print(f"Sipahi login OK")
+    print("Sipahi login OK")
     return s
 
 
@@ -100,8 +100,8 @@ class TestTransliterateEndpoint:
         data = r.json()
         assert "hindi" in data, f"Response missing 'hindi' key: {data}"
         hindi = data["hindi"]
-        assert isinstance(hindi, str), f"'hindi' should be a string"
-        assert len(hindi) > 0, f"Expected non-empty Hindi for 'Ram Kumar'"
+        assert isinstance(hindi, str), "'hindi' should be a string"
+        assert len(hindi) > 0, "Expected non-empty Hindi for 'Ram Kumar'"
         has_devanagari = any('\u0900' <= ch <= '\u097F' for ch in hindi)
         assert has_devanagari, f"Expected Devanagari script in result, got: '{hindi}'"
         print(f"PASS: 'Ram Kumar' -> '{hindi}'")
@@ -190,7 +190,7 @@ class TestKYCWithHindiNames:
             f"name_hindi not persisted: {pb2.get('name_hindi')}"
         assert pb2.get("relative_name_hindi") == "\u0936\u094d\u092f\u093e\u092e \u0932\u093e\u0932", \
             f"relative_name_hindi not persisted: {pb2.get('relative_name_hindi')}"
-        print(f"PASS: name_hindi persisted in DB correctly")
+        print("PASS: name_hindi persisted in DB correctly")
 
         TestKYCWithHindiNames._kyc_id = kyc_id
 
@@ -336,7 +336,7 @@ class TestCollectionSheetHindi:
             sample = all_rows[0]
             assert "client_name_hindi" in sample, f"No 'client_name_hindi' key in rows: {list(sample.keys())}"
             assert "relative_name_hindi" in sample, f"No 'relative_name_hindi' key in rows: {list(sample.keys())}"
-            print(f"PASS: Rows have required Hindi fields (newly created loan may be in next month's schedule)")
+            print("PASS: Rows have required Hindi fields (newly created loan may be in next month's schedule)")
 
 
 # --- Loan list/detail with Hindi client name ---
@@ -381,7 +381,7 @@ class TestLoanHindiName:
             assert "client_name_hindi" in new_loan, \
                 f"'client_name_hindi' not in new loan response: {list(new_loan.keys())}"
             assert new_loan.get("client_name_hindi") == name_hindi, \
-                f"client_name_hindi mismatch in loan list"
+                "client_name_hindi mismatch in loan list"
             print(f"PASS: New loan in list has client_name_hindi='{new_loan.get('client_name_hindi')}'")
             TestLoanHindiName._new_loan_id = new_loan["id"]
         else:

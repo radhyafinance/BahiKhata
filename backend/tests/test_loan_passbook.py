@@ -137,7 +137,7 @@ class TestKycIdFilter:
         assert "loans" in data
         assert data["total"] == 0, f"Expected 0 loans for unknown KYC '{unique_fake_id}', got {data['total']}"
         assert data["loans"] == [], f"Expected empty list, got {data['loans']}"
-        print(f"PASS: Truly unique fake kyc_id returns 0 loans")
+        print("PASS: Truly unique fake kyc_id returns 0 loans")
 
     def test_kyc_id_filter_not_mixing_other_kycs(self, admin_session):
         """Loans from other kyc_ids are NOT returned when kyc_id filter is set"""
@@ -186,7 +186,7 @@ class TestLoanResponseStructure:
         for loan in loans:
             status = loan.get("status")
             assert status in valid_statuses, f"Unexpected status: {status}"
-        print(f"PASS: All loans have valid status values")
+        print("PASS: All loans have valid status values")
 
     def test_emi_schedule_entry_structure(self, admin_session):
         """Each EMI entry has required fields for passbook table"""
@@ -208,7 +208,7 @@ class TestLoanResponseStructure:
         valid_emi_statuses = {"pending", "paid", "overdue"}
         for emi in schedule:
             assert emi["status"] in valid_emi_statuses, f"Invalid EMI status: {emi['status']}"
-        print(f"PASS: EMI schedule entries have all required fields")
+        print("PASS: EMI schedule entries have all required fields")
 
     def test_loan_financial_fields_are_numbers(self, admin_session):
         """principal_amount, emi_amount, total_paid, total_repayable are numeric"""

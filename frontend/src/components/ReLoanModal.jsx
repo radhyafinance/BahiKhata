@@ -55,6 +55,7 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
       })
       .catch(() => {})
       .finally(() => setKycLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/axios/setState/currentLoan are stable at mount
   }, [kycId]);
 
   // PersonSection change handlers

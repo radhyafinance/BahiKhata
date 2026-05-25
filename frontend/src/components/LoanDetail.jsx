@@ -169,6 +169,7 @@ export default function LoanDetail() {
       .then(r => setLoan(r.data))
       .catch(() => toast.error("Failed to load loan"))
       .finally(() => setLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/axios/toast/setState are stable
   }, [id]);
 
   const handleCollected = (updatedLoan) => setLoan(updatedLoan);

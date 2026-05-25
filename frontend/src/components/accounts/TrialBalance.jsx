@@ -18,6 +18,7 @@ export function TrialBalance({ month, illakaId, maalikId, refresh }) {
       setData(await res.json());
     } catch { toast.error("Failed to load Trial Balance"); }
     finally { setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/toast/setState are stable module-level constants
   }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
@@ -67,8 +68,8 @@ export function TrialBalance({ month, illakaId, maalikId, refresh }) {
               <div className={`px-4 py-2 ${typeBg[t]} border-b border-border`}>
                 <span className={`text-xs font-bold uppercase tracking-wide ${typeColor[t]}`}>{typeLabel[t]}</span>
               </div>
-              {grouped[t].map((row, i) => (
-                <div key={i} className="grid grid-cols-12 px-4 py-2.5 border-b border-border hover:bg-muted/20 text-sm">
+              {grouped[t].map((row) => (
+                <div key={row.account_head_name} className="grid grid-cols-12 px-4 py-2.5 border-b border-border hover:bg-muted/20 text-sm">
                   <div className="col-span-5 font-medium truncate">{row.account_head_name}</div>
                   <div className="col-span-3 text-center text-xs text-muted-foreground truncate">{row.group_name}</div>
                   <div className="col-span-2 text-right text-blue-700 font-mono">

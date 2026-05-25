@@ -167,6 +167,7 @@ export default function UserManagement() {
       finally { setLoading(false); }
     };
     load();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/axios/toast/setState are stable; runs once on mount
   }, []);
 
   const deactivate = async (id) => {

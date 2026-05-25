@@ -330,8 +330,8 @@ function YearEndClosingModal({ illaka, onClose }) {
                     <p className="text-sm text-muted-foreground italic">No loans qualify for Gyal. The year will still be locked after closing.</p>
                   ) : (
                     <div className="border border-border rounded-lg overflow-hidden max-h-40 overflow-y-auto">
-                      {preview.loans.map((l, i) => (
-                        <div key={i} className="flex items-center justify-between px-3 py-2 text-sm border-b border-border/50 last:border-0">
+                      {preview.loans.map((l) => (
+                        <div key={l.loan_number} className="flex items-center justify-between px-3 py-2 text-sm border-b border-border/50 last:border-0">
                           <div>
                             <span className="font-medium">{l.client_name}</span>
                             <span className="text-xs text-muted-foreground ml-2">{l.loan_number}</span>

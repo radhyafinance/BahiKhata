@@ -361,7 +361,7 @@ class TestCollectionSheetGyalFields:
                         gyal_rows.append(row)
         
         if gyal_rows:
-            assert gyal_rows[0].get("is_gyal") is True, f"Gyal loan should have is_gyal=True"
+            assert gyal_rows[0].get("is_gyal") is True, "Gyal loan should have is_gyal=True"
             print(f"Gyal loan in collection sheet: is_gyal={gyal_rows[0]['is_gyal']}")
         else:
             print("Gyal loan not found in Jan 2018 collection sheet - may have different month structure")

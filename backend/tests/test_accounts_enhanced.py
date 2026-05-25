@@ -233,7 +233,7 @@ class TestBid:
                 for mb in item.get("misal_breakdown", []):
                     assert "misal_name" in mb
                     assert "total" in mb
-                print(f"PASS: emi_total found with breakdown")
+                print("PASS: emi_total found with breakdown")
                 break
 
 

@@ -87,6 +87,7 @@ function TemplateEditor({ illakaId, illakaName, expenseHeads, onSaved }) {
       ) : (
         <div className="space-y-2">
           {fields.map((field, i) => (
+            // key={i} intentional: ordered form rows with no external stable ID
             <div key={i} className="flex items-center gap-2 p-3 bg-muted/30 rounded-xl border border-border">
               <span className="text-xs text-muted-foreground w-5 text-center font-mono">{i + 1}</span>
               <input value={field.label} onChange={e => updateField(i, "label", e.target.value)}

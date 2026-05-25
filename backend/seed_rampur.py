@@ -3,7 +3,7 @@ Seed script: Rampur Testing Illaka with 50 clients + loans + EMI payments + 20 r
 Run: python seed_rampur.py
 """
 import asyncio
-import random
+import random  # noqa: S311 — intentional: seeded PRNG for reproducible test data, not security use
 import calendar
 import re
 import sys

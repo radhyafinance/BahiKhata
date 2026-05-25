@@ -21,6 +21,7 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
       setData(await res.json());
     } catch { toast.error("Failed to load cashbook"); }
     finally { setLoading(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- API/toast/setState are stable module-level constants
   }, [month, illakaId, maalikId, refresh]);
 
   useEffect(() => { load(); }, [load]);
@@ -160,8 +161,8 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
             </div>
 
             <div className="divide-y divide-border">
-              {crEntries.map((e, i) => (
-                <div key={i} className="flex items-center justify-between px-4 py-2.5">
+              {crEntries.map((e) => (
+                <div key={e.entry_id || `${e.date}-${e.narration}-${e.amount}`} className="flex items-center justify-between px-4 py-2.5">
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium truncate">{e.narration}</p>
                     <p className="text-xs text-muted-foreground">{e.date} · {e.contra_account}</p>

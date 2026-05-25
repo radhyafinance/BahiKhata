@@ -269,7 +269,7 @@ class TestReLoanClosedLoan:
         assert new_loan.get("netoff_amount", 0) == 0, \
             f"netoff_amount should be 0 for already closed loan, got {new_loan.get('netoff_amount')}"
         assert new_loan.get("net_disbursement_amount") == 25000
-        print(f"PASS: Net-off correctly ignored for closed loan: netoff_amount=0, net_disbursement=25000")
+        print("PASS: Net-off correctly ignored for closed loan: netoff_amount=0, net_disbursement=25000")
 
 
 class TestReLoanLoanNumberFormat:

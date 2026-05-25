@@ -4,8 +4,8 @@ import os
 
 BASE_URL = os.environ.get('REACT_APP_BACKEND_URL', 'https://maalik-portal.preview.emergentagent.com').rstrip('/')
 
-ADMIN_EMAIL = "admin@bahikhata.com"
-ADMIN_PASSWORD = "Admin@123"
+ADMIN_EMAIL = os.getenv("TEST_ADMIN_EMAIL", "admin@bahikhata.com")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@123")
 
 @pytest.fixture(scope="module")
 def admin_session():

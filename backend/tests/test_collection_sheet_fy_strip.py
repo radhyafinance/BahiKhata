@@ -7,8 +7,8 @@ import requests
 import os
 
 BASE_URL = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
-ADMIN_PHONE = "9999999999"
-ADMIN_PASSWORD = "Admin@123"
+ADMIN_PHONE = os.getenv("TEST_ADMIN_PHONE", "9999999999")
+ADMIN_PASSWORD = os.getenv("TEST_ADMIN_PASSWORD", "Admin@123")
 
 
 @pytest.fixture(scope="module")
