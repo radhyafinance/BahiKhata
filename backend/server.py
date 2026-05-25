@@ -33,10 +33,11 @@ api_router.include_router(crif.router)
 
 app.include_router(api_router)
 
-FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+CORS_ORIGINS = os.environ.get("CORS_ORIGINS", "*")
+origins = ["*"] if CORS_ORIGINS == "*" else [o.strip() for o in CORS_ORIGINS.split(",")]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_URL, "http://localhost:3000"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
