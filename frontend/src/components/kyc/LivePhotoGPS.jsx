@@ -24,19 +24,43 @@ export function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSC
   }, [stream]);
 
   const startCamera = async () => {
+    // Check API availability (some Android WebViews don't expose mediaDevices)
+    if (!navigator.mediaDevices?.getUserMedia) {
+      toast.info("In-browser camera not available. Using device camera instead.");
+      galleryRef.current?.click();
+      return;
+    }
+
     try {
+      // Attempt 1: back camera — use `ideal` (preference, not hard requirement)
+      // Avoid hard width/height constraints: they cause OverconstrainedError on many Samsung/Android devices
       const s = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } }
+        video: { facingMode: { ideal: "environment" } }
       });
       setStream(s);
       setCameraActive(true);
-    } catch {
+    } catch (err1) {
+      if (err1.name === "NotAllowedError" || err1.name === "PermissionDeniedError") {
+        toast.error("Camera permission denied. Please allow camera access in your browser settings, then try again.");
+        return;
+      }
+      if (err1.name === "NotFoundError" || err1.name === "DevicesNotFoundError") {
+        toast.error("No camera found on this device. Please use the gallery option below.");
+        return;
+      }
+      // Attempt 2: any camera, no constraints (widest possible compatibility)
       try {
         const s = await navigator.mediaDevices.getUserMedia({ video: true });
         setStream(s);
         setCameraActive(true);
-      } catch {
-        toast.error("Camera not available. Use gallery upload instead.");
+      } catch (err2) {
+        if (err2.name === "NotAllowedError" || err2.name === "PermissionDeniedError") {
+          toast.error("Camera permission denied. Please allow camera access in your browser settings, then try again.");
+        } else {
+          // Final fallback: open native device camera via file input
+          toast.info("Opening device camera...");
+          galleryRef.current?.click();
+        }
       }
     }
   };
@@ -149,9 +173,12 @@ export function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSC
             ) : (
               <>
                 <Camera size={36} className="text-muted-foreground opacity-30" />
-                <div className="flex gap-3">
-                  <button type="button" onClick={startCamera} className="bk-btn-primary max-w-[200px] flex items-center justify-center gap-2 text-sm h-11" data-testid="start-camera-btn">
+                <div className="flex flex-col items-center gap-2 w-full max-w-[220px]">
+                  <button type="button" onClick={startCamera} className="bk-btn-primary w-full flex items-center justify-center gap-2 text-sm h-11" data-testid="start-camera-btn">
                     <Camera size={16} /> Open Camera (Back)
+                  </button>
+                  <button type="button" onClick={() => galleryRef.current?.click()} className="bk-btn-secondary w-full flex items-center justify-center gap-2 text-sm h-9" data-testid="gallery-upload-btn">
+                    Upload from Gallery
                   </button>
                 </div>
                 <p className="text-xs text-muted-foreground text-center">GPS location will be captured automatically when you take the photo</p>
@@ -160,7 +187,7 @@ export function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSC
           </div>
         )}
         <canvas ref={canvasRef} className="hidden" />
-        <input ref={galleryRef} type="file" accept="image/*" onChange={handleGalleryPhoto} className="hidden" />
+        <input ref={galleryRef} type="file" accept="image/*" capture="environment" onChange={handleGalleryPhoto} className="hidden" />
       </div>
     </div>
   );
