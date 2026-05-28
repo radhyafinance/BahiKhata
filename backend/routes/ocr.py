@@ -1,6 +1,12 @@
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Query
 from fastapi.responses import Response as FastResponse
-import uuid, tempfile, os, re, json, logging, io
+import uuid
+import tempfile
+import os
+import re
+import json
+import logging
+import io
 import jwt
 from PIL import Image
 from core.storage import get_object, put_object, APP_NAME, MIME_TYPES, EMERGENT_KEY
@@ -80,6 +86,61 @@ async def serve_file(path: str, request: Request, auth: str = Query(None)):
         return FastResponse(content=data, media_type=ct)
     except Exception:
         raise HTTPException(status_code=404, detail="File not found")
+
+
+@router.post("/verify-face")
+async def verify_face(data: OCRRequest, request: Request):
+    """Check whether the uploaded photo contains a real human face (KYC live photo validation)."""
+    await get_current_user(request)
+    try:
+        file_data, ct = get_object(data.path)
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found in storage")
+
+    ext = data.path.rsplit(".", 1)[-1] if "." in data.path else "jpg"
+    with tempfile.NamedTemporaryFile(suffix=f".{ext}", delete=False) as tmp:
+        tmp.write(file_data)
+        tmp_path = tmp.name
+
+    try:
+        chat = LlmChat(
+            api_key=EMERGENT_KEY,
+            session_id=f"face-verify-{uuid.uuid4()}",
+            system_message="You are a face verification assistant for KYC compliance. Analyse photos strictly and objectively."
+        ).with_model("gemini", "gemini-2.5-flash")
+
+        img = FileContentWithMimeType(file_path=tmp_path, mime_type=ct or "image/jpeg")
+        msg = UserMessage(
+            text="""Look at this photo carefully and answer these questions:
+1. Does the photo contain a clearly visible human face of a real person?
+2. Is the face of a real live person (not a photo of a photo, drawing, or ID card)?
+3. Is the face reasonably well-lit and in focus enough for identity verification?
+
+Return ONLY a valid JSON object — no markdown, no explanation:
+{
+  "has_face": true or false,
+  "is_real_person": true or false,
+  "is_clear_enough": true or false,
+  "reason": "one short sentence explaining the result"
+}""",
+            file_contents=[img]
+        )
+        raw = await chat.send_message(msg)
+        raw = re.sub(r'```[a-z]*\n?', '', raw).strip()
+        m = re.search(r'\{.*\}', raw, re.DOTALL)
+        result = json.loads(m.group()) if m else {}
+        has_face = bool(result.get("has_face")) and bool(result.get("is_real_person"))
+        return {
+            "has_face": has_face,
+            "is_clear_enough": bool(result.get("is_clear_enough", True)),
+            "reason": result.get("reason", ""),
+        }
+    except Exception as e:
+        logger.error(f"Face verification error: {e}")
+        # Fail open on API errors to avoid blocking the workflow
+        return {"has_face": True, "is_clear_enough": True, "reason": "Verification skipped (service error)"}
+    finally:
+        os.unlink(tmp_path)
 
 
 @router.post("/ocr/aadhaar")

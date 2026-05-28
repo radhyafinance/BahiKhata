@@ -10,6 +10,7 @@ export function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSC
   const [stream, setStream] = useState(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [verifying, setVerifying] = useState(false);
   const galleryRef = useRef();
 
   useEffect(() => {
@@ -74,6 +75,26 @@ export function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSC
     );
   };
 
+  const verifyFace = async (path) => {
+    setVerifying(true);
+    try {
+      const res = await axios.post(`${API}/verify-face`, { path }, { withCredentials: true });
+      if (!res.data.has_face) {
+        toast.error(`No face detected — ${res.data.reason || "please retake with a clear photo of the client's face."}`);
+        onPhotoChange(null);
+        return false;
+      }
+      if (!res.data.is_clear_enough) {
+        toast.warning("Photo accepted but it may be too dark or blurry. Consider retaking for better quality.");
+      }
+      return true;
+    } catch {
+      return true;
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const capturePhoto = async () => {
     const canvas = canvasRef.current;
     const video = videoRef.current;
@@ -92,6 +113,9 @@ export function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSC
         const res = await axios.post(`${API}/upload`, fd, { withCredentials: true });
         onPhotoChange(res.data.path);
         toast.success("Live photo saved!");
+        // Verify the uploaded photo contains a real face
+        setPhotoUploading(true);
+        await verifyFace(res.data.path);
       } catch { toast.error("Photo upload failed"); }
       finally { setPhotoUploading(false); }
     }, "image/jpeg", 0.85);
@@ -110,6 +134,9 @@ export function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSC
       const res = await axios.post(`${API}/upload`, fd, { withCredentials: true });
       onPhotoChange(res.data.path);
       toast.success("Photo saved!");
+      // Verify the uploaded photo contains a real face
+      setPhotoUploading(true);
+      await verifyFace(res.data.path);
     } catch { toast.error("Upload failed"); }
     finally { setPhotoUploading(false); }
   };
@@ -149,10 +176,21 @@ export function LivePhotoGPS({ livePhotoPath, gpsLocation, onPhotoChange, onGPSC
           </div>
         ) : livePhotoPath ? (
           <div className="flex items-center gap-4">
-            <img src={`${API}/files/${livePhotoPath}`} alt="Client Photo" className="w-20 h-20 object-cover rounded-full border-4 border-primary shadow-md shrink-0" data-testid="live-photo-preview" />
-            <button type="button" onClick={() => { onPhotoChange(null); onGPSChange(null); }} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground" data-testid="retake-photo-btn">
-              <RefreshCw size={13} /> Retake
-            </button>
+            <div className="relative shrink-0">
+              <img src={`${API}/files/${livePhotoPath}`} alt="Client Photo" className="w-20 h-20 object-cover rounded-full border-4 border-primary shadow-md" data-testid="live-photo-preview" />
+              {verifying && (
+                <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
+                  <Loader2 size={20} className="animate-spin text-white" />
+                </div>
+              )}
+            </div>
+            {verifying ? (
+              <span className="text-xs text-muted-foreground">Verifying face...</span>
+            ) : (
+              <button type="button" onClick={() => { onPhotoChange(null); onGPSChange(null); }} className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground" data-testid="retake-photo-btn">
+                <RefreshCw size={13} /> Retake
+              </button>
+            )}
           </div>
         ) : (
           <div className="border-2 border-dashed border-border rounded-xl py-6 px-4 flex flex-col items-center gap-3">
