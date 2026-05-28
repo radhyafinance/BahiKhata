@@ -216,7 +216,7 @@ export default function Layout() {
             <IllakaSwitcher />
           </div>
         </div>
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto pb-16">
           <Outlet />
         </main>
       </div>
