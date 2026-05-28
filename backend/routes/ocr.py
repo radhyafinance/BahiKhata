@@ -103,13 +103,19 @@ async def verify_face(data: OCRRequest, request: Request):
         tmp_path = tmp.name
 
     try:
+        # Downscale to 400px max — sufficient for face detection, reduces Gemini token cost
+        with Image.open(tmp_path) as pil_img:
+            pil_img.thumbnail((400, 400), Image.LANCZOS)
+            pil_img = pil_img.convert("RGB")
+            pil_img.save(tmp_path, "JPEG", quality=65)
+
         chat = LlmChat(
             api_key=EMERGENT_KEY,
             session_id=f"face-verify-{uuid.uuid4()}",
             system_message="You are a face verification assistant for KYC compliance. Analyse photos strictly and objectively."
         ).with_model("gemini", "gemini-2.5-flash")
 
-        img = FileContentWithMimeType(file_path=tmp_path, mime_type=ct or "image/jpeg")
+        img = FileContentWithMimeType(file_path=tmp_path, mime_type="image/jpeg")
         msg = UserMessage(
             text="""Look at this photo carefully and answer these questions:
 1. Does the photo contain a clearly visible human face of a real person?
