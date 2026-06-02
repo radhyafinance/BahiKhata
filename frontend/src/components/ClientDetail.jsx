@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
@@ -7,10 +7,11 @@ import {
   ArrowLeft, Edit, CheckCircle, XCircle, Clock, MapPin, Camera,
   Phone, User, Shield, Users, FileText, TrendingUp, AlertCircle,
   X, Loader2, PlusCircle, BookOpen, Undo2, ExternalLink, Pencil,
-  RefreshCw, MinusCircle, Lock, ShieldCheck
+  RefreshCw, MinusCircle, Lock, ShieldCheck, Images
 } from "lucide-react";
 import ReLoanModal from "./ReLoanModal";
 import CrifCheck from "./CrifCheck";
+import ImageViewer from "./ImageViewer";
 import { getSuffixHindi } from "./kyc/utils";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -49,7 +50,7 @@ const InfoRow = ({ label, value, multiLine }) => (
   </div>
 );
 
-const SecureImage = ({ path, alt, className }) => {
+const SecureImage = ({ path, alt, className, onClick }) => {
   if (!path) return (
     <div className={`bg-muted flex items-center justify-center rounded-lg ${className || "w-full h-32"}`}>
       <FileText size={24} className="text-muted-foreground opacity-40" />
@@ -59,13 +60,14 @@ const SecureImage = ({ path, alt, className }) => {
     <img
       src={`${API}/files/${path}`}
       alt={alt}
-      className={`object-contain rounded-lg border border-border ${className || "w-full h-32"}`}
+      onClick={onClick}
+      className={`object-contain rounded-lg border border-border ${onClick ? "cursor-pointer hover:opacity-90 transition-opacity" : ""} ${className || "w-full h-32"}`}
       onError={(e) => { e.target.style.display = "none"; }}
     />
   );
 };
 
-const PersonCard = ({ title, titleHi, data, icon: Icon }) => {
+const PersonCard = ({ title, titleHi, data, icon: Icon, onOpenViewer }) => {
   if (!data || (!data.name && !data.phone)) return null;
   const docLabel = { voter_id: "Voter ID", pan: "PAN Card", ration_card: "Ration Card" };
   return (
@@ -96,13 +98,13 @@ const PersonCard = ({ title, titleHi, data, icon: Icon }) => {
           {data.aadhaar_front_path && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-2">Aadhaar Front</p>
-              <SecureImage path={data.aadhaar_front_path} alt="Aadhaar Front" className="w-full h-36 object-contain" />
+              <SecureImage path={data.aadhaar_front_path} alt="Aadhaar Front" className="w-full h-36 object-contain" onClick={() => onOpenViewer?.(data.aadhaar_front_path)} />
             </div>
           )}
           {data.aadhaar_back_path && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground mb-2">Aadhaar Back</p>
-              <SecureImage path={data.aadhaar_back_path} alt="Aadhaar Back" className="w-full h-36 object-contain" />
+              <SecureImage path={data.aadhaar_back_path} alt="Aadhaar Back" className="w-full h-36 object-contain" onClick={() => onOpenViewer?.(data.aadhaar_back_path)} />
             </div>
           )}
           {data.document_type && (
@@ -110,7 +112,7 @@ const PersonCard = ({ title, titleHi, data, icon: Icon }) => {
               <p className="text-xs font-semibold text-muted-foreground mb-2">
                 {docLabel[data.document_type] || data.document_type} (Front)
               </p>
-              <SecureImage path={data.document_front_path} alt="Doc Front" className="w-full h-36 object-contain" />
+              <SecureImage path={data.document_front_path} alt="Doc Front" className="w-full h-36 object-contain" onClick={() => onOpenViewer?.(data.document_front_path)} />
             </div>
           )}
           {data.document_back_path && (
@@ -118,7 +120,7 @@ const PersonCard = ({ title, titleHi, data, icon: Icon }) => {
               <p className="text-xs font-semibold text-muted-foreground mb-2">
                 {docLabel[data.document_type]} (Back)
               </p>
-              <SecureImage path={data.document_back_path} alt="Doc Back" className="w-full h-36 object-contain" />
+              <SecureImage path={data.document_back_path} alt="Doc Back" className="w-full h-36 object-contain" onClick={() => onOpenViewer?.(data.document_back_path)} />
             </div>
           )}
         </div>
