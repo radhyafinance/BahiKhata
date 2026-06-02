@@ -500,6 +500,7 @@ export default function ClientDetail() {
   const [loans, setLoans] = useState(null);
   const [loansLoading, setLoansLoading] = useState(false);
   const [showReloan, setShowReloan] = useState(false);
+  const [viewer, setViewer] = useState(null); // null | { images, index }
 
   useEffect(() => {
     axios
@@ -531,6 +532,35 @@ export default function ClientDetail() {
   const handleLoanUpdated = useCallback((updatedLoan) => {
     setLoans(prev => prev ? prev.map(l => l.id === updatedLoan.id ? updatedLoan : l) : prev);
   }, []);
+
+  // ── Image viewer helpers ───────────────────────────────────────────────────
+  const buildPersonImages = useCallback((data, label) => {
+    if (!data) return [];
+    const docLabel = { voter_id: "Voter ID", pan: "PAN Card", ration_card: "Ration Card" };
+    const imgs = [];
+    if (data.aadhaar_front_path) imgs.push({ src: `${API}/files/${data.aadhaar_front_path}`, label: `${label} — Aadhaar Front` });
+    if (data.aadhaar_back_path)  imgs.push({ src: `${API}/files/${data.aadhaar_back_path}`,  label: `${label} — Aadhaar Back`  });
+    if (data.document_front_path) imgs.push({ src: `${API}/files/${data.document_front_path}`, label: `${label} — ${docLabel[data.document_type] || data.document_type || "Doc"} Front` });
+    if (data.document_back_path)  imgs.push({ src: `${API}/files/${data.document_back_path}`,  label: `${label} — ${docLabel[data.document_type] || data.document_type || "Doc"} Back`  });
+    return imgs;
+  }, []);
+
+  const allKycImages = useMemo(() => {
+    if (!kyc) return [];
+    const imgs = [
+      ...buildPersonImages(kyc.primary_borrower, "Primary Borrower"),
+      ...buildPersonImages(kyc.co_borrower, "Co-borrower"),
+      ...buildPersonImages(kyc.guarantor, "Guarantor"),
+    ];
+    if (kyc.live_photo_path) imgs.push({ src: `${API}/files/${kyc.live_photo_path}`, label: "Live Photo" });
+    return imgs;
+  }, [kyc, buildPersonImages]);
+
+  const openPersonViewer = useCallback((personData, personLabel, clickedPath) => {
+    const imgs = buildPersonImages(personData, personLabel);
+    const idx = imgs.findIndex(i => i.src === `${API}/files/${clickedPath}`);
+    setViewer({ images: imgs, index: Math.max(0, idx) });
+  }, [buildPersonImages]);
 
   const updateStatus = async (status) => {
     setStatusLoading(true);
@@ -662,9 +692,20 @@ export default function ClientDetail() {
             </div>
           )}
 
-          <PersonCard title="Primary Borrower" titleHi="प्राथमिक उधारकर्ता" data={kyc.primary_borrower} icon={User} />
-          <PersonCard title="Co-borrower" titleHi="सह-उधारकर्ता" data={kyc.co_borrower} icon={Users} />
-          <PersonCard title="Guarantor" titleHi="गारंटर" data={kyc.guarantor} icon={Shield} />
+          {allKycImages.length > 0 && (
+            <button
+              onClick={() => setViewer({ images: allKycImages, index: 0 })}
+              className="flex items-center gap-2 w-fit text-sm font-semibold text-primary border border-primary/30 bg-primary/5 hover:bg-primary/10 px-4 py-2 rounded-lg transition-colors"
+              data-testid="view-all-photos-btn"
+            >
+              <Images size={16} />
+              View All Photos ({allKycImages.length})
+            </button>
+          )}
+
+          <PersonCard title="Primary Borrower" titleHi="प्राथमिक उधारकर्ता" data={kyc.primary_borrower} icon={User} onOpenViewer={(path) => openPersonViewer(kyc.primary_borrower, "Primary Borrower", path)} />
+          <PersonCard title="Co-borrower" titleHi="सह-उधारकर्ता" data={kyc.co_borrower} icon={Users} onOpenViewer={(path) => openPersonViewer(kyc.co_borrower, "Co-borrower", path)} />
+          <PersonCard title="Guarantor" titleHi="गारंटर" data={kyc.guarantor} icon={Shield} onOpenViewer={(path) => openPersonViewer(kyc.guarantor, "Guarantor", path)} />
 
           {(kyc.live_photo_path || kyc.gps_location) && (
             <div className="bk-card grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -677,7 +718,8 @@ export default function ClientDetail() {
                   <img
                     src={`${API}/files/${kyc.live_photo_path}`}
                     alt="Live Photo"
-                    className="w-32 h-32 rounded-full object-cover border-4 border-primary shadow-md mx-auto"
+                    onClick={() => setViewer({ images: [{ src: `${API}/files/${kyc.live_photo_path}`, label: "Live Photo" }], index: 0 })}
+                    className="w-32 h-32 rounded-full object-cover border-4 border-primary shadow-md mx-auto cursor-pointer hover:opacity-90 transition-opacity"
                     data-testid="detail-live-photo"
                   />
                 </div>
@@ -806,6 +848,15 @@ export default function ClientDetail() {
         <CrifCheck
           kycId={id}
           hasDob={!!(kyc?.primary_borrower?.dob)}
+        />
+      )}
+
+      {/* ── Image Viewer Modal ── */}
+      {viewer && (
+        <ImageViewer
+          images={viewer.images}
+          initialIndex={viewer.index}
+          onClose={() => setViewer(null)}
         />
       )}
     </div>
