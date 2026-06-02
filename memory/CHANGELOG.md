@@ -1,5 +1,22 @@
 # Bahi Khata — Changelog
 
+## 2026-06-02
+
+### KYC Image Viewer Modal (ClientDetail)
+- Created `/app/frontend/src/components/ImageViewer.jsx` — fullscreen modal with:
+  - Zoom in/out (mouse wheel, pinch-to-zoom, +/- buttons), rotate left/right, reset
+  - Navigation arrows and thumbnail strip (for multi-image sessions)
+  - Keyboard shortcuts: ESC closes, arrows navigate, +/- zoom, R rotates
+  - All controls have `data-testid` attributes
+- Wired into `ClientDetail.jsx`:
+  - `buildPersonImages()` helper and `allKycImages` useMemo to collect images per person
+  - `openPersonViewer(personData, label, clickedPath)` opens viewer at the clicked image
+  - "View All Photos (N)" button aggregates all KYC docs + live photo
+  - Each PersonCard (Primary, Co-borrower, Guarantor) passes `onOpenViewer` prop
+  - Live Photo circular image is now clickable (opens viewer)
+  - `SecureImage` component updated with `testId` prop for KYC images
+- 100% frontend test pass rate (11/11 tests via testing agent)
+
 ## 2026-05-09
 
 ### PWA (Progressive Web App) Support
