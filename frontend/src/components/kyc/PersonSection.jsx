@@ -243,6 +243,16 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
             className="bk-input" placeholder="9876543210" maxLength={10}
             data-testid={`phone-${slug}`}
           />
+          {data.phone_history && data.phone_history.length > 0 && (
+            <div className="mt-1.5 flex flex-wrap items-center gap-1.5" data-testid={`phone-history-${slug}`}>
+              <span className="text-xs text-muted-foreground">Previous:</span>
+              {data.phone_history.map((p, i) => (
+                <span key={i} className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full border border-border">
+                  {p}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Suffix / उपनाम — caste, occupation, or urf */}

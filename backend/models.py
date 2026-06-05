@@ -50,6 +50,7 @@ class PersonKYCData(BaseModel):
     relative_name_hindi: Optional[str] = None
     gender: Optional[str] = None
     phone: Optional[str] = None
+    phone_history: Optional[List[str]] = []
     aadhaar_number: Optional[str] = None
     aadhaar_front_path: Optional[str] = None
     aadhaar_back_path: Optional[str] = None

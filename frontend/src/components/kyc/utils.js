@@ -32,6 +32,7 @@ export const emptyPerson = {
   relative_name: "", relative_name_hindi: "", gender: "",
   aadhaar_number: "", aadhaar_front_path: null, aadhaar_back_path: null,
   document_type: "voter_id", document_front_path: null, document_back_path: null,
+  phone_history: [],
 };
 
 export async function compressImage(file, maxWidth = 1200, quality = 0.72) {

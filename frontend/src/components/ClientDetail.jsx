@@ -88,6 +88,16 @@ const PersonCard = ({ title, titleHi, data, icon: Icon, onOpenViewer }) => {
           {data.name_hindi && <InfoRow label="हिंदी नाम" value={`${data.name_hindi}${data.suffix ? ` ${getSuffixHindi(data.suffix)}` : ""}`} />}
           {data.suffix && <InfoRow label="Suffix / उपनाम" value={data.suffix} />}
           <InfoRow label="Phone / फ़ोन" value={data.phone} />
+          {data.phone_history && data.phone_history.length > 0 && (
+            <div data-testid="phone-history-display">
+              <p className="text-xs font-semibold text-muted-foreground mb-1">Previous Numbers / पुराने नंबर</p>
+              <div className="flex flex-wrap gap-1.5">
+                {data.phone_history.map((p, i) => (
+                  <span key={i} className="text-xs bg-muted text-foreground/70 px-2 py-0.5 rounded-full border border-border">{p}</span>
+                ))}
+              </div>
+            </div>
+          )}
           <InfoRow label="Date of Birth / जन्म तिथि" value={data.dob} />
           <InfoRow label="Gender / लिंग" value={data.gender} />
           <InfoRow label="Husband's / Father's Name / पति-पिता" value={data.relative_name} />

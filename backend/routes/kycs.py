@@ -14,6 +14,27 @@ from models import KYCCreate, KYCStatusUpdate
 
 router = APIRouter()
 
+def _merge_phone_history(old_person: dict, new_person: dict) -> dict:
+    """Accumulates all historical phone numbers when the primary phone is updated."""
+    if not old_person or not new_person:
+        return new_person
+    old_phone = (old_person.get("phone") or "").strip()
+    new_phone = (new_person.get("phone") or "").strip()
+    seen: set = set()
+    combined: list = []
+    candidates = (
+        ([old_phone] if old_phone and old_phone != new_phone else [])
+        + (old_person.get("phone_history") or [])
+        + (new_person.get("phone_history") or [])
+    )
+    for p in candidates:
+        p = (p or "").strip()
+        if p and p != new_phone and p not in seen:
+            seen.add(p)
+            combined.append(p)
+    new_person["phone_history"] = combined
+    return new_person
+
 _SUFFIX_HINDI = {
     "Dhobi": "धोबी", "Darji": "दर्जी", "Kumhar": "कुम्हार", "Lohar": "लोहार",
     "Teli": "तेली", "Nai": "नाई", "Kori": "कोरी", "Mallah": "मल्लाह",
@@ -197,12 +218,19 @@ async def get_kyc(kyc_id: str, request: Request):
 @router.put("/kycs/{kyc_id}")
 async def update_kyc(kyc_id: str, data: KYCCreate, request: Request):
     await get_current_user(request)
+
+    existing = await db.kycs.find_one({"_id": ObjectId(kyc_id)}, {"_id": 0, "primary_borrower": 1, "co_borrower": 1, "guarantor": 1})
+
+    pb_dict = _merge_phone_history(existing.get("primary_borrower") or {}, data.primary_borrower.model_dump())
+    cb_dict = _merge_phone_history(existing.get("co_borrower") or {}, data.co_borrower.model_dump()) if data.co_borrower else None
+    gt_dict = _merge_phone_history(existing.get("guarantor") or {}, data.guarantor.model_dump()) if data.guarantor else None
+
     updates = {
         "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
         "misal_id": data.misal_id, "misal_name": data.misal_name,
-        "primary_borrower": data.primary_borrower.model_dump(),
-        "co_borrower": data.co_borrower.model_dump() if data.co_borrower else None,
-        "guarantor": data.guarantor.model_dump() if data.guarantor else None,
+        "primary_borrower": pb_dict,
+        "co_borrower": cb_dict,
+        "guarantor": gt_dict,
         "live_photo_path": data.live_photo_path,
         "gps_location": data.gps_location.model_dump() if data.gps_location else None,
         "notes": data.notes,
