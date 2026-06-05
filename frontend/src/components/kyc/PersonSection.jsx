@@ -2,7 +2,7 @@ import { useState } from "react";
 import axios from "axios";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
-import { Loader2, Sparkles, Lock, LockOpen } from "lucide-react";
+import { Loader2, Sparkles, Lock, LockOpen, Info } from "lucide-react";
 import { API } from "./utils";
 import { DocUpload } from "./DocUpload";
 
@@ -20,6 +20,8 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
   const [frontOverride, setFrontOverride] = useState(false);
   const [backOverride, setBackOverride] = useState(false);
   const [duplicateError, setDuplicateError] = useState(null); // { illaka_name, kyc_id, client_name }
+  const [existingClientInfo, setExistingClientInfo] = useState(null); // { kyc_id, customer_id, client_name }
+  const [dbPrefilled, setDbPrefilled] = useState(false);
 
   const navigate = useNavigate();
 
@@ -30,8 +32,8 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
 
   // Sequential reveal flags
   const showFrontFields = !!data.aadhaar_front_path || frontOcrFailed;
-  const showBackSection = !!data.aadhaar_front_path;
-  const showBackFields = !!data.aadhaar_back_path || backOcrFailed;
+  const showBackSection = !!data.aadhaar_front_path && !dbPrefilled;
+  const showBackFields = !!data.aadhaar_back_path || backOcrFailed || dbPrefilled;
 
   const normalizeAadhaar = (s) => (s ? s.replace(/\D/g, "") : "");
 
@@ -52,6 +54,8 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
     setFrontOverride(false);
     setWrongSideWarning(false);
     setDuplicateError(null);
+    setExistingClientInfo(null);
+    setDbPrefilled(false);
     if (!path) return;
     setOcrLoading(true);
     try {
@@ -91,6 +95,36 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
                 setOcrLoading(false);
                 return;
               }
+            }
+          } catch {}
+        } else {
+          // Co-borrower / Guarantor — check if person is an existing client; prefill from DB if so
+          try {
+            const chk = await axios.get(
+              `${API}/kycs/check-aadhaar?aadhaar_number=${encodeURIComponent(d.aadhaar_number)}`,
+              { withCredentials: true }
+            );
+            if (chk.data.exists) {
+              const kycRes = await axios.get(`${API}/kycs/${chk.data.kyc_id}`, { withCredentials: true });
+              const pb = kycRes.data.primary_borrower || {};
+              const prefill = {};
+              if (pb.name) prefill.name = pb.name;
+              if (pb.name_hindi) prefill.name_hindi = pb.name_hindi;
+              if (pb.dob) prefill.dob = pb.dob;
+              if (pb.gender) prefill.gender = pb.gender;
+              if (pb.aadhaar_number) prefill.aadhaar_number = pb.aadhaar_number;
+              if (pb.address) prefill.address = pb.address;
+              if (pb.relative_name) prefill.relative_name = pb.relative_name;
+              if (pb.relative_name_hindi) prefill.relative_name_hindi = pb.relative_name_hindi;
+              if (pb.aadhaar_back_path) prefill.aadhaar_back_path = pb.aadhaar_back_path;
+              onBatchChange(prefill);
+              setFrontAadhaarNum(normalizeAadhaar(pb.aadhaar_number || d.aadhaar_number));
+              setExistingClientInfo({ kyc_id: chk.data.kyc_id, customer_id: chk.data.customer_id, client_name: chk.data.client_name });
+              setDbPrefilled(true);
+              setOcrDone(true);
+              setBackOcrDone(true);
+              toast.success(`Details fetched from existing client record (${chk.data.customer_id})`);
+              return;
             }
           } catch {}
         }
@@ -325,11 +359,27 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
             Extracting details from Aadhaar front... / आधार से विवरण निकाला जा रहा है...
           </div>
         )}
-        {ocrDone && !ocrLoading && (
+        {ocrDone && !ocrLoading && !existingClientInfo && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200 text-green-700 text-sm mt-2">
             <Sparkles size={15} className="flex-shrink-0" />
             <span>Name, DOB &amp; Gender auto-filled</span>
             {frontLocked && <span className="ml-auto flex items-center gap-1 text-xs font-semibold"><Lock size={11} /> Verified</span>}
+          </div>
+        )}
+        {existingClientInfo && !ocrLoading && (
+          <div className="flex items-center gap-2 p-3 rounded-lg bg-sky-50 border border-sky-200 text-sky-800 text-sm mt-2" data-testid="existing-client-banner">
+            <Info size={15} className="flex-shrink-0 text-sky-600" />
+            <span>
+              Existing client: <span className="font-semibold">{existingClientInfo.client_name}</span> ({existingClientInfo.customer_id}) — all details pre-filled. No back Aadhaar needed.
+            </span>
+            <button
+              type="button"
+              onClick={() => navigate(`/clients/${existingClientInfo.kyc_id}`)}
+              className="ml-auto shrink-0 text-xs font-semibold text-sky-700 underline hover:text-sky-900"
+              data-testid="existing-client-view-btn"
+            >
+              View
+            </button>
           </div>
         )}
         {frontOcrFailed && !ocrLoading && (
@@ -519,14 +569,20 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
         </div>
       )}
 
-      {/* Back OCR fields — revealed after back upload */}
-      {showBackSection && showBackFields && (
+      {/* Back OCR fields — revealed after back upload or DB prefill */}
+      {(dbPrefilled || (showBackSection && showBackFields)) && (
         <div className={`space-y-4 transition-opacity duration-200 ${backOcrLoading ? "opacity-40 pointer-events-none" : ""}`}>
+          {/* DB prefilled notice */}
+          {dbPrefilled && (
+            <div className="flex items-center gap-1.5 p-2.5 rounded-lg bg-sky-50 border border-sky-200 text-sky-700 text-xs font-semibold" data-testid="db-prefilled-notice">
+              <Info size={12} /> Address &amp; guardian details loaded from existing KYC record
+            </div>
+          )}
           {/* Lock notice + override for restricted roles */}
           {backLocked && (
             <div className="flex items-center justify-between p-2.5 rounded-lg bg-blue-50 border border-blue-200 text-xs" data-testid={`back-locked-notice-${slug}`}>
               <span className="flex items-center gap-1.5 text-blue-700 font-semibold">
-                <Lock size={12} /> Fields locked from Aadhaar back scan
+                <Lock size={12} /> Fields locked from {dbPrefilled ? "existing client record" : "Aadhaar back scan"}
               </span>
               <button
                 type="button"
