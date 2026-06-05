@@ -71,27 +71,29 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
         updates.aadhaar_number = d.aadhaar_number;
         setFrontAadhaarNum(normalizeAadhaar(d.aadhaar_number));
 
-        // ── Duplicate check ──
-        try {
-          const chk = await axios.get(
-            `${API}/kycs/check-aadhaar?aadhaar_number=${encodeURIComponent(d.aadhaar_number)}`,
-            { withCredentials: true }
-          );
-          if (chk.data.exists) {
-            if (chk.data.illaka_id === selectedIllakaId) {
-              // Same illaka → redirect to client page
-              toast.info(`Client already registered as ${chk.data.customer_id} — redirecting...`);
-              navigate(`/clients/${chk.data.kyc_id}`);
-              return;
-            } else {
-              // Different illaka → show error, block form
-              onChange("aadhaar_front_path", null);
-              setDuplicateError(chk.data);
-              setOcrLoading(false);
-              return;
+        // ── Duplicate check — only for Primary Borrower, not guarantor/co-borrower ──
+        if (isMandatory) {
+          try {
+            const chk = await axios.get(
+              `${API}/kycs/check-aadhaar?aadhaar_number=${encodeURIComponent(d.aadhaar_number)}`,
+              { withCredentials: true }
+            );
+            if (chk.data.exists) {
+              if (chk.data.illaka_id === selectedIllakaId) {
+                // Same illaka → redirect to client page
+                toast.info(`Client already registered as ${chk.data.customer_id} — redirecting...`);
+                navigate(`/clients/${chk.data.kyc_id}`);
+                return;
+              } else {
+                // Different illaka → show error, block form
+                onChange("aadhaar_front_path", null);
+                setDuplicateError(chk.data);
+                setOcrLoading(false);
+                return;
+              }
             }
-          }
-        } catch {}
+          } catch {}
+        }
       }
       if (d.gender) updates.gender = d.gender;
       if (Object.keys(updates).length > 0) {
