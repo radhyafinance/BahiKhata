@@ -7,7 +7,7 @@ import {
   ArrowLeft, Edit, CheckCircle, XCircle, Clock, MapPin, Camera,
   Phone, User, Shield, Users, FileText, TrendingUp, AlertCircle,
   X, Loader2, PlusCircle, BookOpen, Undo2, ExternalLink, Pencil,
-  RefreshCw, MinusCircle, Lock, ShieldCheck, Images
+  RefreshCw, MinusCircle, Lock, ShieldCheck, Images, AlertTriangle
 } from "lucide-react";
 import ReLoanModal from "./ReLoanModal";
 import CrifCheck from "./CrifCheck";
@@ -600,6 +600,7 @@ export default function ClientDetail() {
   );
 
   const canUpdateStatus = user?.role === "admin" || user?.role === "maalik" || user?.role === "muneem";
+  const isKycComplete = !!(kyc?.primary_borrower?.aadhaar_front_path);
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">
@@ -764,6 +765,28 @@ export default function ClientDetail() {
       {/* ── Passbook Tab ── */}
       {activeTab === "passbook" && (
         <div className="space-y-4" data-testid="passbook-tab">
+
+          {/* KYC incomplete warning banner */}
+          {!isKycComplete && (
+            <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200" data-testid="kyc-incomplete-banner">
+              <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-bold text-amber-900">KYC Incomplete — Re-loan / Net-off blocked</p>
+                <p className="text-xs text-amber-700 mt-0.5">
+                  This client was imported without full KYC. Aadhaar verification is required before issuing a new loan or net-off.
+                  <span className="block mt-0.5 text-amber-600">यह ग्राहक बिना पूरे KYC के आयातित है। नया कर्ज देने से पहले आधार सत्यापन अनिवार्य है।</span>
+                </p>
+              </div>
+              <button
+                onClick={() => navigate(`/kyc/${id}/edit`)}
+                className="shrink-0 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition-colors whitespace-nowrap"
+                data-testid="complete-kyc-btn"
+              >
+                Complete KYC →
+              </button>
+            </div>
+          )}
+
           {/* Passbook header */}
           <div className="flex items-center justify-between">
             <div>
@@ -773,9 +796,21 @@ export default function ClientDetail() {
             <div className="flex items-center gap-2">
               {loans && loans.length > 0 && (
                 <button
-                  onClick={() => setShowReloan(true)}
-                  className="flex items-center gap-2 bg-primary/10 text-primary border border-primary/20 px-3 py-2 rounded-lg text-sm font-semibold hover:bg-primary/20 transition-colors"
+                  onClick={() => {
+                    if (!isKycComplete) {
+                      toast.error("Complete this client's KYC (Aadhaar required) before creating a re-loan. / पहले KYC पूरा करें।");
+                      navigate(`/kyc/${id}/edit`);
+                      return;
+                    }
+                    setShowReloan(true);
+                  }}
+                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
+                    isKycComplete
+                      ? "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
+                      : "bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60"
+                  }`}
                   data-testid="reloan-btn"
+                  title={!isKycComplete ? "KYC incomplete — complete KYC first" : undefined}
                 >
                   <RefreshCw size={14} /> Re-Loan
                 </button>

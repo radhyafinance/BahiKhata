@@ -461,6 +461,18 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
     customer_id = loan.get("customer_id", "—")
     now = datetime.now(timezone.utc).isoformat()
 
+    # ── KYC completeness gate — imported/legacy clients must have Aadhaar on file ──
+    if kyc_id:
+        _kyc_check = await db.kycs.find_one(
+            {"_id": ObjectId(kyc_id)},
+            {"primary_borrower.aadhaar_front_path": 1}
+        )
+        if _kyc_check and not (_kyc_check.get("primary_borrower") or {}).get("aadhaar_front_path"):
+            raise HTTPException(
+                status_code=400,
+                detail="KYC is incomplete for this client. Please complete the KYC (Aadhaar verification required) before creating a re-loan or net-off. / इस ग्राहक का KYC अधूरा है। पुनः ऋण से पहले KYC पूरा करें।"
+            )
+
     # Calculate outstanding on existing loan
     schedule = loan.get("emi_schedule", [])
     total_repayable = float(loan.get("total_repayable") or ((loan.get("emi_amount") or 0) * 12))
