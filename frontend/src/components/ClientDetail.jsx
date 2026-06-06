@@ -600,7 +600,7 @@ export default function ClientDetail() {
   );
 
   const canUpdateStatus = user?.role === "admin" || user?.role === "maalik" || user?.role === "muneem";
-  const isKycComplete = !!(kyc?.primary_borrower?.aadhaar_front_path);
+  const isKycComplete = !!(kyc?.primary_borrower?.aadhaar_front_path && kyc?.primary_borrower?.aadhaar_back_path);
 
   return (
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-5">

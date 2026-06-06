@@ -465,13 +465,15 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
     if kyc_id:
         _kyc_check = await db.kycs.find_one(
             {"_id": ObjectId(kyc_id)},
-            {"primary_borrower.aadhaar_front_path": 1}
+            {"primary_borrower.aadhaar_front_path": 1, "primary_borrower.aadhaar_back_path": 1}
         )
-        if _kyc_check and not (_kyc_check.get("primary_borrower") or {}).get("aadhaar_front_path"):
-            raise HTTPException(
-                status_code=400,
-                detail="KYC is incomplete for this client. Please complete the KYC (Aadhaar verification required) before creating a re-loan or net-off. / इस ग्राहक का KYC अधूरा है। पुनः ऋण से पहले KYC पूरा करें।"
-            )
+        if _kyc_check:
+            pb = _kyc_check.get("primary_borrower") or {}
+            if not (pb.get("aadhaar_front_path") and pb.get("aadhaar_back_path")):
+                raise HTTPException(
+                    status_code=400,
+                    detail="KYC is incomplete for this client. Both Aadhaar front and back photos are required before creating a re-loan or net-off. / इस ग्राहक का KYC अधूरा है। पुनः ऋण से पहले आधार के दोनों फोटो अनिवार्य हैं।"
+                )
 
     # Calculate outstanding on existing loan
     schedule = loan.get("emi_schedule", [])
