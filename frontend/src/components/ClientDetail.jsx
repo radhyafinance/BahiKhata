@@ -78,19 +78,19 @@ const PersonCard = ({ title, titleHi, data, icon: Icon, onOpenViewer }) => {
           <Icon size={18} className="text-primary" />
         </div>
         <div>
-          <h3 className="font-bold text-foreground font-['Outfit']">{title}</h3>
-          <p className="text-xs text-muted-foreground">{titleHi}</p>
+          <h3 className="font-bold text-foreground font-['Outfit']">{titleHi}</h3>
+          <p className="text-xs text-muted-foreground">{title}</p>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-3">
-          <InfoRow label="Full Name / नाम" value={data.name ? `${data.name}${data.suffix ? ` ${data.suffix}` : ""}` : null} />
+          <InfoRow label="नाम / Full Name" value={data.name ? `${data.name}${data.suffix ? ` ${data.suffix}` : ""}` : null} />
           {data.name_hindi && <InfoRow label="हिंदी नाम" value={`${data.name_hindi}${data.suffix ? ` ${getSuffixHindi(data.suffix)}` : ""}`} />}
-          {data.suffix && <InfoRow label="Suffix / उपनाम" value={data.suffix} />}
-          <InfoRow label="Phone / फ़ोन" value={data.phone} />
+          {data.suffix && <InfoRow label="उपनाम / Suffix" value={data.suffix} />}
+          <InfoRow label="फ़ोन / Phone" value={data.phone} />
           {data.phone_history && data.phone_history.length > 0 && (
             <div data-testid="phone-history-display">
-              <p className="text-xs font-semibold text-muted-foreground mb-1">Previous Numbers / पुराने नंबर</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-1">पुराने नंबर / Previous Numbers</p>
               <div className="flex flex-wrap gap-1.5">
                 {data.phone_history.map((p, i) => (
                   <span key={i} className="text-xs bg-muted text-foreground/70 px-2 py-0.5 rounded-full border border-border">{p}</span>
@@ -98,23 +98,23 @@ const PersonCard = ({ title, titleHi, data, icon: Icon, onOpenViewer }) => {
               </div>
             </div>
           )}
-          <InfoRow label="Date of Birth / जन्म तिथि" value={data.dob} />
-          <InfoRow label="Gender / लिंग" value={data.gender} />
-          <InfoRow label="Husband's / Father's Name / पति-पिता" value={data.relative_name} />
-          {data.relative_name_hindi && <InfoRow label="पति/पिता का हिंदी नाम" value={data.relative_name_hindi} />}
-          <InfoRow label="Aadhaar Number / आधार" value={data.aadhaar_number} />
-          <InfoRow label="Address / पता" value={data.address} multiLine />
+          <InfoRow label="जन्म तिथि / DOB" value={data.dob} />
+          <InfoRow label="लिंग / Gender" value={data.gender} />
+          <InfoRow label="पति/पिता / Father-Husband" value={data.relative_name} />
+          {data.relative_name_hindi && <InfoRow label="पति/पिता (हिंदी)" value={data.relative_name_hindi} />}
+          <InfoRow label="आधार नंबर / Aadhaar" value={data.aadhaar_number} />
+          <InfoRow label="पता / Address" value={data.address} multiLine />
         </div>
         <div className="space-y-4">
           {data.aadhaar_front_path && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Aadhaar Front</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">आधार (सामने) / Front</p>
               <SecureImage path={data.aadhaar_front_path} alt="Aadhaar Front" className="w-full h-36 object-contain" testId="kyc-img-aadhaar-front" onClick={() => onOpenViewer?.(data.aadhaar_front_path)} />
             </div>
           )}
           {data.aadhaar_back_path && (
             <div>
-              <p className="text-xs font-semibold text-muted-foreground mb-2">Aadhaar Back</p>
+              <p className="text-xs font-semibold text-muted-foreground mb-2">आधार (पीछे) / Back</p>
               <SecureImage path={data.aadhaar_back_path} alt="Aadhaar Back" className="w-full h-36 object-contain" testId="kyc-img-aadhaar-back" onClick={() => onOpenViewer?.(data.aadhaar_back_path)} />
             </div>
           )}
@@ -639,10 +639,10 @@ export default function ClientDetail() {
       {/* Meta card */}
       <div className="bk-card">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
-          <InfoRow label="Field Agent / एजेंट" value={`${kyc.field_officer_name || "—"} (${kyc.field_officer_role || "—"})`} />
-          <InfoRow label="Illaka / इलाका" value={kyc.illaka_name} />
-          <InfoRow label="Misal / मिसाल" value={kyc.misal_name} />
-          <InfoRow label="Created / बनाया" value={kyc.created_at ? new Date(kyc.created_at).toLocaleDateString("en-IN") : "—"} />
+          <InfoRow label="एजेंट / Field Agent" value={`${kyc.field_officer_name || "—"} (${kyc.field_officer_role || "—"})`} />
+          <InfoRow label="इलाका / Illaka" value={kyc.illaka_name} />
+          <InfoRow label="मिसाल / Misal" value={kyc.misal_name} />
+          <InfoRow label="दिनांक / Created" value={kyc.created_at ? new Date(kyc.created_at).toLocaleDateString("en-IN") : "—"} />
         </div>
       </div>
 
@@ -664,8 +664,8 @@ export default function ClientDetail() {
             data-testid={`tab-${tab.id}`}
           >
             <tab.icon size={15} />
-            <span>{tab.label}</span>
-            <span className="text-xs opacity-60">/ {tab.labelHi}</span>
+            <span>{tab.labelHi}</span>
+            <span className="text-xs opacity-60">/ {tab.label}</span>
           </button>
         ))}
       </div>
