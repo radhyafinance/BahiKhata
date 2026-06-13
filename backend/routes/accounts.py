@@ -39,6 +39,12 @@ async def _illaka_filter_for_user(user: dict, illaka_id: Optional[str], maalik_i
             query["illaka_id"] = illaka_id if illaka_id in assigned else "__none__"
         else:
             query["illaka_id"] = {"$in": assigned}
+    elif user["role"] == "sadar_muneem":
+        assigned = user.get("assigned_illaka_ids", [])
+        if illaka_id:
+            query["illaka_id"] = illaka_id if illaka_id in assigned else "__none__"
+        else:
+            query["illaka_id"] = {"$in": assigned}
     return query
 
 

@@ -114,12 +114,12 @@ async def get_admin_maalik_filter_ids(maalik_user_id: str) -> list:
 
 async def _kyc_query_for_user(user: dict) -> dict:
     query = {}
-    if user["role"] in ("admin", "sadar_muneem"):
+    if user["role"] == "admin":
         pass  # No filter — sees all data
     elif user["role"] == "maalik":
         illaka_ids = await _get_maalik_illaka_ids(user)
         query["illaka_id"] = {"$in": illaka_ids}
-    elif user["role"] == "muneem":
+    elif user["role"] in ("muneem", "sadar_muneem"):
         assigned = user.get("assigned_illaka_ids", [])
         query["illaka_id"] = {"$in": assigned}
     else:  # sipahi
@@ -164,12 +164,15 @@ async def create_journal_entry_internal(
 
 
 async def _loan_query_for_user(user: dict) -> dict:
-    if user["role"] in ("admin", "sadar_muneem"):
+    if user["role"] == "admin":
         return {}
     elif user["role"] == "maalik":
         ids = await _get_maalik_illaka_ids(user)
         return {"illaka_id": {"$in": ids}}
     elif user["role"] == "muneem":
+        assigned = user.get("assigned_illaka_ids", [])
+        return {"illaka_id": {"$in": assigned}}
+    elif user["role"] == "sadar_muneem":
         assigned = user.get("assigned_illaka_ids", [])
         return {"illaka_id": {"$in": assigned}}
     else:  # sipahi
