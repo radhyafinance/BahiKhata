@@ -794,7 +794,7 @@ export default function ClientDetail() {
               <p className="text-xs text-muted-foreground">Complete loan & EMI history for this client</p>
             </div>
             <div className="flex items-center gap-2">
-              {loans && loans.length > 0 && (
+              {loans && loans.length > 0 && user?.role !== "sadar_muneem" && (
                 <button
                   onClick={() => {
                     if (!isKycComplete) {

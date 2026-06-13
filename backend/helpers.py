@@ -1,4 +1,6 @@
-import re, calendar, logging
+import re
+import calendar
+import logging
 from datetime import datetime, timezone, date as date_type
 from bson import ObjectId
 from core.database import db
@@ -112,8 +114,8 @@ async def get_admin_maalik_filter_ids(maalik_user_id: str) -> list:
 
 async def _kyc_query_for_user(user: dict) -> dict:
     query = {}
-    if user["role"] == "admin":
-        pass
+    if user["role"] in ("admin", "sadar_muneem"):
+        pass  # No filter — sees all data
     elif user["role"] == "maalik":
         illaka_ids = await _get_maalik_illaka_ids(user)
         query["illaka_id"] = {"$in": illaka_ids}
@@ -162,7 +164,7 @@ async def create_journal_entry_internal(
 
 
 async def _loan_query_for_user(user: dict) -> dict:
-    if user["role"] == "admin":
+    if user["role"] in ("admin", "sadar_muneem"):
         return {}
     elif user["role"] == "maalik":
         ids = await _get_maalik_illaka_ids(user)

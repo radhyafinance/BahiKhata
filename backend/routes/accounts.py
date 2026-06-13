@@ -18,10 +18,10 @@ router = APIRouter()
 async def _illaka_filter_for_user(user: dict, illaka_id: Optional[str], maalik_id: Optional[str] = None) -> dict:
     """Return query fragment to restrict journal entries by user's accessible illakas."""
     query = {}
-    if user["role"] == "admin":
+    if user["role"] in ("admin", "sadar_muneem"):
         if illaka_id:
             query["illaka_id"] = illaka_id
-        elif maalik_id:
+        elif maalik_id and user["role"] == "admin":
             ids = await get_admin_maalik_filter_ids(maalik_id)
             query["illaka_id"] = {"$in": ids}
     elif user["role"] == "maalik":

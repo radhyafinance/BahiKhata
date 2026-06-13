@@ -9,6 +9,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const ROLES = [
   { value: "admin", label: "Admin" },
   { value: "maalik", label: "Maalik (Owner)" },
+  { value: "sadar_muneem", label: "Sadar Muneem (Head Office — View Only)" },
   { value: "muneem", label: "Muneem (Senior Agent)" },
   { value: "sipahi", label: "Sipahi (Field Agent)" },
 ];
@@ -16,6 +17,7 @@ const ROLES = [
 const ROLE_BADGE = {
   admin: "bg-purple-100 text-purple-800",
   maalik: "bg-amber-100 text-amber-800",
+  sadar_muneem: "bg-rose-100 text-rose-800",
   muneem: "bg-blue-100 text-blue-800",
   sipahi: "bg-green-100 text-green-800",
 };

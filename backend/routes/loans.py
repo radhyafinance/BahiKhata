@@ -189,7 +189,7 @@ async def update_loan(loan_id: str, data: LoanCreate, request: Request):
     loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
-    if current_user["role"] not in ["admin", "maalik", "muneem"] and loan.get("sipahi_id") != current_user["id"]:
+    if current_user["role"] not in ["admin", "maalik", "muneem", "sadar_muneem"] and loan.get("sipahi_id") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
     loan_date_obj = date_type.fromisoformat(data.loan_date)
     emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)

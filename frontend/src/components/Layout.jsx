@@ -10,6 +10,7 @@ const ROLE_LABELS = {
   maalik: "Maalik",
   muneem: "Muneem",
   sipahi: "Sipahi",
+  sadar_muneem: "Sadar Muneem",
 };
 
 const ROLE_COLOR = {
@@ -17,6 +18,7 @@ const ROLE_COLOR = {
   maalik: "bg-amber-100 text-amber-800",
   muneem: "bg-blue-100 text-blue-800",
   sipahi: "bg-green-100 text-green-800",
+  sadar_muneem: "bg-rose-100 text-rose-800",
 };
 
 function getNavItems(role) {
