@@ -51,7 +51,8 @@ def _build_ob_schedule(opening_balance: float, emi_amount: Optional[float], star
 
 async def _resolve_illaka_misal(illaka_name: str, misal_name: str):
     """Return (illaka_id, misal_id) resolving by name (case-insensitive).
-    Raises ValueError with a descriptive message if not found.
+    Creates the Misal if it doesn't exist in the Illaka.
+    Raises ValueError if the Illaka is not found.
     """
     illaka = await db.illakas.find_one(
         {"name": {"$regex": f"^{illaka_name.strip()}$", "$options": "i"}}
@@ -64,8 +65,19 @@ async def _resolve_illaka_misal(illaka_name: str, misal_name: str):
         {"illaka_id": illaka_id, "name": {"$regex": f"^{misal_name.strip()}$", "$options": "i"}}
     )
     if not misal:
-        raise ValueError(f"Misal '{misal_name}' not found in Illaka '{illaka_name}'")
-    return illaka_id, str(misal["_id"])
+        now = datetime.now(timezone.utc).isoformat()
+        result = await db.misals.insert_one({
+            "name": misal_name.strip(),
+            "illaka_id": illaka_id,
+            "description": "",
+            "created_at": now,
+            "updated_at": now,
+        })
+        misal_id = str(result.inserted_id)
+    else:
+        misal_id = str(misal["_id"])
+
+    return illaka_id, misal_id
 
 
 async def _create_ob_kyc_and_loan(
@@ -258,7 +270,7 @@ async def download_template(request: Request):
         ("", False),
         ("REQUIRED FIELDS", True),
         ("Illaka Name — must exactly match an existing Illaka in the system", False),
-        ("Misal Name — must exactly match a Misal inside the specified Illaka", False),
+        ("Misal Name — must match an existing Misal; if not found it will be auto-created inside the Illaka", False),
         ("Client Name — full name of the primary borrower", False),
         ("Loan Date — format: YYYY-MM-DD  (e.g. 2024-06-15)", False),
         ("Opening Balance — outstanding amount remaining to be collected (₹)", False),
