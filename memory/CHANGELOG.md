@@ -1,5 +1,14 @@
 # Bahi Khata — Changelog
 
+## 2026-06-19
+
+### Import Page — Blank EMI = Gyal
+- `emi_amount` is now optional in both the Opening Balance Form and Excel Import
+- If EMI Amount is blank → loan is imported with `is_gyal: True`, empty EMI schedule (no kisht)
+- Backend `import_data.py`: `ExcelRow` and `OpeningBalanceEntry` models updated to `Optional[float]`; `_create_ob_kyc_and_loan` sets `is_gyal=True`, `gyal_since=today` when EMI is None/0
+- Excel template: Column 9 header changed to "EMI Amount (blank = Gyal)" and moved from required (yellow) to optional (light blue)
+- Frontend `ImportPage.jsx`: EMI Amount field no longer `required`; shows Gyal preview banner when blank; preview table shows "Gyal" badge + "—" for EMI count on Gyal rows
+
 ## 2026-06-02
 
 ### KYC Image Viewer Modal (ClientDetail)

@@ -40,21 +40,25 @@ function OpeningBalanceForm() {
     return null;
   };
 
+  const isGyal = form.opening_balance && !form.emi_amount;
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!form.illaka_id || !form.misal_id || !form.client_name || !form.loan_date || !form.opening_balance || !form.emi_amount) {
+    if (!form.illaka_id || !form.misal_id || !form.client_name || !form.loan_date || !form.opening_balance) {
       toast.error("Please fill all required fields");
       return;
     }
     setLoading(true);
     try {
-      const res = await axios.post(`${API}/api/import/opening-balance`, {
+      const payload = {
         ...form,
         opening_balance: parseFloat(form.opening_balance),
-        emi_amount: parseFloat(form.emi_amount),
-      }, { withCredentials: true });
+        emi_amount: form.emi_amount ? parseFloat(form.emi_amount) : null,
+      };
+      const res = await axios.post(`${API}/api/import/opening-balance`, payload, { withCredentials: true });
       setSuccess(res.data);
-      toast.success(`Imported: ${form.client_name} — Loan #${res.data.loan_number}`);
+      const label = res.data.is_gyal ? "Imported as Gyal" : `Loan #${res.data.loan_number}`;
+      toast.success(`Imported: ${form.client_name} — ${label}`);
     } catch (err) {
       toast.error(err.response?.data?.detail || "Import failed");
     } finally {
@@ -77,7 +81,12 @@ function OpeningBalanceForm() {
         <p className="text-sm text-muted-foreground">
           <span className="font-semibold text-foreground">{form.client_name}</span> — Loan <span className="font-mono font-semibold">{success.loan_number}</span>
         </p>
-        <p className="text-sm text-muted-foreground">{success.emi_count} EMIs scheduled starting from this month.</p>
+        <p className="text-sm text-muted-foreground">
+          {success.is_gyal
+            ? <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-gray-100 text-gray-700 rounded-full text-xs font-semibold">Gyal (Bad Debt) — no EMI schedule</span>
+            : `${success.emi_count} EMIs scheduled starting from this month.`
+          }
+        </p>
         <div className="flex justify-center gap-3 pt-2">
           <button onClick={reset} className="flex items-center gap-2 bg-primary text-white px-5 py-2 rounded-lg font-semibold text-sm hover:bg-primary/90 transition-colors">
             <RotateCcw size={15} /> Add Another
@@ -152,8 +161,11 @@ function OpeningBalanceForm() {
             <input type="number" min="1" value={form.opening_balance} onChange={e => set("opening_balance", e.target.value)} className="bk-input" placeholder="Outstanding amount" required data-testid="ob-opening-balance" />
           </div>
           <div>
-            <label className="bk-label">EMI Amount (₹) <span className="text-destructive">*</span></label>
-            <input type="number" min="1" value={form.emi_amount} onChange={e => set("emi_amount", e.target.value)} className="bk-input" placeholder="Monthly instalment" required data-testid="ob-emi-amount" />
+            <label className="bk-label">
+              EMI Amount (₹)
+              <span className="ml-1 text-xs text-muted-foreground font-normal">(blank = Gyal)</span>
+            </label>
+            <input type="number" min="1" value={form.emi_amount} onChange={e => set("emi_amount", e.target.value)} className="bk-input" placeholder="Leave blank to import as Gyal" data-testid="ob-emi-amount" />
           </div>
         </div>
 
@@ -166,6 +178,14 @@ function OpeningBalanceForm() {
               {previewEMIs() > 1 && (
                 <span className="text-muted-foreground"> (Last EMI: {fmtINR(parseFloat(form.opening_balance) - parseFloat(form.emi_amount) * (previewEMIs() - 1))})</span>
               )}
+            </p>
+          </div>
+        )}
+        {isGyal && (
+          <div className="bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-4 py-3 flex items-center gap-3" data-testid="ob-gyal-preview">
+            <AlertTriangle size={15} className="text-gray-500 flex-shrink-0" />
+            <p className="text-sm text-gray-700 dark:text-gray-300">
+              <span className="font-semibold">Gyal (Bad Debt)</span> — This account will be imported with no EMI schedule. It will appear as a bad debt on the Collection Sheet.
             </p>
           </div>
         )}
@@ -344,7 +364,7 @@ function ExcelImport() {
                 </thead>
                 <tbody>
                   {preview.valid_rows.map((r) => (
-                    <tr key={r.row} className="border-t border-border hover:bg-muted/20" data-testid={`preview-row-${r.row}`}>
+                    <tr key={r.row} className={`border-t border-border hover:bg-muted/20 ${r.is_gyal ? "bg-gray-50 dark:bg-gray-900/30" : ""}`} data-testid={`preview-row-${r.row}`}>
                       <td className="px-3 py-2 text-muted-foreground">{r.row}</td>
                       <td className="px-3 py-2 font-medium text-foreground">
                         {r.client_name}
@@ -353,8 +373,15 @@ function ExcelImport() {
                       <td className="px-3 py-2">{r.illaka_name} / {r.misal_name}</td>
                       <td className="px-3 py-2">{r.loan_date}</td>
                       <td className="px-3 py-2 font-semibold tabular-nums">{fmtINR(r.opening_balance)}</td>
-                      <td className="px-3 py-2 tabular-nums">{fmtINR(r.emi_amount)}</td>
-                      <td className="px-3 py-2 tabular-nums">{r.emi_count}</td>
+                      <td className="px-3 py-2 tabular-nums">
+                        {r.is_gyal
+                          ? <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 rounded text-[10px] font-semibold">Gyal</span>
+                          : fmtINR(r.emi_amount)
+                        }
+                      </td>
+                      <td className="px-3 py-2 tabular-nums">
+                        {r.is_gyal ? <span className="text-muted-foreground">—</span> : r.emi_count}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

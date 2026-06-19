@@ -27,11 +27,12 @@ def _today_ym() -> str:
     return f"{t.year}-{t.month:02d}"
 
 
-def _build_ob_schedule(opening_balance: float, emi_amount: float, start_ym: str) -> list:
+def _build_ob_schedule(opening_balance: float, emi_amount: Optional[float], start_ym: str) -> list:
     """Build EMI schedule for an opening-balance loan.
     All EMIs start from start_ym (current month).
+    Returns empty list if emi_amount is None or <= 0 (Gyal loans).
     """
-    if emi_amount <= 0:
+    if not emi_amount or emi_amount <= 0:
         return []
     n = math.ceil(opening_balance / emi_amount)
     schedule = []
@@ -76,7 +77,7 @@ async def _create_ob_kyc_and_loan(
     guarantor_name: Optional[str],
     loan_date: str,
     opening_balance: float,
-    emi_amount: float,
+    emi_amount: Optional[float],
     created_by_id: str,
     created_by_name: str,
 ) -> dict:
@@ -117,6 +118,7 @@ async def _create_ob_kyc_and_loan(
     # ── Loan ────────────────────────────────────────────────────────────────
     loan_number = await generate_loan_number(customer_id, kyc_id)
     start_ym = _today_ym()
+    is_gyal = not emi_amount or emi_amount <= 0
     schedule = _build_ob_schedule(opening_balance, emi_amount, start_ym)
 
     loan_doc = {
@@ -130,11 +132,12 @@ async def _create_ob_kyc_and_loan(
         "loan_type": "opening_balance",
         "principal_amount": opening_balance,
         "total_repayable": opening_balance,
-        "emi_amount": emi_amount,
+        "emi_amount": emi_amount or 0,
         "emi_count": len(schedule),
         "emi_schedule": schedule,
         "status": "active",
-        "is_gyal": False,
+        "is_gyal": is_gyal,
+        "gyal_since": _today_ym() if is_gyal else None,
         "is_import": True,
         "total_paid": 0.0,
         "created_at": now,
@@ -143,7 +146,7 @@ async def _create_ob_kyc_and_loan(
         "created_by_name": created_by_name,
     }
     await db.loans.insert_one(loan_doc)
-    return {"loan_number": loan_number, "kyc_id": kyc_id, "emi_count": len(schedule)}
+    return {"loan_number": loan_number, "kyc_id": kyc_id, "emi_count": len(schedule), "is_gyal": is_gyal}
 
 
 # ─── Models ───────────────────────────────────────────────────────────────────
@@ -157,7 +160,7 @@ class OpeningBalanceEntry(BaseModel):
     guarantor_name: Optional[str] = None
     loan_date: str           # YYYY-MM-DD
     opening_balance: float
-    emi_amount: float
+    emi_amount: Optional[float] = None
 
 
 class ExcelRow(BaseModel):
@@ -169,7 +172,7 @@ class ExcelRow(BaseModel):
     guarantor_name: Optional[str] = None
     loan_date: str
     opening_balance: float
-    emi_amount: float
+    emi_amount: Optional[float] = None
 
 
 class ExcelConfirmRequest(BaseModel):
@@ -208,7 +211,7 @@ async def download_template(request: Request):
         ("Guarantor Name", False),
         ("Loan Date * (YYYY-MM-DD)", True),
         ("Opening Balance *", True),
-        ("EMI Amount *", True),
+        ("EMI Amount (blank = Gyal)", False),
     ]
 
     # Header row
@@ -221,13 +224,13 @@ async def download_template(request: Request):
 
     # Legend row
     ws.merge_cells("A2:C2")
-    ws["A2"] = "* Required fields (yellow). Optional fields are in light blue."
+    ws["A2"] = "* Required fields (yellow). Optional fields are in light blue. EMI Amount blank = Gyal."
     ws["A2"].font = Font(italic=True, size=9, color="555555")
     ws["A2"].alignment = Alignment(horizontal="left")
 
     # Colour the columns to show required vs optional
-    req_cols = [1, 2, 3, 7, 8, 9]
-    opt_cols = [4, 5, 6]
+    req_cols = [1, 2, 3, 7, 8]
+    opt_cols = [4, 5, 6, 9]
     for col in req_cols:
         ws.cell(row=2, column=col).fill = req_fill
     for col in opt_cols:
@@ -259,18 +262,19 @@ async def download_template(request: Request):
         ("Client Name — full name of the primary borrower", False),
         ("Loan Date — format: YYYY-MM-DD  (e.g. 2024-06-15)", False),
         ("Opening Balance — outstanding amount remaining to be collected (₹)", False),
-        ("EMI Amount — monthly instalment amount (₹)", False),
         ("", False),
         ("OPTIONAL FIELDS", True),
         ("Client Phone — 10-digit mobile number", False),
         ("Co-borrower Name — name of co-borrower (if any)", False),
         ("Guarantor Name — name of guarantor (if any)", False),
+        ("EMI Amount — monthly instalment (₹). Leave BLANK to import as Gyal (bad debt) — no EMI schedule will be created.", False),
         ("", False),
         ("NOTES", True),
         ("• Do NOT modify column headers in the Import Template sheet.", False),
         ("• Start entering data from row 3 (replace the sample row or add below it).", False),
         ("• EMI schedule will start from the current month.", False),
         ("• Imported loans are marked as 'Opening Balance' type.", False),
+        ("• If EMI Amount is blank, the account is imported directly as Gyal (bad debt).", False),
         ("• You can correct errors and re-upload before confirming.", False),
     ]
     for row_idx, (text, bold) in enumerate(instructions, start=1):
@@ -299,8 +303,8 @@ async def create_opening_balance(data: OpeningBalanceEntry, request: Request):
         raise HTTPException(status_code=403, detail="Only Admin or Maalik can import data")
     if data.opening_balance <= 0:
         raise HTTPException(status_code=400, detail="Opening balance must be > 0")
-    if data.emi_amount <= 0:
-        raise HTTPException(status_code=400, detail="EMI amount must be > 0")
+    if data.emi_amount is not None and data.emi_amount <= 0:
+        raise HTTPException(status_code=400, detail="EMI amount must be > 0 (or leave blank for Gyal)")
     try:
         date_type.fromisoformat(data.loan_date)
     except Exception:
@@ -350,7 +354,7 @@ async def excel_preview(request: Request, file: UploadFile = File(...)):
 
         errors = []
         # Required field checks
-        for req in ["illaka_name", "misal_name", "client_name", "loan_date", "opening_balance", "emi_amount"]:
+        for req in ["illaka_name", "misal_name", "client_name", "loan_date", "opening_balance"]:
             if not vals.get(req):
                 errors.append(f"'{req}' is required")
 
@@ -363,13 +367,18 @@ async def excel_preview(request: Request, file: UploadFile = File(...)):
             errors.append("Opening balance must be a number")
             ob = 0
 
-        try:
-            emi = float(vals.get("emi_amount") or 0)
-            if emi <= 0:
-                errors.append("EMI amount must be > 0")
-        except Exception:
-            errors.append("EMI amount must be a number")
-            emi = 0
+        # EMI amount — optional; blank means Gyal
+        raw_emi = vals.get("emi_amount", "").strip()
+        if raw_emi:
+            try:
+                emi = float(raw_emi)
+                if emi <= 0:
+                    errors.append("EMI amount must be > 0 (or leave blank to mark as Gyal)")
+            except Exception:
+                errors.append("EMI amount must be a number (or leave blank to mark as Gyal)")
+                emi = None
+        else:
+            emi = None  # blank → Gyal
 
         # Date check
         loan_date = vals.get("loan_date", "")
@@ -386,7 +395,8 @@ async def excel_preview(request: Request, file: UploadFile = File(...)):
         if errors:
             error_rows.append({"row": row_idx, "data": vals, "errors": errors})
         else:
-            emi_count = math.ceil(ob / emi)
+            is_gyal = emi is None
+            emi_count = math.ceil(ob / emi) if emi else 0
             valid_rows.append({
                 "row": row_idx,
                 "illaka_name": vals["illaka_name"],
@@ -399,6 +409,7 @@ async def excel_preview(request: Request, file: UploadFile = File(...)):
                 "opening_balance": ob,
                 "emi_amount": emi,
                 "emi_count": emi_count,
+                "is_gyal": is_gyal,
             })
 
     return {
