@@ -2,6 +2,12 @@
 
 ## 2026-06-19
 
+### Import Page — Preserve Excel Order on Vasuli
+- `excel_confirm` endpoint computes misal `display_order` (first appearance per illaka+misal pair) and row `display_order` (Excel row index 0-based); both stored on DB documents
+- `_resolve_illaka_misal`: new `misal_display_order` param sets `display_order` on auto-created misals
+- `_create_ob_kyc_and_loan`: new `display_order` param stored on loan documents
+- `collections.py`: bulk misal lookup now fetches `display_order`; misals sorted by `display_order` (None → last by name); row sort updated to prefer `display_order` over `loan_date`
+
 ### Import Page — Blank EMI = Gyal
 - `emi_amount` is now optional in both the Opening Balance Form and Excel Import
 - If EMI Amount is blank → loan is imported with `is_gyal: True`, empty EMI schedule (no kisht)

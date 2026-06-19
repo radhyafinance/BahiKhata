@@ -281,6 +281,7 @@ async def get_collection_sheet(
     unique_misal_ids  = list({ln.get("misal_id")  for ln in loans if ln.get("misal_id")})
     illaka_name_map: dict = {}
     misal_name_map: dict  = {}
+    misal_display_order_map: dict = {}
     if unique_illaka_ids:
         try:
             raw = await db.illakas.find(
@@ -292,9 +293,10 @@ async def get_collection_sheet(
     if unique_misal_ids:
         try:
             raw = await db.misals.find(
-                {"_id": {"$in": [ObjectId(i) for i in unique_misal_ids]}}, {"name": 1}
+                {"_id": {"$in": [ObjectId(i) for i in unique_misal_ids]}}, {"name": 1, "display_order": 1}
             ).to_list(500)
             misal_name_map = {str(d["_id"]): d["name"] for d in raw}
+            misal_display_order_map = {str(d["_id"]): d.get("display_order") for d in raw}
         except Exception:
             pass
 
@@ -422,6 +424,8 @@ async def get_collection_sheet(
             "_parent_loan_id":      str(loan.get("parent_loan_id") or ""),
             "_netoff_closed":       loan.get("netoff_closed", False),
             "_reloan_id":           str(loan.get("reloan_id") or ""),
+            # Import ordering
+            "display_order":        loan.get("display_order"),
             # Combined-row fields (populated by _merge_netoff_rows)
             "is_netoff_combined":   False,
             "prev_opening_balance": 0.0,
@@ -450,17 +454,26 @@ async def get_collection_sheet(
             misal = illakas_map[il_id]["misals"][m_id]
             misal["rows"] = _merge_netoff_rows(misal["rows"], all_loans_by_id, fy_months)
 
-    # ── Re-sort rows by original disbursement date ────────────────────────────
-    # After merging, combined rows carry L2/L3's loan_date but should appear in
-    # the position of the root loan (L1).  पिछली बाक़ी date == the correct sort key.
-    def _row_sort_date(r: dict) -> str:
+    # ── Re-sort rows: display_order (import order) first, then loan_date ────────
+    # Combined net-off rows use prev_loan_date as sort key when no display_order.
+    def _row_sort_key(r: dict) -> tuple:
+        do = r.get("display_order")
+        if do is not None:
+            return (0, do, "")
         if r.get("is_netoff_combined") and r.get("prev_loan_date"):
-            return r["prev_loan_date"]
-        return r.get("loan_date") or ""
+            return (1, 0, r["prev_loan_date"])
+        return (1, 0, r.get("loan_date") or "")
 
     for il_id in illaka_order:
         for m_id in misal_order[il_id]:
-            illakas_map[il_id]["misals"][m_id]["rows"].sort(key=_row_sort_date)
+            illakas_map[il_id]["misals"][m_id]["rows"].sort(key=_row_sort_key)
+
+    # ── Sort misals by display_order (import order), then by name ────────────
+    for il_id in illaka_order:
+        misal_order[il_id].sort(key=lambda m_id: (
+            misal_display_order_map.get(m_id) if misal_display_order_map.get(m_id) is not None else float("inf"),
+            misal_name_map.get(m_id, ""),
+        ))
 
     # ── Assemble output ───────────────────────────────────────────────────────
     result = []

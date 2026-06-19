@@ -49,7 +49,7 @@ def _build_ob_schedule(opening_balance: float, emi_amount: Optional[float], star
     return schedule
 
 
-async def _resolve_illaka_misal(illaka_name: str, misal_name: str):
+async def _resolve_illaka_misal(illaka_name: str, misal_name: str, misal_display_order: int = None):
     """Return (illaka_id, misal_id) resolving by name (case-insensitive).
     Creates the Misal if it doesn't exist in the Illaka.
     Raises ValueError if the Illaka is not found.
@@ -66,13 +66,16 @@ async def _resolve_illaka_misal(illaka_name: str, misal_name: str):
     )
     if not misal:
         now = datetime.now(timezone.utc).isoformat()
-        result = await db.misals.insert_one({
+        new_doc = {
             "name": misal_name.strip(),
             "illaka_id": illaka_id,
             "description": "",
             "created_at": now,
             "updated_at": now,
-        })
+        }
+        if misal_display_order is not None:
+            new_doc["display_order"] = misal_display_order
+        result = await db.misals.insert_one(new_doc)
         misal_id = str(result.inserted_id)
     else:
         misal_id = str(misal["_id"])
@@ -92,6 +95,7 @@ async def _create_ob_kyc_and_loan(
     emi_amount: Optional[float],
     created_by_id: str,
     created_by_name: str,
+    display_order: int = None,
 ) -> dict:
     """Create a minimal KYC + opening-balance loan. Returns loan doc."""
     now = datetime.now(timezone.utc).isoformat()
@@ -157,6 +161,8 @@ async def _create_ob_kyc_and_loan(
         "created_by_id": created_by_id,
         "created_by_name": created_by_name,
     }
+    if display_order is not None:
+        loan_doc["display_order"] = display_order
     await db.loans.insert_one(loan_doc)
     return {"loan_number": loan_number, "kyc_id": kyc_id, "emi_count": len(schedule), "is_gyal": is_gyal}
 
@@ -443,9 +449,20 @@ async def excel_confirm(data: ExcelConfirmRequest, request: Request):
     imported = []
     failed = []
 
+    # Pre-compute misal display_order: first appearance per (illaka, misal) pair
+    misal_order_map: dict = {}  # (illaka_name_lower, misal_name_lower) -> display_order
+    misal_counter = 0
+    for row in data.rows:
+        key = (row.illaka_name.strip().lower(), row.misal_name.strip().lower())
+        if key not in misal_order_map:
+            misal_order_map[key] = misal_counter
+            misal_counter += 1
+
     for i, row in enumerate(data.rows):
         try:
-            illaka_id, misal_id = await _resolve_illaka_misal(row.illaka_name, row.misal_name)
+            misal_key = (row.illaka_name.strip().lower(), row.misal_name.strip().lower())
+            misal_do = misal_order_map[misal_key]
+            illaka_id, misal_id = await _resolve_illaka_misal(row.illaka_name, row.misal_name, misal_display_order=misal_do)
             result = await _create_ob_kyc_and_loan(
                 illaka_id=illaka_id,
                 misal_id=misal_id,
@@ -458,6 +475,7 @@ async def excel_confirm(data: ExcelConfirmRequest, request: Request):
                 emi_amount=row.emi_amount,
                 created_by_id=current_user["id"],
                 created_by_name=current_user["name"],
+                display_order=i,
             )
             imported.append({**result, "client_name": row.client_name})
         except Exception as e:
