@@ -106,6 +106,7 @@ async def _create_ob_kyc_and_loan(
     customer_id = await generate_customer_id(illaka_name)
     kyc_doc = {
         "kyc_number": customer_id,
+        "customer_id": customer_id,
         "illaka_id": illaka_id,
         "misal_id": misal_id,
         "status": "approved",
@@ -139,6 +140,7 @@ async def _create_ob_kyc_and_loan(
 
     loan_doc = {
         "loan_number": loan_number,
+        "customer_id": customer_id,
         "kyc_id": kyc_id,
         "illaka_id": illaka_id,
         "misal_id": misal_id,
