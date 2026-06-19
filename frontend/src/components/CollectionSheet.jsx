@@ -6,7 +6,7 @@ import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
-  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer
+  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer, Trash2
 } from "lucide-react";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -233,10 +233,11 @@ function NoteModal({ row, onClose, onSaved }) {
   );
 }
 
-function EditEmiModal({ row, onClose, onEdited }) {
+function EditEmiModal({ row, onClose, onEdited, onDeleted }) {
   const [amount, setAmount] = useState(row.emi_paid_amount || row.emi_amount);
   const [date, setDate] = useState(row.emi_paid_date || new Date().toISOString().split("T")[0]);
   const [loading, setLoading] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -261,6 +262,23 @@ function EditEmiModal({ row, onClose, onEdited }) {
     }
   };
 
+  const handleDelete = async () => {
+    setLoading(true);
+    try {
+      await axios.delete(
+        `${API}/loans/${row.loan_db_id}/payments/${row.emi_month}`,
+        { withCredentials: true }
+      );
+      toast.success(`Entry deleted for ${row.client_name} — ${fmtMonth(row.emi_month)}`);
+      onDeleted();
+      onClose();
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to delete entry");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="edit-emi-modal">
       <div className="absolute inset-0 bg-black/50" onClick={onClose} />
@@ -276,46 +294,85 @@ function EditEmiModal({ row, onClose, onEdited }) {
             <X size={18} />
           </button>
         </div>
-        <form onSubmit={handleSubmit} className="p-4 space-y-4">
-          <div>
-            <label className="bk-label">
-              <span className="bk-label-en">Amount (₹) *</span>
-              <span className="bk-label-hi">राशि</span>
-            </label>
-            <input
-              type="number"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              className="bk-input"
-              min="1"
-              required
-              data-testid="edit-emi-amount-input"
-            />
+
+        {confirmDelete ? (
+          <div className="p-4 space-y-4">
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-lg p-3 text-sm text-red-700 dark:text-red-300">
+              <p className="font-semibold mb-1">Delete this collection entry?</p>
+              <p>This will mark <span className="font-semibold">{fmtMonth(row.emi_month)}</span> as unpaid for <span className="font-semibold">{row.client_name}</span>. This cannot be undone.</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="flex-1 bk-btn-secondary"
+                disabled={loading}
+                data-testid="cancel-delete-emi-btn"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={loading}
+                className="flex-1 flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white rounded-lg px-4 py-2 font-semibold text-sm transition-colors"
+                data-testid="confirm-delete-emi-btn"
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                हाँ, Delete करें
+              </button>
+            </div>
           </div>
-          <div>
-            <label className="bk-label">
-              <span className="bk-label-en">Collection Date *</span>
-              <span className="bk-label-hi">तारीख</span>
-            </label>
-            <input
-              type="date"
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-              className="bk-input"
-              required
-              data-testid="edit-emi-date-input"
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="bk-btn-primary flex items-center justify-center gap-2 w-full"
-            data-testid="confirm-edit-emi-btn"
-          >
-            {loading ? <Loader2 size={18} className="animate-spin" /> : <Edit3 size={18} />}
-            Update Entry / बदलाव सहेजें
-          </button>
-        </form>
+        ) : (
+          <form onSubmit={handleSubmit} className="p-4 space-y-4">
+            <div>
+              <label className="bk-label">
+                <span className="bk-label-en">Amount (₹) *</span>
+                <span className="bk-label-hi">राशि</span>
+              </label>
+              <input
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                className="bk-input"
+                min="1"
+                required
+                data-testid="edit-emi-amount-input"
+              />
+            </div>
+            <div>
+              <label className="bk-label">
+                <span className="bk-label-en">Collection Date *</span>
+                <span className="bk-label-hi">तारीख</span>
+              </label>
+              <input
+                type="date"
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="bk-input"
+                required
+                data-testid="edit-emi-date-input"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={loading}
+              className="bk-btn-primary flex items-center justify-center gap-2 w-full"
+              data-testid="confirm-edit-emi-btn"
+            >
+              {loading ? <Loader2 size={18} className="animate-spin" /> : <Edit3 size={18} />}
+              Update Entry / बदलाव सहेजें
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              disabled={loading}
+              className="flex items-center justify-center gap-2 w-full border border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg px-4 py-2 text-sm font-semibold transition-colors"
+              data-testid="delete-emi-btn"
+            >
+              <Trash2 size={15} />
+              Delete Entry / हटाएं
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );
@@ -825,6 +882,10 @@ export default function CollectionSheet() {
     silentFetch();
   };
 
+  const handleDeleted = () => {
+    silentFetch();
+  };
+
   // Flat list of all Misals for the filter dropdown
   const allMisals = useMemo(() => {
     if (!data) return [];
@@ -1203,6 +1264,7 @@ export default function CollectionSheet() {
           row={editingRow}
           onClose={() => setEditingRow(null)}
           onEdited={handleEdited}
+          onDeleted={handleDeleted}
         />
       )}
     </div>
