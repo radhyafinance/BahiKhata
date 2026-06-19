@@ -101,6 +101,8 @@ async def _create_ob_kyc_and_loan(
     now = datetime.now(timezone.utc).isoformat()
     illaka = await db.illakas.find_one({"_id": ObjectId(illaka_id)})
     illaka_name = illaka["name"] if illaka else illaka_id
+    misal = await db.misals.find_one({"_id": ObjectId(misal_id)})
+    misal_name = misal["name"] if misal else misal_id
 
     # ── KYC ─────────────────────────────────────────────────────────────────
     customer_id = await generate_customer_id(illaka_name)
@@ -108,7 +110,9 @@ async def _create_ob_kyc_and_loan(
         "kyc_number": customer_id,
         "customer_id": customer_id,
         "illaka_id": illaka_id,
+        "illaka_name": illaka_name,
         "misal_id": misal_id,
+        "misal_name": misal_name,
         "status": "approved",
         "is_import": True,
         "primary_borrower": {
@@ -143,7 +147,9 @@ async def _create_ob_kyc_and_loan(
         "customer_id": customer_id,
         "kyc_id": kyc_id,
         "illaka_id": illaka_id,
+        "illaka_name": illaka_name,
         "misal_id": misal_id,
+        "misal_name": misal_name,
         "client_name": client_name.strip(),
         "client_phone": (client_phone or "").strip(),
         "loan_date": loan_date,
