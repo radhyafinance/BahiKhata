@@ -78,11 +78,18 @@ def _build_emi_year_strip(
             else:
                 result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
         else:
-            # Priority 1: EMI physically collected in this month (paid_date[:7] == fy_m)
+            # Priority 1: EMI physically collected in this FY month.
+            # This handles old overdue loans whose due_month is in a PAST FY but
+            # whose payment was received in the current FY.
+            # IMPORTANT: skip entries whose due_month IS within the current FY —
+            # those are correctly shown by sched_item (Priority 2).
+            # Without this guard, a May EMI paid on June 15 would appear in both
+            # May (via sched_item) AND June (via paid_date match).
             paid_this_month = next(
                 (e for e in schedule
                  if e.get("status") == "paid"
                  and (e.get("paid_date") or "")[:7] == fy_m
+                 and (e.get("due_month") or "") not in fy_months
                  and not e.get("is_gyal_entry")),
                 None,
             )
