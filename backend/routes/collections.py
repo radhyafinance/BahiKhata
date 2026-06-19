@@ -78,18 +78,13 @@ def _build_emi_year_strip(
             else:
                 result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
         else:
-            # Priority 1: EMI physically collected in this FY month.
-            # This handles old overdue loans whose due_month is in a PAST FY but
-            # whose payment was received in the current FY.
-            # IMPORTANT: skip entries whose due_month IS within the current FY —
-            # those are correctly shown by sched_item (Priority 2).
-            # Without this guard, a May EMI paid on June 15 would appear in both
-            # May (via sched_item) AND June (via paid_date match).
+            # Priority 1: EMI physically collected in this FY month (paid_date[:7] == fy_m).
+            # This shows the payment in the column matching WHEN MONEY WAS RECEIVED —
+            # regardless of which due_month it was for.
             paid_this_month = next(
                 (e for e in schedule
                  if e.get("status") == "paid"
                  and (e.get("paid_date") or "")[:7] == fy_m
-                 and (e.get("due_month") or "") not in fy_months
                  and not e.get("is_gyal_entry")),
                 None,
             )
@@ -101,9 +96,22 @@ def _build_emi_year_strip(
                     "note": paid_this_month.get("note") or "",
                 })
             elif sched_item:
-                result.append({"month": fy_m, "status": sched_item.get("status", "pending"),
-                                "paid_amount": float(sched_item.get("paid_amount") or 0),
-                                "note": sched_item.get("note") or ""})
+                # Priority 2: scheduled EMI for this month.
+                # If this EMI is paid but its paid_date falls in a DIFFERENT month
+                # within this FY, it is already shown there via Priority 1 above.
+                # Suppress it here so the entry appears in exactly one column.
+                paid_m = (sched_item.get("paid_date") or "")[:7]
+                if (sched_item.get("status") == "paid"
+                        and paid_m in fy_months
+                        and paid_m != fy_m):
+                    result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
+                else:
+                    result.append({
+                        "month": fy_m,
+                        "status": sched_item.get("status", "pending"),
+                        "paid_amount": float(sched_item.get("paid_amount") or 0),
+                        "note": sched_item.get("note") or "",
+                    })
             else:
                 result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
     return result
