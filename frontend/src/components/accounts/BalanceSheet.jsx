@@ -11,12 +11,20 @@ function SideSection({ title, color, items, footer }) {
       <table className="w-full text-sm">
         <tbody>
           {items.map((item) => (
-            <tr key={item.account_head_name} className="border-b border-border hover:bg-muted/20">
+            <tr
+              key={item.account_head_name}
+              className={`border-b border-border hover:bg-muted/20 ${item.is_aasami_khata ? "bg-emerald-50/60 dark:bg-emerald-950/30" : ""}`}
+            >
               <td className="px-4 py-2.5">
-                <div className="font-medium">{item.account_head_name}</div>
+                <div className={`font-medium ${item.is_aasami_khata ? "text-emerald-800 dark:text-emerald-300" : ""}`}>
+                  {item.account_head_name}
+                  {item.is_aasami_khata && (
+                    <span className="ml-2 text-[10px] bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded font-semibold tracking-wide">AUTO</span>
+                  )}
+                </div>
                 <div className="text-xs text-muted-foreground">{item.group_name}</div>
               </td>
-              <td className={`px-4 py-2.5 text-right font-bold font-mono ${item.amount < 0 ? "text-red-600" : ""}`}>
+              <td className={`px-4 py-2.5 text-right font-bold font-mono ${item.amount < 0 ? "text-red-600" : item.is_aasami_khata ? "text-emerald-700 dark:text-emerald-400" : ""}`}>
                 {fmt(Math.abs(item.amount))}
                 {item.amount < 0 && <span className="text-xs ml-1">(Dr)</span>}
               </td>

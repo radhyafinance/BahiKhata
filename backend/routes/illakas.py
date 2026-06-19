@@ -43,6 +43,12 @@ async def create_illaka(data: IllakaCreate, request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "maalik"]:
         raise HTTPException(status_code=403, detail="Admin or Maalik only")
+    # Unique name check (case-insensitive)
+    existing = await db.illakas.find_one(
+        {"name": {"$regex": f"^{data.name.strip()}$", "$options": "i"}}
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Illaka '{data.name}' already exists")
     maalik_id = user["id"] if user["role"] == "maalik" else data.maalik_id
     doc = {
         "name": data.name, "description": data.description,
@@ -59,6 +65,12 @@ async def update_illaka(illaka_id: str, data: IllakaCreate, request: Request):
     user = await get_current_user(request)
     if user["role"] not in ["admin", "maalik"]:
         raise HTTPException(status_code=403, detail="Admin or Maalik only")
+    # Unique name check (case-insensitive, exclude current illaka)
+    existing = await db.illakas.find_one(
+        {"name": {"$regex": f"^{data.name.strip()}$", "$options": "i"}, "_id": {"$ne": ObjectId(illaka_id)}}
+    )
+    if existing:
+        raise HTTPException(status_code=409, detail=f"Illaka '{data.name}' already exists")
     updates = {"name": data.name, "description": data.description, "updated_at": datetime.now(timezone.utc).isoformat()}
     await db.illakas.update_one({"_id": ObjectId(illaka_id)}, {"$set": updates})
     doc = await db.illakas.find_one({"_id": ObjectId(illaka_id)})

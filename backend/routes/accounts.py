@@ -720,6 +720,7 @@ async def get_balance_sheet(
 ):
     """Balance Sheet as of the last day of the selected month.
     Assets = Liabilities + Capital + Net Profit.
+    Aasami Khata is computed from the loans collection (includes imported loans).
     Opening/Unrecorded Capital is derived as the balancing figure.
     """
     current_user = await get_current_user(request)
@@ -735,11 +736,19 @@ async def get_balance_sheet(
 
     entries = await db.journal_entries.find(query).to_list(50000)
 
+    # Find the loans_portfolio account head id so we can skip it from journal aggregation
+    # (we replace it with the computed outstanding from the loans collection)
+    lp_head = await db.account_heads.find_one({"system_key": "loans_portfolio"})
+    lp_head_id = str(lp_head["_id"]) if lp_head else None
+
     head_totals: dict = {}
     for entry in entries:
         for line in entry.get("lines", []):
             hid = line.get("account_head_id")
             if not hid:
+                continue
+            # Skip loans_portfolio — replaced by computed Aasami Khata below
+            if hid == lp_head_id:
                 continue
             if hid not in head_totals:
                 head_totals[hid] = {
@@ -751,6 +760,35 @@ async def get_balance_sheet(
                 }
             head_totals[hid]["total_debit"] += float(line.get("debit", 0))
             head_totals[hid]["total_credit"] += float(line.get("credit", 0))
+
+    # ── Compute Aasami Khata from loans collection ────────────────────────────
+    # Outstanding = sum of (total_repayable - total_paid) for non-gyal active/overdue loans
+    # that were disbursed on or before end of the selected month.
+    loan_query: dict = {"loan_date": {"$lt": next_month_start}}
+    if illaka_id:
+        loan_query["illaka_id"] = illaka_id
+    elif maalik_id and current_user["role"] == "admin":
+        from helpers import get_admin_maalik_filter_ids
+        ids = await get_admin_maalik_filter_ids(maalik_id)
+        loan_query["illaka_id"] = {"$in": ids}
+    elif current_user["role"] == "maalik":
+        from helpers import _get_maalik_illaka_ids
+        ids = await _get_maalik_illaka_ids(current_user)
+        loan_query["illaka_id"] = {"$in": ids}
+    elif current_user["role"] in ("muneem", "sadar_muneem", "sipahi"):
+        assigned = current_user.get("assigned_illaka_ids", [])
+        loan_query["illaka_id"] = {"$in": assigned}
+
+    loans = await db.loans.find(
+        loan_query,
+        {"total_repayable": 1, "total_paid": 1, "is_gyal": 1, "status": 1}
+    ).to_list(50000)
+
+    aasami_balance = round(sum(
+        max(0.0, float(ln.get("total_repayable") or 0) - float(ln.get("total_paid") or 0))
+        for ln in loans
+        if not ln.get("is_gyal") and ln.get("status") in ("active", "overdue")
+    ), 2)
 
     assets, liabilities, equity_items = [], [], []
     income_total = 0.0
@@ -783,6 +821,14 @@ async def get_balance_sheet(
         elif gtype == "expense":
             expense_total += round(dr - cr, 2)
 
+    # Inject Aasami Khata as computed asset (always present, even if zero)
+    assets.append({
+        "account_head_name": "Aasami Khata (आसामी खाता)",
+        "group_name": "Loans Portfolio",
+        "amount": aasami_balance,
+        "is_aasami_khata": True,
+    })
+
     net_profit = round(income_total - expense_total, 2)
     total_assets = round(sum(a["amount"] for a in assets), 2)
     total_liabilities = round(sum(l["amount"] for l in liabilities), 2)
@@ -791,7 +837,7 @@ async def get_balance_sheet(
     # Opening/Unrecorded Capital = balancing figure
     opening_capital = round(total_assets - total_liabilities - total_equity - net_profit, 2)
 
-    assets.sort(key=lambda x: x["group_name"])
+    assets.sort(key=lambda x: (0 if x.get("is_aasami_khata") else 1, x["group_name"]))
     liabilities.sort(key=lambda x: x["group_name"])
     equity_items.sort(key=lambda x: x["group_name"])
 
