@@ -2,6 +2,15 @@
 
 ## 2026-06-23
 
+### Bug Fix: Deleted EMI collection no longer persists in Cashbook
+- **Root cause**: `DELETE /api/loans/{id}/payments/{emi_month}` (`uncollect_emi`) was deleting the payment record and resetting the EMI schedule, but **never deleting the corresponding `journal_entry`** of type `emi_collection`
+- **Fix**: Added journal entry deletion to `uncollect_emi` in `loans.py` — mirrors the logic already present in `edit_emi_payment`
+- Lookup by `emi_month` field first; falls back to `date` match for legacy entries created before `emi_month` field was added
+- Covers both regular EMI and synthetic Gyal collection entries
+- Verified: collect → JE created → delete → JE removed (0 remaining)
+
+
+
 ### Quick Add Loan Feature (Admin/Maalik only)
 - New backend endpoint `POST /api/kycs/quick-loan` — creates a minimal KYC + Loan record without Aadhaar/photo/GPS
 - Role-restricted to **Admin and Maalik** only (403 for sipahi/muneem)

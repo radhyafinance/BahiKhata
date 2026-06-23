@@ -300,9 +300,13 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     emi_item = next((e for e in schedule if e["due_month"] == emi_month), None)
     if not emi_item:
         raise HTTPException(status_code=404, detail="EMI month not found")
+
+    # Capture paid_date before it gets cleared — needed for journal entry lookup
+    old_paid_date = emi_item.get("paid_date") or ""
     now = datetime.now(timezone.utc).isoformat()
-    # For synthetic Gyal entries, remove them entirely rather than reverting status
+
     if emi_item.get("is_gyal_entry"):
+        # Synthetic Gyal entries: remove row entirely
         schedule = [e for e in schedule if e["due_month"] != emi_month]
         total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
         await db.loans.update_one(
@@ -310,23 +314,40 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
             {"$set": {"emi_schedule": schedule, "total_paid": total_paid,
                       "status": _get_loan_status(schedule), "updated_at": now}}
         )
-        await db.payments.delete_one({"loan_id": loan_id, "emi_month": emi_month})
-        return {"message": f"Gyal collection for {emi_month} undone"}
-    y, mo = map(int, emi_month.split("-"))
-    last_day = calendar.monthrange(y, mo)[1]
-    new_emi_status = "overdue" if date_type.today() > date_type(y, mo, last_day) else "pending"
-    emi_item.update({
-        "status": new_emi_status, "paid_amount": 0.0,
-        "paid_date": None, "collected_by_id": None, "collected_by_name": None
-    })
-    total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
-    now = datetime.now(timezone.utc).isoformat()
-    await db.loans.update_one(
-        {"_id": ObjectId(loan_id)},
-        {"$set": {"emi_schedule": schedule, "total_paid": total_paid,
-                  "status": _get_loan_status(schedule), "updated_at": now}}
-    )
+    else:
+        y, mo = map(int, emi_month.split("-"))
+        last_day = calendar.monthrange(y, mo)[1]
+        new_emi_status = "overdue" if date_type.today() > date_type(y, mo, last_day) else "pending"
+        emi_item.update({
+            "status": new_emi_status, "paid_amount": 0.0,
+            "paid_date": None, "collected_by_id": None, "collected_by_name": None
+        })
+        total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
+        await db.loans.update_one(
+            {"_id": ObjectId(loan_id)},
+            {"$set": {"emi_schedule": schedule, "total_paid": total_paid,
+                      "status": _get_loan_status(schedule), "updated_at": now}}
+        )
+
+    # Delete the payment record
     await db.payments.delete_one({"loan_id": loan_id, "emi_month": emi_month})
+
+    # Delete the journal entry that was created when this EMI was collected
+    old_entry = await db.journal_entries.find_one({
+        "entry_type": "emi_collection",
+        "reference_id": loan_id,
+        "emi_month": emi_month,
+    })
+    if not old_entry and old_paid_date:
+        # Fallback for entries created before the emi_month field was added
+        old_entry = await db.journal_entries.find_one({
+            "entry_type": "emi_collection",
+            "reference_id": loan_id,
+            "date": old_paid_date,
+        })
+    if old_entry:
+        await db.journal_entries.delete_one({"_id": old_entry["_id"]})
+
     return {"message": f"EMI for {emi_month} uncollected"}
 
 
