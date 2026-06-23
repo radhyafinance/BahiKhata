@@ -1,6 +1,20 @@
 # Bahi Khata — Changelog
 
-## 2026-06-19
+## 2026-06-23
+
+### Quick Add Loan Feature (Admin/Maalik only)
+- New backend endpoint `POST /api/kycs/quick-loan` — creates a minimal KYC + Loan record without Aadhaar/photo/GPS
+- Role-restricted to **Admin and Maalik** only (403 for sipahi/muneem)
+- Fields: Illaka+Misal dropdowns, Borrower Name (required), Phone (optional), Suffix (optional), Co-borrower (optional, collapsible), Guarantor (optional, collapsible), Principal Amount, Loan Month (YYYY-MM)
+- Loan date auto-set to **1st of the selected month**
+- EMI calculated using standard formula: `round(principal × 120/103 ÷ 12 ÷ 10) × 10`
+- Journal entry auto-booked via `book_loan_disbursement` (Debit: Loans Portfolio, Credit: Cash + Interest Income)
+- New `QuickLoanCreate` Pydantic model in `models.py`; KYC doc gets `source: "quick_add"` flag
+- Frontend: `QuickAddLoanModal.jsx` — live EMI/interest preview, success screen with Customer ID + Loan Number
+- "Quick Add Loan" button added to `LoanList.jsx` for admin/maalik
+- All 12 backend tests + 4 frontend success-screen tests passed (iterations 29 & 30)
+
+
 
 ### Import Page — Preserve Excel Order on Vasuli
 - `excel_confirm` endpoint computes misal `display_order` (first appearance per illaka+misal pair) and row `display_order` (Excel row index 0-based); both stored on DB documents

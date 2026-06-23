@@ -285,7 +285,13 @@ See CHANGELOG.md for full history.
 - [ ] Misal-level Filtering dropdown on Vasuli
 - [ ] Gyal Summary Dashboard Card (NPA overview)
 
-### CRIF High Mark INDV 2.0 Integration (2026-05-09) ✓
+### Quick Add Loan (2026-06-23) ✓
+- [x] `POST /api/kycs/quick-loan` — Admin/Maalik only; creates KYC + Loan without Aadhaar/photo
+- [x] Auto-calculates EMI (17% flat), sets loan_date to 1st of selected month, books journal entry
+- [x] Frontend: `QuickAddLoanModal.jsx` with live EMI preview, co-borrower/guarantor collapsible sections
+- [x] "Quick Add Loan" button on `LoanList.jsx` visible only to Admin/Maalik
+
+
 - [x] **UAT credentials** configured in `backend/.env` (CRIF_URL, CRIF_USER_ID, CRIF_PASSWORD, CRIF_MBRID, CRIF_SUB_MBR_ID)
 - [x] **Backend route** `/app/backend/routes/crif.py` with `POST /api/crif/check/{kyc_id}`, `GET /api/crif/result/{kyc_id}`, `GET /api/crif/report-html/{kyc_id}`
 - [x] **XML builder** `_build_crif_xml()` — maps KYC data → CRIF INDV 2.0 XML format, handles DOB (DD/MM/YYYY and YYYY-MM-DD), Aadhaar as ID08, misal_name as city
