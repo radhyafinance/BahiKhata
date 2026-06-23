@@ -3,7 +3,8 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
-import { Search, Plus, TrendingUp, IndianRupee } from "lucide-react";
+import { Search, Plus, TrendingUp, Zap } from "lucide-react";
+import QuickAddLoanModal from "./QuickAddLoanModal";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -72,8 +73,11 @@ export default function LoanList() {
   }, [search, statusFilter, misalFilter, page, selectedIllaka, selectedMaalik]);
 
   const canCreate = user?.role === "muneem" || user?.role === "sipahi";
+  const canQuickAdd = user?.role === "admin" || user?.role === "maalik";
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
 
   return (
+    <>
     <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -88,6 +92,15 @@ export default function LoanList() {
             data-testid="new-loan-btn"
           >
             <Plus size={16} /> New Loan / नया कर्ज
+          </button>
+        )}
+        {canQuickAdd && (
+          <button
+            onClick={() => setShowQuickAdd(true)}
+            className="flex items-center gap-2 bg-primary text-white px-5 py-3 rounded-lg font-semibold hover:bg-primary/90 active:scale-[0.98] transition-all text-sm"
+            data-testid="quick-add-loan-btn"
+          >
+            <Zap size={16} /> Quick Add Loan
           </button>
         )}
       </div>
@@ -215,5 +228,11 @@ export default function LoanList() {
         )}
       </div>
     </div>
+    <QuickAddLoanModal
+      open={showQuickAdd}
+      onClose={() => setShowQuickAdd(false)}
+      onSuccess={() => { setShowQuickAdd(false); fetchLoans(); }}
+    />
+  </>
   );
 }

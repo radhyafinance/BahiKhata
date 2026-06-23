@@ -10,7 +10,7 @@ from helpers import (
     _build_emi_schedule, _get_loan_status, _add_months, _kyc_query_for_user,
     get_admin_maalik_filter_ids, book_loan_disbursement,
 )
-from models import KYCCreate, KYCStatusUpdate
+from models import KYCCreate, KYCStatusUpdate, QuickLoanCreate
 
 router = APIRouter()
 
@@ -180,6 +180,108 @@ async def create_kyc(data: KYCCreate, request: Request):
         await book_loan_disbursement(loan_doc, current_user["id"], current_user["name"])
 
     return _doc(doc)
+
+
+@router.post("/kycs/quick-loan")
+async def quick_add_loan(data: QuickLoanCreate, request: Request):
+    """Create a minimal KYC + Loan without Aadhaar/photo. Admin and Maalik only."""
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Only Admin or Maalik can use Quick Add Loan")
+
+    # Parse loan date (first of month)
+    try:
+        year, month = map(int, data.loan_month.split("-"))
+        loan_date_obj = date_type(year, month, 1)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid loan_month format. Use YYYY-MM")
+
+    customer_id = await generate_customer_id(data.illaka_name)
+    now = datetime.now(timezone.utc).isoformat()
+    loan_date_str = loan_date_obj.isoformat()
+
+    _suffix = (data.suffix or "").strip()
+    _cn = (data.name.strip() + (" " + _suffix if _suffix else "")).strip()
+
+    co_borrower = None
+    if data.co_borrower_name and data.co_borrower_name.strip():
+        co_borrower = {"name": data.co_borrower_name.strip(), "phone": data.co_borrower_phone or ""}
+
+    guarantor = None
+    if data.guarantor_name and data.guarantor_name.strip():
+        guarantor = {"name": data.guarantor_name.strip(), "phone": data.guarantor_phone or ""}
+
+    kyc_doc = {
+        "customer_id": customer_id,
+        "kyc_number": customer_id,
+        "status": "active",
+        "source": "quick_add",
+        "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
+        "misal_id": data.misal_id, "misal_name": data.misal_name,
+        "primary_borrower": {
+            "name": data.name.strip(),
+            "suffix": _suffix,
+            "phone": data.phone or "",
+            "phone_history": [],
+        },
+        "co_borrower": co_borrower,
+        "guarantor": guarantor,
+        "live_photo_path": None,
+        "gps_location": None,
+        "field_officer_id": current_user["id"],
+        "field_officer_name": current_user["name"],
+        "field_officer_role": current_user["role"],
+        "notes": None,
+        "disbursement_amount": data.principal_amount,
+        "loan_id": None,
+        "created_at": now, "updated_at": now,
+    }
+    kyc_result = await db.kycs.insert_one(kyc_doc)
+    kyc_id_str = str(kyc_result.inserted_id)
+
+    emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)
+    loan_number = await generate_loan_number(customer_id, kyc_id_str)
+
+    loan_doc = {
+        "kyc_id": kyc_id_str,
+        "customer_id": customer_id,
+        "loan_number": loan_number,
+        "client_name": _cn,
+        "client_name_hindi": "",
+        "client_phone": data.phone or "",
+        "relative_name": "", "relative_name_hindi": "",
+        "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
+        "misal_id": data.misal_id, "misal_name": data.misal_name,
+        "principal_amount": data.principal_amount,
+        "interest_rate": 17.0,
+        "emi_amount": emi_amount,
+        "total_repayable": emi_amount * 12,
+        "interest_amount": round((emi_amount * 12) - data.principal_amount, 2),
+        "loan_date": loan_date_str,
+        "due_date": _add_months(loan_date_obj, 12).isoformat(),
+        "status": _get_loan_status(schedule),
+        "sipahi_id": current_user["id"], "sipahi_name": current_user["name"],
+        "total_paid": 0.0, "notes": None,
+        "emi_schedule": schedule,
+        "source": "quick_add",
+        "created_at": now, "updated_at": now,
+    }
+    loan_res = await db.loans.insert_one(loan_doc)
+    loan_id = str(loan_res.inserted_id)
+    loan_doc["_id"] = loan_res.inserted_id
+
+    await db.kycs.update_one({"_id": kyc_result.inserted_id}, {"$set": {"loan_id": loan_id}})
+    await book_loan_disbursement(loan_doc, current_user["id"], current_user["name"])
+
+    return {
+        "kyc_id": kyc_id_str,
+        "loan_id": loan_id,
+        "customer_id": customer_id,
+        "loan_number": loan_number,
+        "emi_amount": emi_amount,
+        "total_repayable": emi_amount * 12,
+        "interest_amount": round((emi_amount * 12) - data.principal_amount, 2),
+    }
 
 
 @router.get("/kycs/check-aadhaar")

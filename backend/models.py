@@ -199,6 +199,22 @@ class ExpenseSubmissionCreate(BaseModel):
     action: str = "draft"  # "draft" or "submit"
 
 
+class QuickLoanCreate(BaseModel):
+    illaka_id: str
+    illaka_name: str
+    misal_id: str
+    misal_name: str
+    name: str
+    phone: Optional[str] = None
+    suffix: Optional[str] = None
+    co_borrower_name: Optional[str] = None
+    co_borrower_phone: Optional[str] = None
+    guarantor_name: Optional[str] = None
+    guarantor_phone: Optional[str] = None
+    principal_amount: float
+    loan_month: str  # YYYY-MM
+
+
 class YearEndClosingRequest(BaseModel):
     illaka_id: str
     closing_date: str  # "YYYY-MM-DD", typically March 31st

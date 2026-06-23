@@ -1,0 +1,59 @@
+{
+  "summary": "Quick Add Loan feature tested (backend + frontend). Backend: 12/12 tests pass - EMI formula, role access (admin allowed, sipahi/unauth blocked), KYC+Loan creation, co-borrower/guarantor, loan date = 1st of month, loan appears in list. Frontend: modal opens, form fields present, EMI preview works live, collapsible sections work. ONE CRITICAL BUG: success screen never renders after form submission because onSuccess callback in LoanList.jsx closes the modal (setShowQuickAdd=false) synchronously after setSuccess(), before React can re-render the success screen.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "QuickAddLoanModal + LoanList",
+        "issue": "Success screen (showing Customer ID, Loan Number, EMI, Interest, Total Repayable) never renders. Root cause: In handleSubmit (QuickAddLoanModal.jsx line 100), onSuccess(res.data) is called right after setSuccess(res.data). Since onSuccess in LoanList.jsx calls setShowQuickAdd(false), React batches both updates and modal closes (open=false → returns null) before success state can render.",
+        "selector": "[data-testid='quick-add-done-btn'], [data-testid='quick-add-another-btn']",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "Quick Add Loan - success flow",
+        "issue": "Add Another and Done buttons are unreachable because the success screen is never shown. The modal closes immediately after form submission, before success screen renders.",
+        "affected_selectors": ["[data-testid='quick-add-another-btn']", "[data-testid='quick-add-done-btn']"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_quick_loan.py",
+    "/app/test_reports/pytest/quick_loan_results.xml"
+  ],
+  "action_items": [
+    "FIX SUCCESS SCREEN BUG: In QuickAddLoanModal.jsx handleSubmit(), REMOVE the line 'onSuccess && onSuccess(res.data)'. Then modify the Done button onClick to call: () => { onSuccess && onSuccess(); handleClose(); } so that the loan list refreshes when Done is clicked. The loan list's onSuccess should remain as () => { fetchLoans(); } (remove the setShowQuickAdd(false) from onSuccess since closing is handled by onClose). Alternatively, the simplest fix: change LoanList.jsx onSuccess to only fetchLoans() without closing, and remove the onSuccess call from handleSubmit, keeping handleClose (Done button) to close via onClose. The list refresh should happen either on Done or via onClose."
+  ],
+  "critical_code_review_comments": [
+    "CRITICAL BUG: QuickAddLoanModal.jsx line 100 - onSuccess() called in handleSubmit causes modal to close before success screen renders. Fix: remove onSuccess() from handleSubmit; trigger it from Done button handler instead.",
+    "LoanList.jsx onSuccess prop: { setShowQuickAdd(false); fetchLoans(); } - the setShowQuickAdd(false) should be moved to onClose, and onSuccess should only call fetchLoans(). This way the loan list refreshes after Done is clicked.",
+    "NOTE: The loan IS created correctly (toast shows, loan count increments), only the success screen display is broken."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_quick_loan.py"
+  ],
+  "success_rate": {
+    "backend": "100% (12/12 tests pass)",
+    "frontend": "75% - modal opens, form works, EMI preview works, collapsible works, no-phone submit works, sipahi blocked correctly. FAIL: success screen not shown after submission"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123",
+    "sipahi": "phone=8888888888 / Test@1234"
+  },
+  "seed_data_creation": "Backend tests created ~10 test KYC+loan records with TEST_ prefix (test_create_quick_loan_no_phone, test_emi_formula_10000, test_emi_formula_25000, etc.)",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Quick Add Loan backend is fully working (12/12 tests). Frontend modal opens correctly, EMI preview is live (10000→₹970, 15000→₹1460), co-borrower and guarantor collapsible sections work. Sipahi correctly does NOT see Quick Add Loan button. The ONE remaining bug is the success screen: after form submission, the success screen with Customer ID, Loan Number, EMI, Interest, Total Repayable should appear inside the modal, but the modal closes immediately because onSuccess() is called in handleSubmit. Fix: remove onSuccess() from handleSubmit; call it from Done button instead. Test file: /app/backend/tests/test_quick_loan.py. Key info: login flow requires skip passkey prompt + select illaka + click Continue button before accessing loans page.",
+  "rca_of_issue": {
+    "bug": "Success screen not shown after Quick Add Loan form submission",
+    "root_cause": "In QuickAddLoanModal.jsx handleSubmit() (line 98-100): setSuccess(res.data) sets local success state AND immediately calls onSuccess(res.data) which triggers LoanList's setShowQuickAdd(false). React 18 batches these state updates. The resulting re-render has open=false, so the modal component returns null. The setSuccess state was applied internally but since the component doesn't render (open=false → return null on line 108), the success screen is never displayed to the user.",
+    "affected_lines": "QuickAddLoanModal.jsx line 100: 'onSuccess && onSuccess(res.data)'",
+    "fix": "Remove 'onSuccess && onSuccess(res.data)' from handleSubmit. In Done button handler, call onSuccess() before handleClose(). Change LoanList onSuccess to only fetchLoans() (not setShowQuickAdd(false)) — closing is already handled by Done button calling handleClose → onClose.",
+    "reproduction": "1. Login admin. 2. Go to Loans. 3. Click Quick Add Loan. 4. Fill all required fields. 5. Click Create Loan. 6. Modal closes immediately showing toast but NO success screen."
+  }
+}
