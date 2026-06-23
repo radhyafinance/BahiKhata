@@ -231,7 +231,7 @@ export default function LoanList() {
     <QuickAddLoanModal
       open={showQuickAdd}
       onClose={() => setShowQuickAdd(false)}
-      onSuccess={() => { setShowQuickAdd(false); fetchLoans(); }}
+      onSuccess={() => { fetchLoans(); }}
     />
   </>
   );
