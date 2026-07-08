@@ -285,7 +285,11 @@ See CHANGELOG.md for full history.
 - [ ] Misal-level Filtering dropdown on Vasuli
 - [ ] Gyal Summary Dashboard Card (NPA overview)
 
-### Quick Add Loan (2026-06-23) ✓
+### KYC Form Improvements (2026-07-08) ✓
+- [x] **Co-borrower & Guarantor phone optional** — phone field label changed to "(optional)" for non-mandatory persons; removed phone validation on steps 3 & 4; payload now uses name-check instead of phone-check
+- [x] **KYC Success Screen** — after new KYC submission, a full-page success screen shows Customer ID, Client Name, and "Loan Disbursed / कर्ज जारी हुआ" badge; user clicks "View Client Profile" to navigate (replaces abrupt navigate)
+
+
 - [x] `POST /api/kycs/quick-loan` — Admin/Maalik only; creates KYC + Loan without Aadhaar/photo
 - [x] Auto-calculates EMI (17% flat), sets loan_date to 1st of selected month, books journal entry
 - [x] Frontend: `QuickAddLoanModal.jsx` with live EMI preview, co-borrower/guarantor collapsible sections
