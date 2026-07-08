@@ -234,7 +234,7 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
           <label className="bk-label">
-            <span className="bk-label-en">Phone Number <span className="text-destructive">*</span></span>
+            <span className="bk-label-en">Phone Number {isMandatory ? <span className="text-destructive">*</span> : <span className="text-muted-foreground text-xs">(optional)</span>}</span>
             <span className="bk-label-hi">फ़ोन नंबर</span>
           </label>
           <input

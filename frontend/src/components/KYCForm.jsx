@@ -23,6 +23,7 @@ export default function KYCForm() {
   const { selectedIllaka: contextIllaka } = useIllaka();
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
+  const [successData, setSuccessData] = useState(null); // { customerId, loanId, clientName, kycId }
   const [illakas, setIllakas] = useState([]);
   const [misals, setMisals] = useState([]);
   const [selectedIllaka, setSelectedIllaka] = useState(null);
@@ -107,12 +108,7 @@ export default function KYCForm() {
       if (!p.aadhaar_back_path) { toast.error("Aadhaar back photo required"); return false; }
       return true;
     }
-    if (step === 3 && includeCoBorrower) {
-      if (!formData.coBorrower.phone) { toast.error("Co-borrower phone required"); return false; }
-    }
-    if (step === 4 && includeGuarantor) {
-      if (!formData.guarantor.phone) { toast.error("Guarantor phone required"); return false; }
-    }
+    // Co-borrower and guarantor phone are optional — no phone validation needed
     if (step === 5) {
       if (!formData.livePhotoPath) { toast.error("Live photo is required / लाइव फोटो अनिवार्य है"); return false; }
       return true;
@@ -140,8 +136,8 @@ export default function KYCForm() {
         illaka_id: selectedIllaka.id, illaka_name: selectedIllaka.name,
         misal_id: selectedMisal.id, misal_name: selectedMisal.name,
         primary_borrower: formData.primaryBorrower,
-        co_borrower: includeCoBorrower && formData.coBorrower.phone ? formData.coBorrower : null,
-        guarantor: includeGuarantor && formData.guarantor.phone ? formData.guarantor : null,
+        co_borrower: includeCoBorrower && formData.coBorrower.name ? formData.coBorrower : null,
+        guarantor: includeGuarantor && formData.guarantor.name ? formData.guarantor : null,
         live_photo_path: formData.livePhotoPath,
         gps_location: formData.gpsLocation,
         notes: formData.notes,
@@ -150,8 +146,17 @@ export default function KYCForm() {
       const res = id
         ? await axios.put(`${API}/kycs/${id}`, payload, { withCredentials: true })
         : await axios.post(`${API}/kycs`, payload, { withCredentials: true });
-      toast.success(res.data.loan_id ? "KYC submitted & Loan created! / KYC दर्ज हुआ और कर्ज बना!" : "KYC submitted successfully!");
-      navigate(`/clients/${res.data.id}`);
+      if (id) {
+        toast.success("KYC updated successfully!");
+        navigate(`/clients/${res.data.id}`);
+      } else {
+        setSuccessData({
+          customerId: res.data.customer_id,
+          loanId: res.data.loan_id,
+          clientName: formData.primaryBorrower.name,
+          kycId: res.data.id,
+        });
+      }
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to submit KYC");
     } finally {
@@ -161,10 +166,54 @@ export default function KYCForm() {
 
   return (
     <div className="p-4 sm:p-6 max-w-3xl mx-auto">
-      <div className="mb-5">
-        <h1 className="text-2xl font-bold font-['Outfit']">{id ? "Edit KYC" : "New KYC / नया KYC"}</h1>
-        <p className="text-muted-foreground text-sm mt-1">Step {step} of {STEPS.length}</p>
-      </div>
+
+      {/* ── Success Screen ── */}
+      {successData && (
+        <div className="flex flex-col items-center justify-center py-16 gap-6 text-center" data-testid="kyc-success-screen">
+          <div className="w-20 h-20 rounded-full bg-green-100 flex items-center justify-center">
+            <CheckCircle size={44} className="text-green-600" />
+          </div>
+          <div>
+            <h2 className="text-2xl font-bold font-['Outfit'] text-green-700">Client Saved!</h2>
+            <p className="text-muted-foreground mt-1 text-sm">ग्राहक सफलतापूर्वक दर्ज हुआ</p>
+          </div>
+          <div className="w-full max-w-sm bk-card space-y-3">
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Customer ID</span>
+              <span className="font-bold text-primary text-lg" data-testid="kyc-success-customer-id">{successData.customerId}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-muted-foreground">Client Name</span>
+              <span className="font-semibold" data-testid="kyc-success-client-name">{successData.clientName}</span>
+            </div>
+            {successData.loanId ? (
+              <div className="mt-3 pt-3 border-t border-border flex items-center gap-2 text-green-700 justify-center text-sm font-semibold" data-testid="kyc-success-loan-badge">
+                <CheckCircle size={16} />
+                Loan Disbursed / कर्ज जारी हुआ
+              </div>
+            ) : (
+              <div className="mt-3 pt-3 border-t border-border text-muted-foreground text-sm text-center">
+                No disbursement amount provided
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            className="bk-btn-primary px-8 py-3 text-base"
+            onClick={() => navigate(`/clients/${successData.kycId}`)}
+            data-testid="kyc-success-view-client-btn"
+          >
+            View Client Profile
+          </button>
+        </div>
+      )}
+
+      {/* ── Main Form (hidden once submitted) ── */}
+      {!successData && (<>
+        <div className="mb-5">
+          <h1 className="text-2xl font-bold font-['Outfit']">{id ? "Edit KYC" : "New KYC / नया KYC"}</h1>
+          <p className="text-muted-foreground text-sm mt-1">Step {step} of {STEPS.length}</p>
+        </div>
 
       {/* Step Indicator */}
       <div className="flex items-center gap-1 mb-7 overflow-x-auto pb-1" data-testid="step-indicator">
@@ -365,6 +414,7 @@ export default function KYCForm() {
           </button>
         )}
       </div>
+    </>)}
     </div>
   );
 }
