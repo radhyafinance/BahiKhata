@@ -5,7 +5,7 @@ import { toast } from "sonner";
 import {
   Loader2, CheckCircle, ChevronRight, ChevronLeft,
   MapPin, User, Users, Shield, Camera,
-  ToggleLeft, ToggleRight, Lock
+  ToggleLeft, ToggleRight, Lock, UserPlus
 } from "lucide-react";
 import { API, STEPS, emptyPerson } from "./kyc/utils";
 import { PersonSection } from "./kyc/PersonSection";
@@ -128,6 +128,24 @@ export default function KYCForm() {
     return true;
   };
 
+  const resetForm = () => {
+    setSuccessData(null);
+    setStep(1);
+    setFormData({
+      primaryBorrower: { ...emptyPerson },
+      coBorrower: { ...emptyPerson },
+      guarantor: { ...emptyPerson },
+      livePhotoPath: null,
+      gpsLocation: null,
+      notes: "",
+      disbursementAmount: "",
+    });
+    setIncludeCoBorrower(false);
+    setIncludeGuarantor(false);
+    setSelectedMisal(null);
+    // Keep selectedIllaka — group lending stays in the same area
+  };
+
   const nextStep = () => { if (!validateStep()) return; setStep(s => s + 1); };
 
   const handleSubmit = async () => {
@@ -199,14 +217,25 @@ export default function KYCForm() {
               </div>
             )}
           </div>
-          <button
-            type="button"
-            className="bk-btn-primary px-8 py-3 text-base"
-            onClick={() => navigate(`/clients/${successData.kycId}`)}
-            data-testid="kyc-success-view-client-btn"
-          >
-            View Client Profile
-          </button>
+          <div className="flex flex-col sm:flex-row gap-3 w-full max-w-sm">
+            <button
+              type="button"
+              className="bk-btn-secondary flex items-center justify-center gap-2 flex-1 py-3"
+              onClick={resetForm}
+              data-testid="kyc-success-add-another-btn"
+            >
+              <UserPlus size={18} />
+              Add Another Client
+            </button>
+            <button
+              type="button"
+              className="bk-btn-primary flex items-center justify-center gap-2 flex-1 py-3"
+              onClick={() => navigate(`/clients/${successData.kycId}`)}
+              data-testid="kyc-success-view-client-btn"
+            >
+              View Client Profile
+            </button>
+          </div>
         </div>
       )}
 
