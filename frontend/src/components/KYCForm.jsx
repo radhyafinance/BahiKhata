@@ -108,7 +108,9 @@ export default function KYCForm() {
       if (!p.aadhaar_back_path) { toast.error("Aadhaar back photo required"); return false; }
       return true;
     }
-    // Co-borrower and guarantor phone are optional — no phone validation needed
+    if (step === 4 && includeGuarantor) {
+      if (!formData.guarantor.phone) { toast.error("Guarantor phone required / गारंटर का फ़ोन नंबर अनिवार्य है"); return false; }
+    }
     if (step === 5) {
       if (!formData.livePhotoPath) { toast.error("Live photo is required / लाइव फोटो अनिवार्य है"); return false; }
       return true;
@@ -137,7 +139,7 @@ export default function KYCForm() {
         misal_id: selectedMisal.id, misal_name: selectedMisal.name,
         primary_borrower: formData.primaryBorrower,
         co_borrower: includeCoBorrower && formData.coBorrower.name ? formData.coBorrower : null,
-        guarantor: includeGuarantor && formData.guarantor.name ? formData.guarantor : null,
+        guarantor: includeGuarantor && formData.guarantor.phone ? formData.guarantor : null,
         live_photo_path: formData.livePhotoPath,
         gps_location: formData.gpsLocation,
         notes: formData.notes,
@@ -318,6 +320,7 @@ export default function KYCForm() {
                 onChange={updatePerson("coBorrower")}
                 onBatchChange={updatePersonBatch("coBorrower")}
                 isMandatory={false}
+                phoneRequired={false}
                 userRole={user?.role}
                 selectedIllakaId={selectedIllaka?.id}
               />
@@ -351,6 +354,7 @@ export default function KYCForm() {
                 onChange={updatePerson("guarantor")}
                 onBatchChange={updatePersonBatch("guarantor")}
                 isMandatory={false}
+                phoneRequired={true}
                 userRole={user?.role}
                 selectedIllakaId={selectedIllaka?.id}
               />
