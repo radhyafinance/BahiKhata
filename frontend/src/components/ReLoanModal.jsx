@@ -229,6 +229,35 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
             />
           </div>
 
+          {/* EMI Breakup Preview */}
+          {newAmountNum >= 1000 && (() => {
+            const emi = Math.ceil((newAmountNum * 1.17) / 12);
+            const totalRepayable = emi * 12;
+            const interest = totalRepayable - newAmountNum;
+            return (
+              <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 space-y-2" data-testid="reloan-emi-breakup">
+                <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">EMI Breakup (17% flat) / किस्त विवरण</p>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="bg-white rounded-lg p-2.5 text-center border border-primary/10">
+                    <p className="text-base font-bold font-['Outfit'] text-primary">{fmt(emi)}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold">Monthly EMI</p>
+                    <p className="text-[10px] text-muted-foreground">मासिक किस्त</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2.5 text-center border border-primary/10">
+                    <p className="text-base font-bold font-['Outfit'] text-amber-600">{fmt(interest)}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold">Interest</p>
+                    <p className="text-[10px] text-muted-foreground">ब्याज</p>
+                  </div>
+                  <div className="bg-white rounded-lg p-2.5 text-center border border-primary/10">
+                    <p className="text-base font-bold font-['Outfit'] text-green-700">{fmt(totalRepayable)}</p>
+                    <p className="text-[10px] text-muted-foreground font-semibold">Total Repayable</p>
+                    <p className="text-[10px] text-muted-foreground">कुल देय</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Loan date */}
           <div>
             <label className="bk-label">
