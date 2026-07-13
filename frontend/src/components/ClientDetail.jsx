@@ -771,10 +771,10 @@ export default function ClientDetail() {
             <div className="flex items-start gap-3 p-4 rounded-xl bg-amber-50 border border-amber-200" data-testid="kyc-incomplete-banner">
               <AlertTriangle size={18} className="text-amber-600 flex-shrink-0 mt-0.5" />
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-bold text-amber-900">KYC Incomplete — Re-loan / Net-off blocked</p>
+                <p className="text-sm font-bold text-amber-900">KYC Incomplete</p>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  This client was imported without full KYC. Aadhaar verification is required before issuing a new loan or net-off.
-                  <span className="block mt-0.5 text-amber-600">यह ग्राहक बिना पूरे KYC के आयातित है। नया कर्ज देने से पहले आधार सत्यापन अनिवार्य है।</span>
+                  This client was added without full KYC. Aadhaar photos are missing. Re-loans are allowed but CRIF checks will not be possible.
+                  <span className="block mt-0.5 text-amber-600">यह ग्राहक बिना पूरे KYC के जोड़ा गया है। पुनः ऋण दिया जा सकता है, लेकिन CRIF जाँच के लिए आधार अनिवार्य है।</span>
                 </p>
               </div>
               <button

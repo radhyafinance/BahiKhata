@@ -295,7 +295,12 @@ See CHANGELOG.md for full history.
 - [x] Frontend: `QuickAddLoanModal.jsx` with live EMI preview, co-borrower/guarantor collapsible sections
 - [x] "Quick Add Loan" button on `LoanList.jsx` visible only to Admin/Maalik
 
-### Quick Add Loan — Existing Customer Mode (2026-07-08) ✓
+### Delete Loan + Re-Loan without full KYC (2026-07-08) ✓
+- [x] `DELETE /api/loans/{loan_id}` — Admin/Maalik only; deletes loan + all payments + journal entries
+- [x] Red "Delete" button on LoanDetail header (Admin/Maalik only, with browser confirm)
+- [x] Re-Loan KYC gate removed — backend no longer blocks re-loan for clients without Aadhaar; frontend Re-Loan button always enabled; KYC incomplete banner updated to informational (no longer says "blocked")
+
+
 - [x] New/Existing Client toggle at top of Quick Add Loan modal
 - [x] Existing Client mode: debounced search (name or customer ID), results dropdown, customer lock card with X-clear
 - [x] Backend accepts `existing_kyc_id` — skips KYC creation, creates loan on existing customer with correct L2/L3 numbering
