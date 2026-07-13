@@ -231,12 +231,12 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
 
           {/* EMI Breakup Preview */}
           {newAmountNum >= 1000 && (() => {
-            const emi = Math.ceil((newAmountNum * 1.17) / 12);
+            const emi = Math.round(newAmountNum * 120 / 103 / 12 / 10) * 10;
             const totalRepayable = emi * 12;
             const interest = totalRepayable - newAmountNum;
             return (
               <div className="rounded-xl bg-primary/5 border border-primary/20 p-4 space-y-2" data-testid="reloan-emi-breakup">
-                <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">EMI Breakup (17% flat) / किस्त विवरण</p>
+                <p className="text-[10px] font-bold text-primary uppercase tracking-wider mb-1">EMI Breakup / किस्त विवरण</p>
                 <div className="grid grid-cols-3 gap-3">
                   <div className="bg-white rounded-lg p-2.5 text-center border border-primary/10">
                     <p className="text-base font-bold font-['Outfit'] text-primary">{fmt(emi)}</p>
