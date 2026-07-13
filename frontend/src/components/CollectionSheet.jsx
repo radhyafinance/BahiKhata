@@ -56,6 +56,20 @@ function getApiMonthForFy(fyStart) {
   return `${fyStart + 1}-03`;
 }
 
+// All 12 month options for a FY (Apr → Mar)
+const FY_MONTH_NAMES = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
+function getFyMonthOptions(fyStart) {
+  return Array.from({ length: 12 }, (_, i) => {
+    const isNextCalYear = i >= 9; // Jan, Feb, Mar belong to next calendar year
+    const year = isNextCalYear ? fyStart + 1 : fyStart;
+    const monthNum = isNextCalYear ? i - 8 : i + 4;
+    return {
+      value: `${year}-${String(monthNum).padStart(2, "0")}`,
+      label: `${FY_MONTH_NAMES[i]} '${String(year).slice(-2)}`,
+    };
+  });
+}
+
 const fmtMonth = (ym) => {
   if (!ym) return "—";
   const [y, m] = ym.split("-");
@@ -804,9 +818,14 @@ export default function CollectionSheet() {
 
   // FY selector state — default to current FY
   const [selectedFyStart, setSelectedFyStart] = useState(getCurrentFyStart);
-  // Derive the "active month" for API calls and Collect button from the selected FY
-  const month = getApiMonthForFy(selectedFyStart);
+  // Active month state — user can switch to any month within the selected FY for back/advance entries
+  const [selectedMonth, setSelectedMonth] = useState(() => getApiMonthForFy(getCurrentFyStart()));
+  // Reset selected month when FY changes
+  useEffect(() => { setSelectedMonth(getApiMonthForFy(selectedFyStart)); }, [selectedFyStart]);
+  // Derive the "active month" for API calls and Collect button
+  const month = selectedMonth;
   const currentFyStart = getCurrentFyStart();
+  const fyMonthOptions = getFyMonthOptions(selectedFyStart);
   // All FYs from 2019-20 up to the current FY (newest first)
   const availableFys = Array.from(
     { length: currentFyStart - 2019 + 1 },
@@ -952,7 +971,7 @@ export default function CollectionSheet() {
         <div className="px-4 sm:px-6 pt-2.5 pb-0 sm:pt-0 sm:pb-0 sm:h-14 flex items-center gap-2.5 sm:justify-between">
           <h1 className="text-xl font-bold text-foreground font-['Outfit'] whitespace-nowrap">Vasuli / वसूली</h1>
           <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary font-semibold rounded-full whitespace-nowrap">
-            FY {getFyLabel(selectedFyStart)}
+            FY {getFyLabel(selectedFyStart)} &middot; {fyMonthOptions.find(o => o.value === selectedMonth)?.label || selectedMonth}
           </span>
           {/* Desktop: controls inline in the same row */}
           <div className="hidden sm:flex items-center gap-2 ml-auto flex-shrink-0" data-testid="sheet-controls">
@@ -976,6 +995,17 @@ export default function CollectionSheet() {
               className="bk-input h-9 py-0 text-sm w-[7.5rem]"
               data-testid="global-collect-date"
             />
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bk-input h-9 py-0 pr-8 text-sm font-semibold w-[7.5rem]"
+              data-testid="month-select"
+              title="Select collection month"
+            >
+              {fyMonthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
             <select
               value={selectedFyStart}
               onChange={(e) => setSelectedFyStart(Number(e.target.value))}
@@ -1018,7 +1048,7 @@ export default function CollectionSheet() {
               ))}
             </select>
           )}
-          {/* Line 2: Date + FY selector + Print */}
+          {/* Line 2: Date + Month + FY selector + Print */}
           <div className="flex items-center gap-2">
             <input
               type="date"
@@ -1027,6 +1057,16 @@ export default function CollectionSheet() {
               className="bk-input h-9 py-0 text-sm flex-1 min-w-0"
               data-testid="global-collect-date"
             />
+            <select
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bk-input h-9 py-0 text-sm font-semibold shrink-0 w-24"
+              data-testid="month-select"
+            >
+              {fyMonthOptions.map((opt) => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
             <select
               value={selectedFyStart}
               onChange={(e) => setSelectedFyStart(Number(e.target.value))}
