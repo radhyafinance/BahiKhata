@@ -200,11 +200,11 @@ class ExpenseSubmissionCreate(BaseModel):
 
 
 class QuickLoanCreate(BaseModel):
-    illaka_id: str
-    illaka_name: str
-    misal_id: str
-    misal_name: str
-    name: str
+    illaka_id: Optional[str] = None
+    illaka_name: Optional[str] = None
+    misal_id: Optional[str] = None
+    misal_name: Optional[str] = None
+    name: Optional[str] = None
     phone: Optional[str] = None
     suffix: Optional[str] = None
     co_borrower_name: Optional[str] = None
@@ -213,6 +213,7 @@ class QuickLoanCreate(BaseModel):
     guarantor_phone: Optional[str] = None
     principal_amount: float
     loan_month: str  # YYYY-MM
+    existing_kyc_id: Optional[str] = None  # if set, adds loan to existing customer
 
 
 class YearEndClosingRequest(BaseModel):

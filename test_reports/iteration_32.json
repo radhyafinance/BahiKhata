@@ -1,0 +1,118 @@
+{
+  "summary": "Tested 'Existing Client' mode in Quick Add Loan modal (New feature). Backend: 20/20 pytest passing. Frontend: Full E2E flow verified including toggle, search, customer card, X-clear, form submission and success screen. Found and fixed 2 bugs: (1) Pydantic 422 due to required fields missing for existing customers in old KYC records, (2) React crash on error due to Pydantic list detail being rendered as React child.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "GET /api/kycs?search=<query>",
+        "issue": "Some older KYC records in DB missing customer_id, illaka_name, misal_name fields. Frontend dropdown shows empty values for those records. Not a code bug — pre-existing data quality issue for old records.",
+        "priority": "LOW"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Quick Add Loan - Existing Client mode customer card",
+        "issues": [
+          "Customer card shows empty illaka/misal ('BI0154 · ›') for old DB records without denormalized illaka_name/misal_name. Purely cosmetic — loan still creates correctly with correct data from KYC."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_quick_loan_existing.py",
+    "/app/test_reports/pytest/quick_loan_existing_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "QuickLoanCreate model now has illaka_id/misal_id/name as Optional — backend route correctly validates these for new customer path (400 if missing), skips them for existing customer path."
+  ],
+  "updated_files": [
+    "/app/backend/models.py",
+    "/app/backend/routes/kycs.py",
+    "/app/frontend/src/components/QuickAddLoanModal.jsx"
+  ],
+  "success_rate": {
+    "backend": "100% (20/20 tests pass)",
+    "frontend": "100% (all 11 UI flows verified)"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123"
+  },
+  "seed_data_creation": "Multiple loans created on BI0154 customer during testing (loan numbers BI0154-L16 through BI0154-L19 range from backend + UI tests). These are TEST loans on existing customer.",
+  "retest_needed": false,
+  "main_agent_can_self_test": false,
+  "context_for_next_testing_agent": "Iteration 32 tested the Quick Add Loan 'Existing Client' mode. Key findings: (1) Backend model QuickLoanCreate now has Optional fields for illaka_id/misal_id/name to support existing client path where DB records may not have these stored. (2) Frontend error handler updated to gracefully handle Pydantic 422 list errors. (3) All backend tests pass (20/20). (4) Full UI flow verified: toggle, search (BI0154 or 'Arti'), customer card, X-clear, submission, success screen. The IllakaSelector has a two-step flow: click illaka to select → click 'Continue' button (data-testid=illaka-continue-btn) to confirm.",
+  "test_scenarios_verified": [
+    {
+      "scenario": "New/Existing Client toggle shown at modal top",
+      "result": "PASS",
+      "details": "data-testid=quick-mode-new and quick-mode-existing present, default is New Client (bg-primary class)"
+    },
+    {
+      "scenario": "New Client mode shows all fields (Illaka, Misal, Name, Phone, Co-borrower, Guarantor)",
+      "result": "PASS",
+      "details": "All fields visible and properly labeled in New mode"
+    },
+    {
+      "scenario": "Existing Client mode hides Illaka/Misal/Name, shows search input",
+      "result": "PASS",
+      "details": "data-testid=quick-customer-search appears, Illaka/Name selects hidden"
+    },
+    {
+      "scenario": "1-char search produces no results (debounce/min-2 check)",
+      "result": "PASS",
+      "details": "Typing 'A' shows no dropdown — correct min-2-chars behavior"
+    },
+    {
+      "scenario": "2+ char search shows dropdown of matching customers",
+      "result": "PASS",
+      "details": "Typing 'Arti' returns 3 results; 'BI0154' returns 1 result. data-testid=quick-search-results present"
+    },
+    {
+      "scenario": "Clicking search result selects customer and shows card",
+      "result": "PASS",
+      "details": "data-testid=quick-selected-customer shows name + customer_id · illaka › misal"
+    },
+    {
+      "scenario": "X button clears customer and restores search input",
+      "result": "PASS",
+      "details": "data-testid=quick-clear-customer click removes card, search input returns"
+    },
+    {
+      "scenario": "Submit with existing customer principal=5000, loan_month=2026-12 creates loan",
+      "result": "PASS",
+      "details": "Success screen shows BI0154, loan number BI0154-L19, EMI ₹490×12, Interest ₹880, Total ₹5,880"
+    },
+    {
+      "scenario": "Toast notification shows loan number after creation",
+      "result": "PASS",
+      "details": "Toast 'Loan created: BI0154-L19' shown top-right"
+    },
+    {
+      "scenario": "Backend POST /api/kycs/quick-loan with existing_kyc_id returns correct data",
+      "result": "PASS",
+      "details": "Returns kyc_id, loan_id, customer_id, loan_number, emi_amount, total_repayable, interest_amount"
+    },
+    {
+      "scenario": "Backend returns 404 for invalid existing_kyc_id",
+      "result": "PASS",
+      "details": "000000000000000000000000 → 404 Customer KYC not found"
+    }
+  ],
+  "bugs_fixed": [
+    {
+      "bug": "Pydantic 422 on existing client submission",
+      "root_cause": "QuickLoanCreate model had illaka_id, illaka_name, misal_id, misal_name, name as required str fields. For KYC records in DB that lack illaka_name/misal_name, these were undefined in JS → omitted from JSON payload → Pydantic validation failed with 422.",
+      "fix": "Made all 5 fields Optional[str] = None in models.py. Added explicit 400 validation in route handler for new customer path."
+    },
+    {
+      "bug": "React runtime crash on 422 error",
+      "root_cause": "Frontend setError(err.response?.data?.detail) where detail is a Pydantic list of {type,loc,msg,input,url} objects, not a string. React's <p> cannot render objects.",
+      "fix": "Added type check in error handler: if Array.isArray(detail) → show friendly message string instead."
+    }
+  ]
+}

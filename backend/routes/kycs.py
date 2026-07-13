@@ -184,7 +184,8 @@ async def create_kyc(data: KYCCreate, request: Request):
 
 @router.post("/kycs/quick-loan")
 async def quick_add_loan(data: QuickLoanCreate, request: Request):
-    """Create a minimal KYC + Loan without Aadhaar/photo. Admin and Maalik only."""
+    """Create a minimal KYC + Loan without Aadhaar/photo. Admin and Maalik only.
+    If existing_kyc_id is provided, adds a new loan to that existing customer."""
     current_user = await get_current_user(request)
     if current_user["role"] not in ["admin", "maalik"]:
         raise HTTPException(status_code=403, detail="Only Admin or Maalik can use Quick Add Loan")
@@ -196,12 +197,74 @@ async def quick_add_loan(data: QuickLoanCreate, request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid loan_month format. Use YYYY-MM")
 
-    customer_id = await generate_customer_id(data.illaka_name)
     now = datetime.now(timezone.utc).isoformat()
     loan_date_str = loan_date_obj.isoformat()
 
+    # ── Existing customer path ──
+    if data.existing_kyc_id:
+        existing_kyc = await db.kycs.find_one({"_id": ObjectId(data.existing_kyc_id)})
+        if not existing_kyc:
+            raise HTTPException(status_code=404, detail="Customer KYC not found")
+
+        customer_id = existing_kyc["customer_id"]
+        kyc_id_str = str(existing_kyc["_id"])
+        pb = existing_kyc.get("primary_borrower") or {}
+        _suffix = (pb.get("suffix") or "").strip()
+        _cn = ((pb.get("name") or "").strip() + (" " + _suffix if _suffix else "")).strip()
+        _cn_hi = ((pb.get("name_hindi") or "").strip() + (" " + _suffix_hindi(_suffix) if _suffix else "")).strip()
+
+        emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)
+        loan_number = await generate_loan_number(customer_id, kyc_id_str)
+
+        loan_doc = {
+            "kyc_id": kyc_id_str,
+            "customer_id": customer_id,
+            "loan_number": loan_number,
+            "client_name": _cn,
+            "client_name_hindi": _cn_hi,
+            "client_phone": pb.get("phone") or "",
+            "relative_name": pb.get("relative_name") or "",
+            "relative_name_hindi": pb.get("relative_name_hindi") or "",
+            "illaka_id": existing_kyc.get("illaka_id"), "illaka_name": existing_kyc.get("illaka_name"),
+            "misal_id": existing_kyc.get("misal_id"), "misal_name": existing_kyc.get("misal_name"),
+            "principal_amount": data.principal_amount,
+            "interest_rate": 17.0,
+            "emi_amount": emi_amount,
+            "total_repayable": emi_amount * 12,
+            "interest_amount": round((emi_amount * 12) - data.principal_amount, 2),
+            "loan_date": loan_date_str,
+            "due_date": _add_months(loan_date_obj, 12).isoformat(),
+            "status": _get_loan_status(schedule),
+            "sipahi_id": current_user["id"], "sipahi_name": current_user["name"],
+            "total_paid": 0.0, "notes": None,
+            "emi_schedule": schedule,
+            "source": "quick_add",
+            "created_at": now, "updated_at": now,
+        }
+        loan_res = await db.loans.insert_one(loan_doc)
+        loan_id = str(loan_res.inserted_id)
+        loan_doc["_id"] = loan_res.inserted_id
+        await book_loan_disbursement(loan_doc, current_user["id"], current_user["name"])
+
+        return {
+            "kyc_id": kyc_id_str,
+            "loan_id": loan_id,
+            "customer_id": customer_id,
+            "loan_number": loan_number,
+            "emi_amount": emi_amount,
+            "total_repayable": emi_amount * 12,
+            "interest_amount": round((emi_amount * 12) - data.principal_amount, 2),
+        }
+
+    # ── New customer path (original behavior) ──
+    # For new customer, illaka_id, misal_id, name are required
+    if not data.illaka_id or not data.misal_id or not data.name or not data.name.strip():
+        raise HTTPException(status_code=400, detail="For new customer, illaka_id, misal_id and name are required")
+
+    customer_id = await generate_customer_id(data.illaka_name or "")
+
     _suffix = (data.suffix or "").strip()
-    _cn = (data.name.strip() + (" " + _suffix if _suffix else "")).strip()
+    _cn = ((data.name or "").strip() + (" " + _suffix if _suffix else "")).strip()
 
     co_borrower = None
     if data.co_borrower_name and data.co_borrower_name.strip():
@@ -219,7 +282,7 @@ async def quick_add_loan(data: QuickLoanCreate, request: Request):
         "illaka_id": data.illaka_id, "illaka_name": data.illaka_name,
         "misal_id": data.misal_id, "misal_name": data.misal_name,
         "primary_borrower": {
-            "name": data.name.strip(),
+            "name": (data.name or "").strip(),
             "suffix": _suffix,
             "phone": data.phone or "",
             "phone_history": [],
