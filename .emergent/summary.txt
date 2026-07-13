@@ -1,1 +1,139 @@
-<analysis>paid_datedue_monthpaid_datetesting_agent_v4_forkintegration_playbook_expert_v2import_data.pyImportPage.jsximport_data.pydisplay_orderimport_data.pycollections.pycustomer_idillaka_namemisal_nameimport_data.pyillakas.pyloansaccounts.pyBalanceSheet.jsxEditEmiModalCollectionSheet.jsxpaid_datecollections.pytesting_agent_v4_forkloansdisplay_orderis_gyalemi_countcustomer_idillaka_namemisal_nameaccount_headssystem_keyloans_portfolio/app/backend/routes/import_data.pydisplay_order/app/frontend/src/components/ImportPage.jsx/app/backend/routes/collections.py_build_emi_year_strip/app/frontend/src/components/CollectionSheet.jsx/app/backend/routes/illakas.py/app/backend/routes/accounts.py/app/frontend/src/components/accounts/BalanceSheet.jsxroutes/collections.py_build_emi_year_striproutes/accounts.pyget_cashbookget_trial_balancePOST /api/import/excel/confirmDELETE /api/loans/{loan_id}/payments/{emi_month}GET /api/accounts/balance-sheetloanshttps://maalik-portal.emergent.hostloans/app/memory/PRD.md/app/memory/CHANGELOG.md/app/memory/test_credentials.mdtesting_agent_v4_fork/app/memory/test_credentials.md9999999999Admin@123testing_agent_v4_fork/app/memory/PRD.mdCHANGELOG.md</analysis>
+<analysis>**original_problem_statement**: 
+Build a software solution for an NBFC-MFI app named Bahi Khata transitioning to a Sahukar Illaka model. Ensure the Collection Sheet (Vasuli) strictly operates on a Financial Year (FY) view.
+PRODUCT REQUIREMENTS:
+- Roles Hierarchy: Admin -> Maalik -> Sadar Muneem -> Muneem -> Sipahi.
+- Accounts Module: Full double-entry accounting.
+- Collection Sheet: FY view, combines Net-off loans, calculates retroactive balances.
+- Quick Add Loan feature for rapid field disbursements without full KYC upfront.
+
+**User's preferred language**: English (INSTRUCT next agent to respond in English only)
+
+**what currently exists?** 
+A robust production-ready MFI app (React/FastAPI/MongoDB) with WebAuthn, Vasuli sheets, CRIF integration, accounts module, and a Quick Add Loan feature. Recently, capabilities were expanded to support rapid consecutive disbursements, adding quick loans to existing clients bypassing KYC, allowing Re-loans without strict Aadhaar gating, and deleting entire loans (Admin/Maalik restricted) with full financial cascading.
+
+**Last working item**:
+    - Last item agent was working: Aligning the EMI calculation formula in the  preview to strictly match the exact formula used in the  ().
+    - Status: USER VERIFICATION PENDING
+    - Agent Testing Done: Y
+    - Which testing method agent to use?: NA (Formula fixed, user just needs to verify).
+    - User Testing Done: N
+
+**All Pending/In progress Issue list**:  
+None currently pending.
+
+**In progress Task List**:
+None.
+
+**Upcoming and Future Tasks**
+    Upcoming Tasks:
+    - Task 1 (P1): **WhatsApp Todays Collection Summary" share** on the Vasuli page (native device share using wa.me).
+    - Task 2 (P2): **Print Passbook** (PDF/WhatsApp share) on the Client Detail tab.
+    - Task 3 (P3): **Forgot Password OTP Flow** via SMS (Requires Twilio/Paid Gateway. MUST use `integration_playbook_expert_v2` for the SMS/Auth integration).
+    
+    Future Tasks:
+    - Task 4 (Enhancement): **Gyal Summary Dashboard Card** (Total bad debt amount/count overview).
+    - Task 5 (Enhancement): **Manage Passkeys UI** section under the user profile page so field agents can view and delete registered devices without needing admin access.
+
+**Completed work in this session**
+- Made Co-borrower phone optional while keeping Guarantor phone mandatory on KYCForm (DONE)
+- Added "Add Another Client" button to KYC success screen to reset form and keep Illaka selected (DONE)
+- Updated "Quick Add Loan" to support searching and selecting existing clients, bypassing KYC (Admin/Maalik) (DONE)
+- Built `DELETE /api/loans/{loan_id}` to allow Admin/Maalik to delete loans entirely, correctly cascading to payments and `journal_entries` (DONE)
+- Allowed Re-loans even if KYC is incomplete (Removed Aadhaar block check) (DONE)
+- Added EMI Breakup preview in Re-loan Modal matching the Quick Add formula logic (DONE)
+
+**Earlier issues found/mentioned but not fixed**
+   Issue 1: IP Whitelisting Stability
+   - Debug checklist: Outbound IP is not guaranteed to remain stable across deployments.
+   - Why to solve this issue and what will be achieved with this: If the IP changes, CRIF API requests fail due to their IP whitelisting rules.
+   - Should Test frontend/backend/both after fix: Backend
+   - Is recurring issue? N
+
+**Known issue recurrence from previous fork**
+  - Issue recurrence in previous fork: None observed. The current agent successfully and iteratively used `testing_agent_v4_fork` for all major UI/Backend updates (iterations 31, 32, 33).
+  - Recurrence count: 0
+  - Status: RESOLVED 
+
+**Code Architecture**
+/app/
+├── backend/
+│   ├── routes/ (collections.py, loans.py, kycs.py, crif.py, import_data.py, accounts.py, illakas.py)
+│   ├── models.py, helpers.py, server.py
+├── frontend/
+│   ├── public/ (manifest.json)
+│   └── src/
+│       ├── components/ (QuickAddLoanModal.jsx, LoanList.jsx, ImportPage.jsx, CollectionSheet.jsx, KYCForm.jsx, LoanDetail.jsx, ReLoanModal.jsx)
+
+**Key Technical Concepts**
+React, Tailwind CSS, FastAPI, MongoDB, Pydantic, JWT Auth, WebAuthn Passkeys, PWA (Service Workers), Gemini Vision API. Double-entry accounting tightly coupled with loan actions.
+
+**key DB schema**
+  - `loans`: `display_order`, `is_gyal`, `emi_count`, `customer_id`, `illaka_name`, `misal_name`
+  - `journal_entries`: Synced strictly with `payments` and `loans` collections.
+
+**changes in tech stack**
+  - None
+
+**All files of reference** 
+  - `/app/frontend/src/components/KYCForm.jsx` (Updated success screen and validations)
+  - `/app/frontend/src/components/kyc/PersonSection.jsx` (Added dynamic phone requirement props)
+  - `/app/frontend/src/components/QuickAddLoanModal.jsx` (Added existing customer toggle and search UI)
+  - `/app/backend/routes/kycs.py` (Updated to handle existing client Quick Loans)
+  - `/app/backend/models.py` (Updated QuickLoanCreate Pydantic model)
+  - `/app/backend/routes/loans.py` (Added loan deletion and removed re-loan Aadhaar check)
+  - `/app/frontend/src/components/LoanDetail.jsx` (Added "Delete" loan UI and cascade confirmation)
+  - `/app/frontend/src/components/ReLoanModal.jsx` (Added EMI preview breakup)
+
+**Areas that need refactoring**: 
+- `routes/collections.py`: The `_build_emi_year_strip` function is highly delicate.
+- `routes/accounts.py`: Contains high-complexity functions (`get_cashbook`, `get_trial_balance`).
+
+**key api endpoints**
+- `POST /api/kycs/quick-loan` (Supports new or existing customers)
+- `DELETE /api/loans/{loan_id}` (Deletes loan, payments, and synced journal entries)
+- `POST /api/loans/{loan_id}/reloan` (Processes new loan cycles)
+
+**Critical Info for New Agent**
+- **Testing Standard Maintained:** The previous agent consistently ran `testing_agent_v4_fork` for medium/large changes. This must continue.
+- **Financial Deletions:** Any new action that modifies or deletes financial records (`loans`, `payments`) MUST cascade to `journal_entries` to prevent "orphaned" cashbook logs.
+- **EMI Math:** Any UI that previews EMI should consistently use: `Math.round(p * 120 / 103 / 12 / 10) * 10` for alignment with backend logic.
+
+**documents and test reports created in this job** 
+  - `/app/memory/PRD.md` (Updated)
+  - `/app/test_reports/iteration_31.json`
+  - `/app/test_reports/iteration_32.json`
+  - `/app/test_reports/iteration_33.json`
+
+**Last 10 User Messages and any pending HUMAN messages** 
+ - *User*: "No, the calculate as per quick loan modal" (COMPLETED - Fixed formula in ReLoanModal)
+ - *User*: "Also in the re-loan modal, it should show the breakup of EMI, interest and total repayable." (COMPLETED)
+ - *User*: "Admin and maalik to have option to delete loan. For now, allow re-loan if KYC is not complete." (COMPLETED)
+ - *User*: "Do option E but only for Admin and Maalik." (COMPLETED - Quick Add existing user logic built)
+ - *User*: "But option B also requires full KYC to be done incase it has not been done previously? Give suggestions, dont implement anything (COMPLETED)
+ - *User*: In order to do testing, I need to be able to add new loans every month without doing full KYC... (COMPLETED)
+ - *User*: Enhancement idea: Add an Add Another Client button on the KYC success screen... (COMPLETED)
+ - *User*: Phone number to be optional only for co-borrower not guarantor (COMPLETED)
+ - *User*: Co-borrower phone number to be made optional. a notification that the client has been saved and disbursed after completing kyc (COMPLETED)
+ - *User*: Please use ask_human tool and confirm your plan now. (COMPLETED)
+
+**Project Health Check:**
+Healthy. The sub-agent testing protocol successfully caught Pydantic validation mismatches and React state bugs before commit. 
+
+**3rd Party Integrations** 
+  - Emergent Object Storage — requires Emergent Storage setup
+  - Google Gemini (Aadhaar OCR & Face Verification) — uses Emergent LLM Key
+  - WebAuthn (Passkeys) — browser standards/py_webauthn
+  - CRIF High Mark (Credit Bureau) — requires User Credentials
+  - Twilio/SMS (Upcoming) — will require User API Key
+
+**Testing status**
+  - Testing agent used after significant changes: YES
+  - Troubleshoot agent used after agent stuck in loop: NO
+  - Test files created: None
+  - Known regressions: None
+
+**Credentials to test flow:**
+Available in  (Admin: Mobile  / )
+
+**What agent forgot to execute**
+Nothing. The agent accurately followed requirements, asked for clarity when necessary, executed all tasks successfully, continuously deployed the , and updated PRD.md.</analysis>
