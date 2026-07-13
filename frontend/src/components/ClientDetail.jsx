@@ -796,21 +796,9 @@ export default function ClientDetail() {
             <div className="flex items-center gap-2">
               {loans && loans.length > 0 && user?.role !== "sadar_muneem" && (
                 <button
-                  onClick={() => {
-                    if (!isKycComplete) {
-                      toast.error("Complete this client's KYC (Aadhaar required) before creating a re-loan. / पहले KYC पूरा करें।");
-                      navigate(`/kyc/${id}/edit`);
-                      return;
-                    }
-                    setShowReloan(true);
-                  }}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors ${
-                    isKycComplete
-                      ? "bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
-                      : "bg-muted text-muted-foreground border border-border cursor-not-allowed opacity-60"
-                  }`}
+                  onClick={() => setShowReloan(true)}
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold transition-colors bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20"
                   data-testid="reloan-btn"
-                  title={!isKycComplete ? "KYC incomplete — complete KYC first" : undefined}
                 >
                   <RefreshCw size={14} /> Re-Loan
                 </button>

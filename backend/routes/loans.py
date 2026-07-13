@@ -288,6 +288,28 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     return _doc(updated_loan)
 
 
+@router.delete("/loans/{loan_id}")
+async def delete_loan(loan_id: str, request: Request):
+    """Permanently delete a loan and all its payments and journal entries. Admin and Maalik only."""
+    current_user = await get_current_user(request)
+    if current_user["role"] not in ["admin", "maalik"]:
+        raise HTTPException(status_code=403, detail="Only Admin or Maalik can delete loans")
+    try:
+        oid = ObjectId(loan_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid loan ID")
+
+    loan = await db.loans.find_one({"_id": oid}, {"_id": 1, "loan_number": 1})
+    if not loan:
+        raise HTTPException(status_code=404, detail="Loan not found")
+
+    await db.payments.delete_many({"loan_id": loan_id})
+    await db.journal_entries.delete_many({"reference_id": loan_id})
+    await db.loans.delete_one({"_id": oid})
+
+    return {"deleted": True, "loan_id": loan_id, "loan_number": loan.get("loan_number")}
+
+
 @router.delete("/loans/{loan_id}/payments/{emi_month}")
 async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     current_user = await get_current_user(request)
@@ -482,19 +504,8 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
     customer_id = loan.get("customer_id", "—")
     now = datetime.now(timezone.utc).isoformat()
 
-    # ── KYC completeness gate — imported/legacy clients must have Aadhaar on file ──
-    if kyc_id:
-        _kyc_check = await db.kycs.find_one(
-            {"_id": ObjectId(kyc_id)},
-            {"primary_borrower.aadhaar_front_path": 1, "primary_borrower.aadhaar_back_path": 1}
-        )
-        if _kyc_check:
-            pb = _kyc_check.get("primary_borrower") or {}
-            if not (pb.get("aadhaar_front_path") and pb.get("aadhaar_back_path")):
-                raise HTTPException(
-                    status_code=400,
-                    detail="KYC is incomplete for this client. Both Aadhaar front and back photos are required before creating a re-loan or net-off. / इस ग्राहक का KYC अधूरा है। पुनः ऋण से पहले आधार के दोनों फोटो अनिवार्य हैं।"
-                )
+    # ── KYC completeness gate REMOVED — re-loan allowed even for imported/quick-add clients ──
+    # (Previously blocked clients without Aadhaar; removed to allow testing and quick re-loans)
 
     # Calculate outstanding on existing loan
     schedule = loan.get("emi_schedule", [])

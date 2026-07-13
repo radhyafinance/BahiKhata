@@ -3,7 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
-import { ArrowLeft, Edit, CheckCircle, AlertCircle, Clock, X, Loader2, Pencil, User, RefreshCw, MinusCircle, Lock } from "lucide-react";
+import { ArrowLeft, Edit, CheckCircle, AlertCircle, Clock, X, Loader2, Pencil, User, RefreshCw, MinusCircle, Lock, Trash2 } from "lucide-react";
 import ReLoanModal from "./ReLoanModal";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -175,6 +175,17 @@ export default function LoanDetail() {
   const handleCollected = (updatedLoan) => setLoan(updatedLoan);
   const handleNoteSaved = (updatedLoan) => setLoan(updatedLoan);
 
+  const handleDelete = async () => {
+    if (!window.confirm(`Delete loan ${loan?.loan_number}? This will permanently remove all EMI records and accounting entries. This cannot be undone.`)) return;
+    try {
+      await axios.delete(`${API}/loans/${id}`, { withCredentials: true });
+      toast.success(`Loan ${loan.loan_number} deleted`);
+      navigate(loan.kyc_id ? `/clients/${loan.kyc_id}` : "/loans");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Failed to delete loan");
+    }
+  };
+
   const handleUndo = async (emiMonth) => {
     if (!window.confirm("Undo this EMI collection?")) return;
     setUndoLoading(emiMonth);
@@ -294,6 +305,17 @@ export default function LoanDetail() {
             <RefreshCw size={15} />
             <span className="hidden sm:inline">Re-Loan</span>
           </button>
+          {(user?.role === "admin" || user?.role === "maalik") && (
+            <button
+              onClick={handleDelete}
+              className="flex items-center gap-1.5 bg-red-50 text-red-600 border border-red-200 px-2.5 py-2 rounded-lg text-sm font-semibold hover:bg-red-100 transition-colors"
+              data-testid="delete-loan-btn"
+              title="Delete Loan"
+            >
+              <Trash2 size={15} />
+              <span className="hidden sm:inline">Delete</span>
+            </button>
+          )}
         </div>
       </div>
 
