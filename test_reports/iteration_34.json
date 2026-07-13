@@ -1,0 +1,74 @@
+{
+  "summary": "Tested non-netoff re-loan merge fix on the Vasuli (Collection Sheet) page. Two backend fixes verified: (1) BI0021-L2 (non-netoff re-loan) now merges as a single row — parent BI0021-L1 is absorbed and NOT shown separately. (2) Merged row inherits parent's display_order=20 so BI0021-L2 appears at position #21 (index [20]) between CHOTI RATHORE and MOHAN DAI in SHEESH GARH misal. All 5 test requirements passed. Rampur Testing regression verified — RA0021-RA0030 still merge correctly. Backend: 17/17 tests pass. Frontend: all visual checks pass.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_nonnetoff_reloan_merge.py",
+    "/app/test_reports/pytest/nonnetoff_reloan_merge.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Fix is correct and minimal: (1) Case A in _merge_netoff_rows merges regardless of netoff_closed. (2) display_order inheritance at lines 269-270 ensures re-loan row stays at parent's position.",
+    "OBSERVATION: chain_start symbol in FY strip (the ↩ cell in the 12-month grid) only appears when the re-loan disbursement month has 'na' status. If the first EMI is already paid (like BI0021-L2 April 2026), 'paid' takes priority. However, the ↩ symbol IS still shown in the 'किस्त हाल' column (via row.is_netoff_combined rendering) — so users always see the re-loan marker. This is correct behavior, not a bug.",
+    "NOTE: Rampur Testing RA rows (display_order=None) rely on loan_date sort. This means RA re-loans without display_order sort by date which is fine for that illaka's existing data structure."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_nonnetoff_reloan_merge.py"
+  ],
+  "success_rate": {
+    "backend": "100% (17/17 tests pass)",
+    "frontend": "100% (all 5 requirements visually verified)"
+  },
+  "test_credentials": {
+    "admin": "phone=9999999999 / Admin@123"
+  },
+  "seed_data_creation": "Temporary: collected July 2026 EMI for BI0021-L2 (loan_id: 6a54b2bdcccc5077fee31bc1) and deleted it immediately after verifying position stability. State restored.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 34 tested the non-netoff re-loan merge fix. Key data: Biharipur illaka_id=6a3510cd7d131f22c25263cc, SHEESH GARH misal_id=6a35120c0bac7e13c303032a, BI0021-L2 loan_id=6a54b2bdcccc5077fee31bc1 (display_order=20). Rampur Testing illaka_id=69cbbd24af2f8a0e30d6f3af. The 'Bindu' illaka referenced in the problem statement is actually 'Biharipur' (BI prefix). All fixes work: BI0021-L2 merged at position [20], ↩ symbol shown in किस्त हाल column, position stable after EMI collection. 17 backend tests in /app/backend/tests/test_nonnetoff_reloan_merge.py.",
+  "test_scenarios_verified": [
+    {
+      "scenario": "BI0021-L2 (non-netoff re-loan) appears as a SINGLE MERGED ROW — BI0021-L1 NOT shown separately",
+      "result": "PASS"
+    },
+    {
+      "scenario": "BI0021-L2 merged row inherits display_order=20 from parent (position #21 = index [20])",
+      "result": "PASS"
+    },
+    {
+      "scenario": "BI0021-L2 at position [20] between CHOTI RATHORE [19] and MOHAN DAI [21] — NOT at bottom",
+      "result": "PASS"
+    },
+    {
+      "scenario": "↩ Apr 2026 symbol visible in किस्त हाल column for BI0021-L2 merged row",
+      "result": "PASS"
+    },
+    {
+      "scenario": "chain_start present in FY strip for BI0395-L3 (disbursement month has 'na' status)",
+      "result": "PASS"
+    },
+    {
+      "scenario": "Rampur Testing RA0021-RA0030: L1 parents absorbed (10 combined rows, 0 L1 rows)",
+      "result": "PASS"
+    },
+    {
+      "scenario": "BI0021-L2 stays at position [20] after collecting July 2026 EMI (display_order=20 preserved)",
+      "result": "PASS"
+    },
+    {
+      "scenario": "Biharipur global sheet loads with 527 total rows (no crash)",
+      "result": "PASS"
+    },
+    {
+      "scenario": "BI0021 appears exactly once in the sheet (no double-counting of merged parent)",
+      "result": "PASS"
+    }
+  ]
+}

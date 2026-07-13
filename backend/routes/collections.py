@@ -152,6 +152,7 @@ def _merge_netoff_rows(rows: list, all_loans_by_id: dict, fy_months: list) -> li
             parent_opening = float(parent_row.get("opening_balance") or 0)
             parent_loan_date = parent_row.get("loan_date") or ""
             parent_emi_amount = float(parent_row.get("emi_amount") or 0)
+            parent_display_order = parent_row.get("display_order")
             to_remove_ids.add(parent_id)
 
         # ── Case B: parent is not in this FY's rows (prior FY or not shown) ──
@@ -159,6 +160,7 @@ def _merge_netoff_rows(rows: list, all_loans_by_id: dict, fy_months: list) -> li
             parent_loan = all_loans_by_id.get(parent_id)
             if not parent_loan:
                 continue
+            parent_display_order = parent_loan.get("display_order")
             parent_sched = parent_loan.get("emi_schedule", [])
             parent_repayable = float(parent_loan.get("total_repayable") or 0)
             parent_paid_before_fy = sum(
@@ -260,6 +262,12 @@ def _merge_netoff_rows(rows: list, all_loans_by_id: dict, fy_months: list) -> li
                 row["extra_kisht_entries"]  = []
                 row["older_emi_chain"]      = []
             row["new_loan_in_fy"] = True
+
+        # ── Inherit parent's sort position so merged row stays in place ───────
+        # If the re-loan (child) has no display_order but parent has one,
+        # inherit it so the merged row remains at the parent's original position.
+        if row.get("display_order") is None and parent_display_order is not None:
+            row["display_order"] = parent_display_order
 
     return [r for r in rows if r["loan_db_id"] not in to_remove_ids]
 
