@@ -146,17 +146,18 @@ def _merge_netoff_rows(rows: list, all_loans_by_id: dict, fy_months: list) -> li
         parent_row = row_by_loan_id.get(parent_id)
 
         # ── Case A: parent appears as a row in this FY ───────────────────────
-        if parent_row and parent_row.get("_netoff_closed"):
+        # Merge regardless of whether parent was netoff-closed or closed normally.
+        if parent_row:
             parent_strip = {e["month"]: e for e in parent_row["emi_year_data"]}
             parent_opening = float(parent_row.get("opening_balance") or 0)
             parent_loan_date = parent_row.get("loan_date") or ""
             parent_emi_amount = float(parent_row.get("emi_amount") or 0)
             to_remove_ids.add(parent_id)
 
-        # ── Case B: parent is netoff-closed but not in this FY's rows ────────
+        # ── Case B: parent is not in this FY's rows (prior FY or not shown) ──
         elif not parent_row:
             parent_loan = all_loans_by_id.get(parent_id)
-            if not parent_loan or not parent_loan.get("netoff_closed"):
+            if not parent_loan:
                 continue
             parent_sched = parent_loan.get("emi_schedule", [])
             parent_repayable = float(parent_loan.get("total_repayable") or 0)
