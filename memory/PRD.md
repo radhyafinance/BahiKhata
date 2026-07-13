@@ -297,9 +297,8 @@ See CHANGELOG.md for full history.
 
 ### Vasuli — Non-Netoff Re-Loan Row Merging (2026-07-13) ✓
 - [x] Re-loans created via the Re-loan button (with or WITHOUT net-off) now merge into one row on the Collection Sheet
-- [x] Previously only `netoff_closed=True` parents were merged; now ANY `is_reloan=True` / `parent_loan_id` pair merges regardless of net-off
-- [x] Both Case A (parent in same FY) and Case B (parent in prior FY) extended
-- [x] Existing net-off behavior and multi-level chains unaffected
+- [x] Merged row inherits parent's `display_order` — row stays at its original list position (not bottom)
+- [x] Both Case A (parent in same FY) and Case B (parent in prior FY) extended; existing net-off behavior and multi-level chains unaffected
 
 ### Delete Loan + Re-Loan without full KYC (2026-07-08) ✓
 - [x] `DELETE /api/loans/{loan_id}` — Admin/Maalik only; deletes loan + all payments + journal entries
