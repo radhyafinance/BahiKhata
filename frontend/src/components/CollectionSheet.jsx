@@ -97,7 +97,8 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount < 0) {
       toast.error("Enter valid amount");
       return;
     }
@@ -105,11 +106,15 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
     try {
       const res = await axios.post(
         `${API}/loans/${row.loan_db_id}/payments`,
-        { emi_month: row.emi_month, amount: Number(amount), payment_date: date },
+        { emi_month: row.emi_month, amount: numAmount, payment_date: date },
         { withCredentials: true }
       );
-      toast.success(`Collected from ${row.client_name} / किस्त जमा हुई`);
-      onCollected(row.loan_db_id, res.data, row.emi_month, Number(amount));
+      if (numAmount === 0) {
+        toast.info(`Visit recorded — ₹0 / ${row.client_name}`);
+      } else {
+        toast.success(`Collected from ${row.client_name} / किस्त जमा हुई`);
+      }
+      onCollected(row.loan_db_id, res.data, row.emi_month, numAmount);
       onClose();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to collect");
@@ -144,7 +149,7 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="bk-input"
-              min="1"
+              min="0"
               required
               data-testid="collect-amount-input"
             />
@@ -670,14 +675,14 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                 <input
                   type="number"
                   defaultValue={row.emi_amount}
-                  min="1"
+                  min="0"
                   data-action-input={isGyal ? undefined : "true"}
                   onFocus={(e) => e.target.select()}
                   onKeyDown={async (e) => {
                     if (e.key !== "Enter") return;
                     e.preventDefault();
                     const amount = Number(e.target.value);
-                    if (!amount || amount <= 0) {
+                    if (isNaN(amount) || amount < 0) {
                       toast.error("Enter valid amount");
                       return;
                     }
@@ -687,7 +692,11 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                         { emi_month: row.emi_month, amount, payment_date: collectDate },
                         { withCredentials: true }
                       );
-                      toast.success(`किस्त जमा — ${row.client_name_hindi || row.client_name}`);
+                      if (amount === 0) {
+                        toast.info(`Visit recorded — ₹0 / ${row.client_name_hindi || row.client_name}`);
+                      } else {
+                        toast.success(`किस्त जमा — ${row.client_name_hindi || row.client_name}`);
+                      }
                       onCollected(row.loan_db_id, null, row.emi_month, amount);
                       // Focus next uncollected row's input (skip Gyal rows)
                       const allInputs = [...document.querySelectorAll('[data-action-input="true"]')];

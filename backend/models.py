@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 
 
@@ -114,7 +114,7 @@ class LoanStatusUpdate(BaseModel):
 
 class PaymentCreate(BaseModel):
     emi_month: str
-    amount: Optional[float] = None
+    amount: Optional[float] = Field(default=None, ge=0)
     payment_date: str
     notes: Optional[str] = None
 

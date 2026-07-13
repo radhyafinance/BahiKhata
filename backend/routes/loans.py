@@ -261,7 +261,20 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
         schedule.append(emi_item)
     if emi_item["status"] == "paid":
         raise HTTPException(status_code=400, detail="This EMI is already paid / यह किस्त पहले से चुकाई जा चुकी है")
-    amount = data.amount if data.amount else emi_item["amount"]
+    # Fix: use `is not None` so that 0 is treated as a valid explicit amount
+    amount = data.amount if data.amount is not None else emi_item["amount"]
+    now = datetime.now(timezone.utc).isoformat()
+    # ── Zero-entry: record visit only, keep EMI status unchanged, no journal ──
+    if amount == 0:
+        await db.payments.insert_one({
+            "loan_id": loan_id, "emi_month": data.emi_month,
+            "amount": 0, "payment_date": data.payment_date,
+            "collected_by_id": current_user["id"], "collected_by_name": current_user["name"],
+            "notes": data.notes or "Zero collection / visit recorded", "created_at": now,
+        })
+        updated_loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
+        return _doc(updated_loan)
+    # ── Normal payment: mark EMI paid and book journal entry ─────────────────
     emi_item.update({
         "status": "paid",
         "paid_amount": amount,
@@ -271,7 +284,6 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     })
     total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
     new_status = _get_loan_status(schedule)
-    now = datetime.now(timezone.utc).isoformat()
     await db.loans.update_one(
         {"_id": ObjectId(loan_id)},
         {"$set": {"emi_schedule": schedule, "total_paid": total_paid, "status": new_status, "updated_at": now}}
