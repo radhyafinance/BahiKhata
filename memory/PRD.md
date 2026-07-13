@@ -286,14 +286,20 @@ See CHANGELOG.md for full history.
 - [ ] Gyal Summary Dashboard Card (NPA overview)
 
 ### KYC Form Improvements (2026-07-08) ✓
-- [x] **Co-borrower & Guarantor phone optional** — phone field label changed to "(optional)" for non-mandatory persons; removed phone validation on steps 3 & 4; payload now uses name-check instead of phone-check
-- [x] **KYC Success Screen** — after new KYC submission, a full-page success screen shows Customer ID, Client Name, and "Loan Disbursed / कर्ज जारी हुआ" badge; user clicks "View Client Profile" to navigate (replaces abrupt navigate)
+- [x] **Co-borrower phone optional** — phone field shows "(optional)" for co-borrower; guarantor still requires phone
+- [x] **KYC Success Screen** — after new KYC submission, full-page success screen with Customer ID, Client Name, "Loan Disbursed" badge, "Add Another Client" + "View Client Profile" buttons
 
-
+### Quick Add Loan (2026-06-23) ✓
 - [x] `POST /api/kycs/quick-loan` — Admin/Maalik only; creates KYC + Loan without Aadhaar/photo
 - [x] Auto-calculates EMI (17% flat), sets loan_date to 1st of selected month, books journal entry
 - [x] Frontend: `QuickAddLoanModal.jsx` with live EMI preview, co-borrower/guarantor collapsible sections
 - [x] "Quick Add Loan" button on `LoanList.jsx` visible only to Admin/Maalik
+
+### Quick Add Loan — Existing Customer Mode (2026-07-08) ✓
+- [x] New/Existing Client toggle at top of Quick Add Loan modal
+- [x] Existing Client mode: debounced search (name or customer ID), results dropdown, customer lock card with X-clear
+- [x] Backend accepts `existing_kyc_id` — skips KYC creation, creates loan on existing customer with correct L2/L3 numbering
+- [x] `QuickLoanCreate` fields made Optional; explicit 400 for new-customer path; graceful Pydantic 422 error handling
 
 
 - [x] **UAT credentials** configured in `backend/.env` (CRIF_URL, CRIF_USER_ID, CRIF_PASSWORD, CRIF_MBRID, CRIF_SUB_MBR_ID)
