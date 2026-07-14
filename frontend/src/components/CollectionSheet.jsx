@@ -6,8 +6,11 @@ import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
-  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer, Trash2
+  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer, Trash2,
+  Calendar as CalendarIcon
 } from "lucide-react";
+import { Calendar } from "../components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -46,28 +49,59 @@ function getFyLabel(fyStart) {
   return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
 }
 
-// Active month to send to the API for a given FY start year
-function getApiMonthForFy(fyStart) {
-  const curFyStart = getCurrentFyStart();
-  if (fyStart === curFyStart) {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  }
-  return `${fyStart + 1}-03`;
+// Derive FY start year from a YYYY-MM-DD date string
+function getFyStartFromDate(dateStr) {
+  const [y, m] = dateStr.split("-").map(Number);
+  return m >= 4 ? y : y - 1;
 }
 
-// All 12 month options for a FY (Apr → Mar)
-const FY_MONTH_NAMES = ["Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec","Jan","Feb","Mar"];
-function getFyMonthOptions(fyStart) {
-  return Array.from({ length: 12 }, (_, i) => {
-    const isNextCalYear = i >= 9; // Jan, Feb, Mar belong to next calendar year
-    const year = isNextCalYear ? fyStart + 1 : fyStart;
-    const monthNum = isNextCalYear ? i - 8 : i + 4;
-    return {
-      value: `${year}-${String(monthNum).padStart(2, "0")}`,
-      label: `${FY_MONTH_NAMES[i]} '${String(year).slice(-2)}`,
-    };
-  });
+// ── Combined date + month picker ──────────────────────────────────────────────
+// A single calendar popover that shows the physical date AND the derived EMI month.
+// Selecting a date drives both: collectDate (payment_date) and month (emi_month).
+function CollectDatePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [y, m, d] = value.split("-").map(Number);
+  const selected = new Date(y, m - 1, d);
+  const monthStr = MONTH_ABBR[m - 1];
+  const yearStr = String(y).slice(-2);
+  const displayLabel = `${d} ${monthStr} '${yearStr}`;
+  const monthBadge  = `${monthStr} '${yearStr}`;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="bk-input h-9 flex items-center gap-1.5 px-2.5 text-sm font-semibold whitespace-nowrap cursor-pointer select-none"
+          data-testid="collect-date-picker"
+        >
+          <CalendarIcon size={13} className="text-muted-foreground shrink-0" />
+          <span>{displayLabel}</span>
+          <span className="text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold leading-none">
+            {monthBadge}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0 shadow-xl">
+        <div className="px-3 pt-3 pb-1 border-b border-border/50 text-xs text-muted-foreground font-medium">
+          Date sets both collection date &amp; EMI month
+        </div>
+        <Calendar
+          mode="single"
+          selected={selected}
+          defaultMonth={selected}
+          onSelect={(date) => {
+            if (!date) return;
+            const ny = date.getFullYear();
+            const nm = String(date.getMonth() + 1).padStart(2, "0");
+            const nd = String(date.getDate()).padStart(2, "0");
+            onChange(`${ny}-${nm}-${nd}`);
+            setOpen(false);
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 const fmtMonth = (ym) => {
@@ -405,7 +439,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
   const regularRows = misal.rows.filter((r) => !r.is_gyal);
   const gyalRows = misal.rows.filter((r) => r.is_gyal);
   const total = misal.rows.length;
-  const collected = misal.rows.filter((r) => r.emi_status === "paid").length;
+  const collected = misal.rows.filter((r) => r.emi_status === "paid" && r.emi_month === month).length;
 
   const renderRow = (row, isGyal) => {
     const status = EMI_STATUS[row.emi_status] || EMI_STATUS.pending;
@@ -825,21 +859,25 @@ export default function CollectionSheet() {
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
-  // FY selector state — default to current FY
-  const [selectedFyStart, setSelectedFyStart] = useState(getCurrentFyStart);
-  // Active month state — user can switch to any month within the selected FY for back/advance entries
-  const [selectedMonth, setSelectedMonth] = useState(() => getApiMonthForFy(getCurrentFyStart()));
-  // Reset selected month when FY changes
-  useEffect(() => { setSelectedMonth(getApiMonthForFy(selectedFyStart)); }, [selectedFyStart]);
-  // Derive the "active month" for API calls and Collect button
-  const month = selectedMonth;
+  // Single source of truth: collectDate drives both payment_date AND emi_month
+  const [collectDate, setCollectDate] = useState(() => new Date().toISOString().split("T")[0]);
+  // Derive the active EMI month and FY from the selected date — no separate state needed
+  const month = collectDate.slice(0, 7);                  // "YYYY-MM" → emi_month for API
+  const selectedFyStart = getFyStartFromDate(collectDate); // FY derived from date
   const currentFyStart = getCurrentFyStart();
-  const fyMonthOptions = getFyMonthOptions(selectedFyStart);
   // All FYs from 2019-20 up to the current FY (newest first)
   const availableFys = Array.from(
     { length: currentFyStart - 2019 + 1 },
     (_, i) => currentFyStart - i
   );
+  // Jump to a specific FY — updates collectDate to the right default date in that FY
+  const handleFyJump = useCallback((newFy) => {
+    if (newFy === getCurrentFyStart()) {
+      setCollectDate(new Date().toISOString().split("T")[0]);
+    } else {
+      setCollectDate(`${newFy + 1}-03-31`);
+    }
+  }, []);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -847,7 +885,6 @@ export default function CollectionSheet() {
   const [notingRow, setNotingRow] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
   const [selectedMisalId, setSelectedMisalId] = useState("all");
-  const [collectDate, setCollectDate] = useState(new Date().toISOString().split("T")[0]);
   const [printModalOpen, setPrintModalOpen] = useState(false);
   // Per-misal blank rows map: { [misalId]: count }
   const [blankRowsMap, setBlankRowsMap] = useState({});
@@ -942,7 +979,10 @@ export default function CollectionSheet() {
       for (const ms of il.misals) {
         for (const r of ms.rows) {
           totalRows++;
-          if (r.emi_status === "paid") {
+          // Only count as "collected this month" if the EMI month actually matches the
+          // selected month — avoids inflated totals from rep_emi fallback rows whose
+          // last EMI (a different month) happens to be "paid".
+          if (r.emi_status === "paid" && r.emi_month === month) {
             collected++;
             totalCollectedAmount += r.emi_paid_amount || r.emi_amount || 0;
           }
@@ -951,7 +991,7 @@ export default function CollectionSheet() {
       }
     }
     return { totalRows, collected, overdue, remaining: totalRows - collected, totalCollectedAmount };
-  }, [filteredIllakas]);
+  }, [filteredIllakas, month]);
 
 
   // FY-level stats computed from the 12-month strip data (filtered)
@@ -980,7 +1020,7 @@ export default function CollectionSheet() {
         <div className="px-4 sm:px-6 pt-2.5 pb-0 sm:pt-0 sm:pb-0 sm:h-14 flex items-center gap-2.5 sm:justify-between">
           <h1 className="text-xl font-bold text-foreground font-['Outfit'] whitespace-nowrap">Vasuli / वसूली</h1>
           <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary font-semibold rounded-full whitespace-nowrap">
-            FY {getFyLabel(selectedFyStart)} &middot; {fyMonthOptions.find(o => o.value === selectedMonth)?.label || selectedMonth}
+            FY {getFyLabel(selectedFyStart)}
           </span>
           {/* Desktop: controls inline in the same row */}
           <div className="hidden sm:flex items-center gap-2 ml-auto flex-shrink-0" data-testid="sheet-controls">
@@ -997,27 +1037,10 @@ export default function CollectionSheet() {
                 ))}
               </select>
             )}
-            <input
-              type="date"
-              value={collectDate}
-              onChange={(e) => setCollectDate(e.target.value)}
-              className="bk-input h-9 py-0 text-sm w-[7.5rem]"
-              data-testid="global-collect-date"
-            />
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bk-input h-9 py-0 pr-8 text-sm font-semibold w-[7.5rem]"
-              data-testid="month-select"
-              title="Select collection month"
-            >
-              {fyMonthOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            <CollectDatePicker value={collectDate} onChange={setCollectDate} />
             <select
               value={selectedFyStart}
-              onChange={(e) => setSelectedFyStart(Number(e.target.value))}
+              onChange={(e) => handleFyJump(Number(e.target.value))}
               className="bk-input h-9 py-0 pr-8 text-sm font-semibold"
               data-testid="fy-select"
             >
@@ -1057,28 +1080,12 @@ export default function CollectionSheet() {
               ))}
             </select>
           )}
-          {/* Line 2: Date + Month + FY selector + Print */}
+          {/* Line 2: Combined date picker + FY selector + Print */}
           <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={collectDate}
-              onChange={(e) => setCollectDate(e.target.value)}
-              className="bk-input h-9 py-0 text-sm flex-1 min-w-0"
-              data-testid="global-collect-date"
-            />
-            <select
-              value={selectedMonth}
-              onChange={(e) => setSelectedMonth(e.target.value)}
-              className="bk-input h-9 py-0 text-sm font-semibold shrink-0 w-24"
-              data-testid="month-select"
-            >
-              {fyMonthOptions.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
-              ))}
-            </select>
+            <CollectDatePicker value={collectDate} onChange={setCollectDate} />
             <select
               value={selectedFyStart}
-              onChange={(e) => setSelectedFyStart(Number(e.target.value))}
+              onChange={(e) => handleFyJump(Number(e.target.value))}
               className="bk-input h-9 py-0 text-sm font-semibold shrink-0 w-24"
               data-testid="fy-select"
             >
