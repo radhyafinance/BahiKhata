@@ -972,19 +972,23 @@ export default function CollectionSheet() {
       .filter((il) => il.misals.length > 0);
   }, [data, selectedMisalId]);
 
-  // Active-month stats derived from filtered data
+  // Active-month stats derived from filtered data.
+  // "Collected" (count + amount) must reflect cash physically collected IN the
+  // selected month. Read it from each row's emi_year_data cell for `month` — the
+  // same paid_date-based data the 12-month strip below shows. Do NOT use
+  // r.emi_status / r.emi_paid_amount here: those are keyed to the EMI's DUE
+  // month, so an EMI collected late (or in advance) gets counted in the wrong
+  // month and the headline total disagrees with the strip right beneath it.
   const filteredStats = useMemo(() => {
     let totalRows = 0, collected = 0, overdue = 0, totalCollectedAmount = 0;
     for (const il of filteredIllakas) {
       for (const ms of il.misals) {
         for (const r of ms.rows) {
           totalRows++;
-          // Only count as "collected this month" if the EMI month actually matches the
-          // selected month — avoids inflated totals from rep_emi fallback rows whose
-          // last EMI (a different month) happens to be "paid".
-          if (r.emi_status === "paid" && r.emi_month === month) {
+          const cell = (r.emi_year_data || []).find((y) => y.month === month);
+          if (cell && cell.status === "paid") {
             collected++;
-            totalCollectedAmount += r.emi_paid_amount || r.emi_amount || 0;
+            totalCollectedAmount += cell.paid_amount || 0;
           }
           if (r.emi_status === "overdue") overdue++;
         }
