@@ -6,8 +6,11 @@ import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
-  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer, Trash2
+  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer, Trash2,
+  Calendar as CalendarIcon
 } from "lucide-react";
+import { Calendar } from "../components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -46,14 +49,59 @@ function getFyLabel(fyStart) {
   return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
 }
 
-// Active month to send to the API for a given FY start year
-function getApiMonthForFy(fyStart) {
-  const curFyStart = getCurrentFyStart();
-  if (fyStart === curFyStart) {
-    const today = new Date();
-    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
-  }
-  return `${fyStart + 1}-03`;
+// Derive FY start year from a YYYY-MM-DD date string
+function getFyStartFromDate(dateStr) {
+  const [y, m] = dateStr.split("-").map(Number);
+  return m >= 4 ? y : y - 1;
+}
+
+// ── Combined date + month picker ──────────────────────────────────────────────
+// A single calendar popover that shows the physical date AND the derived EMI month.
+// Selecting a date drives both: collectDate (payment_date) and month (emi_month).
+function CollectDatePicker({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [y, m, d] = value.split("-").map(Number);
+  const selected = new Date(y, m - 1, d);
+  const monthStr = MONTH_ABBR[m - 1];
+  const yearStr = String(y).slice(-2);
+  const displayLabel = `${d} ${monthStr} '${yearStr}`;
+  const monthBadge  = `${monthStr} '${yearStr}`;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          className="bk-input h-9 flex items-center gap-1.5 px-2.5 text-sm font-semibold whitespace-nowrap cursor-pointer select-none"
+          data-testid="collect-date-picker"
+        >
+          <CalendarIcon size={13} className="text-muted-foreground shrink-0" />
+          <span>{displayLabel}</span>
+          <span className="text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold leading-none">
+            {monthBadge}
+          </span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-auto p-0 shadow-xl">
+        <div className="px-3 pt-3 pb-1 border-b border-border/50 text-xs text-muted-foreground font-medium">
+          Date sets both collection date &amp; EMI month
+        </div>
+        <Calendar
+          mode="single"
+          selected={selected}
+          defaultMonth={selected}
+          onSelect={(date) => {
+            if (!date) return;
+            const ny = date.getFullYear();
+            const nm = String(date.getMonth() + 1).padStart(2, "0");
+            const nd = String(date.getDate()).padStart(2, "0");
+            onChange(`${ny}-${nm}-${nd}`);
+            setOpen(false);
+          }}
+          initialFocus
+        />
+      </PopoverContent>
+    </Popover>
+  );
 }
 
 const fmtMonth = (ym) => {
@@ -83,7 +131,8 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!amount || isNaN(amount) || Number(amount) <= 0) {
+    const numAmount = Number(amount);
+    if (isNaN(numAmount) || numAmount < 0) {
       toast.error("Enter valid amount");
       return;
     }
@@ -91,11 +140,15 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
     try {
       const res = await axios.post(
         `${API}/loans/${row.loan_db_id}/payments`,
-        { emi_month: row.emi_month, amount: Number(amount), payment_date: date },
+        { emi_month: row.emi_month, amount: numAmount, payment_date: date },
         { withCredentials: true }
       );
-      toast.success(`Collected from ${row.client_name} / किस्त जमा हुई`);
-      onCollected(row.loan_db_id, res.data, row.emi_month, Number(amount));
+      if (numAmount === 0) {
+        toast.info(`Visit recorded — ₹0 / ${row.client_name}`);
+      } else {
+        toast.success(`Collected from ${row.client_name} / किस्त जमा हुई`);
+      }
+      onCollected(row.loan_db_id, res.data, row.emi_month, numAmount);
       onClose();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to collect");
@@ -130,7 +183,7 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="bk-input"
-              min="1"
+              min="0"
               required
               data-testid="collect-amount-input"
             />
@@ -386,7 +439,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
   const regularRows = misal.rows.filter((r) => !r.is_gyal);
   const gyalRows = misal.rows.filter((r) => r.is_gyal);
   const total = misal.rows.length;
-  const collected = misal.rows.filter((r) => r.emi_status === "paid").length;
+  const collected = misal.rows.filter((r) => r.emi_status === "paid" && r.emi_month === month).length;
 
   const renderRow = (row, isGyal) => {
     const status = EMI_STATUS[row.emi_status] || EMI_STATUS.pending;
@@ -664,7 +717,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                       ? Math.min(row.emi_amount, row.outstanding_balance)
                       : row.emi_amount
                   }
-                  min="1"
+                  min="0"
                   data-action-input={isGyal ? undefined : "true"}
                   onFocus={(e) => e.target.select()}
                   onKeyDown={(e) => {
@@ -676,7 +729,8 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                     // can land before React swaps the input out.
                     if (inputEl.dataset.busy === "1") return;
                     const amount = Number(inputEl.value);
-                    if (!amount || amount <= 0) {
+                    // NOTE: ₹0 is valid — it records a visit with no collection.
+                    if (isNaN(amount) || amount < 0) {
                       toast.error("Enter valid amount");
                       return;
                     }
@@ -708,6 +762,13 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                       { emi_month: row.emi_month, amount, payment_date: collectDate },
                       { withCredentials: true }
                     ).then(() => {
+                      // A ₹0 visit still gets its toast — the row turning green is
+                      // the only other signal, and "collected ₹0" is worth calling
+                      // out. Successful cash collections stay silent: at speed the
+                      // per-row toasts became a wall.
+                      if (amount === 0) {
+                        toast.info(`Visit recorded — ₹0 / ${row.client_name_hindi || row.client_name}`);
+                      }
                       onCollected(row.loan_db_id, null, row.emi_month, amount);
                     }).catch((err) => {
                       // Roll the row back and name the client — by now the operator
@@ -836,16 +897,25 @@ export default function CollectionSheet() {
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
-  // FY selector state — default to current FY
-  const [selectedFyStart, setSelectedFyStart] = useState(getCurrentFyStart);
-  // Derive the "active month" for API calls and Collect button from the selected FY
-  const month = getApiMonthForFy(selectedFyStart);
+  // Single source of truth: collectDate drives both payment_date AND emi_month
+  const [collectDate, setCollectDate] = useState(() => new Date().toISOString().split("T")[0]);
+  // Derive the active EMI month and FY from the selected date — no separate state needed
+  const month = collectDate.slice(0, 7);                  // "YYYY-MM" → emi_month for API
+  const selectedFyStart = getFyStartFromDate(collectDate); // FY derived from date
   const currentFyStart = getCurrentFyStart();
   // All FYs from 2019-20 up to the current FY (newest first)
   const availableFys = Array.from(
     { length: currentFyStart - 2019 + 1 },
     (_, i) => currentFyStart - i
   );
+  // Jump to a specific FY — updates collectDate to the right default date in that FY
+  const handleFyJump = useCallback((newFy) => {
+    if (newFy === getCurrentFyStart()) {
+      setCollectDate(new Date().toISOString().split("T")[0]);
+    } else {
+      setCollectDate(`${newFy + 1}-03-31`);
+    }
+  }, []);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -853,7 +923,6 @@ export default function CollectionSheet() {
   const [notingRow, setNotingRow] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
   const [selectedMisalId, setSelectedMisalId] = useState("all");
-  const [collectDate, setCollectDate] = useState(new Date().toISOString().split("T")[0]);
   const [printModalOpen, setPrintModalOpen] = useState(false);
   // Per-misal blank rows map: { [misalId]: count }
   const [blankRowsMap, setBlankRowsMap] = useState({});
@@ -1061,16 +1130,10 @@ export default function CollectionSheet() {
                 ))}
               </select>
             )}
-            <input
-              type="date"
-              value={collectDate}
-              onChange={(e) => setCollectDate(e.target.value)}
-              className="bk-input h-9 py-0 text-sm w-[7.5rem]"
-              data-testid="global-collect-date"
-            />
+            <CollectDatePicker value={collectDate} onChange={setCollectDate} />
             <select
               value={selectedFyStart}
-              onChange={(e) => setSelectedFyStart(Number(e.target.value))}
+              onChange={(e) => handleFyJump(Number(e.target.value))}
               className="bk-input h-9 py-0 pr-8 text-sm font-semibold"
               data-testid="fy-select"
             >
@@ -1110,18 +1173,12 @@ export default function CollectionSheet() {
               ))}
             </select>
           )}
-          {/* Line 2: Date + FY selector + Print */}
+          {/* Line 2: Combined date picker + FY selector + Print */}
           <div className="flex items-center gap-2">
-            <input
-              type="date"
-              value={collectDate}
-              onChange={(e) => setCollectDate(e.target.value)}
-              className="bk-input h-9 py-0 text-sm flex-1 min-w-0"
-              data-testid="global-collect-date"
-            />
+            <CollectDatePicker value={collectDate} onChange={setCollectDate} />
             <select
               value={selectedFyStart}
-              onChange={(e) => setSelectedFyStart(Number(e.target.value))}
+              onChange={(e) => handleFyJump(Number(e.target.value))}
               className="bk-input h-9 py-0 text-sm font-semibold shrink-0 w-24"
               data-testid="fy-select"
             >
