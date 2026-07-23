@@ -743,8 +743,13 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                     const idx = allInputs.indexOf(inputEl);
                     const nextInput = idx >= 0 && idx < allInputs.length - 1 ? allInputs[idx + 1] : null;
 
-                    onOptimisticCollect(row.loan_db_id, row.emi_month, amount, collectDate);
-
+                    // ₹0 is a recorded VISIT, not a collection — the server leaves
+                    // the EMI pending on purpose. Painting the row as paid would
+                    // flash it green and then revert when the reconcile lands,
+                    // which reads as "it didn't save". Only paint real collections.
+                    if (amount > 0) {
+                      onOptimisticCollect(row.loan_db_id, row.emi_month, amount, collectDate);
+                    }
                     if (nextInput) {
                       // Keep the next row on screen as entry moves down the sheet.
                       // "nearest" only scrolls when the row is actually out of view;
@@ -773,7 +778,10 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                     }).catch((err) => {
                       // Roll the row back and name the client — by now the operator
                       // has moved on, so a bare "Failed to collect" would be useless.
-                      onOptimisticCollect(row.loan_db_id, row.emi_month, amount, collectDate, true);
+                      // Nothing to roll back for a ₹0 visit; it was never painted.
+                      if (amount > 0) {
+                        onOptimisticCollect(row.loan_db_id, row.emi_month, amount, collectDate, true);
+                      }
                       inputEl.dataset.busy = "";
                       toast.error(
                         `${row.client_name_hindi || row.client_name}: ${err.response?.data?.detail || "Failed to collect"}`,
