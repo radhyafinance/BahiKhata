@@ -43,9 +43,20 @@ def _build_ob_schedule(opening_balance: float, emi_amount: Optional[float], star
         schedule.append({
             "due_month": f"{due.year}-{due.month:02d}",
             "amount": amt,
-            "status": "due",
+            # "pending" — NOT "due". Every other module matches on
+            # pending/overdue/paid/netoff; "due" is read by nothing, so imported
+            # EMIs never registered as outstanding on the Vasuli sheet.
+            "status": "pending",
+            "paid_amount": 0.0,
             "paid_date": None,
         })
+    # A decimal EMI leaves a sub-rupee tail after the last full instalment
+    # (₹14,000 at ₹1,166.66 → 12 × 1,166.66 = ₹13,999.92), which would otherwise
+    # be emitted as an extra ₹0.08 "instalment". Fold it into the previous row so
+    # the totals still reconcile exactly.
+    if len(schedule) > 1 and schedule[-1]["amount"] < 1:
+        stub = schedule.pop()
+        schedule[-1]["amount"] = round(schedule[-1]["amount"] + stub["amount"], 2)
     return schedule
 
 

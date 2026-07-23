@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { toast } from "sonner";
@@ -6,11 +6,8 @@ import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
-  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer, Trash2,
-  Calendar as CalendarIcon
+  X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer, Trash2
 } from "lucide-react";
-import { Calendar } from "../components/ui/calendar";
-import { Popover, PopoverContent, PopoverTrigger } from "../components/ui/popover";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -49,59 +46,14 @@ function getFyLabel(fyStart) {
   return `${fyStart}-${String(fyStart + 1).slice(-2)}`;
 }
 
-// Derive FY start year from a YYYY-MM-DD date string
-function getFyStartFromDate(dateStr) {
-  const [y, m] = dateStr.split("-").map(Number);
-  return m >= 4 ? y : y - 1;
-}
-
-// ── Combined date + month picker ──────────────────────────────────────────────
-// A single calendar popover that shows the physical date AND the derived EMI month.
-// Selecting a date drives both: collectDate (payment_date) and month (emi_month).
-function CollectDatePicker({ value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [y, m, d] = value.split("-").map(Number);
-  const selected = new Date(y, m - 1, d);
-  const monthStr = MONTH_ABBR[m - 1];
-  const yearStr = String(y).slice(-2);
-  const displayLabel = `${d} ${monthStr} '${yearStr}`;
-  const monthBadge  = `${monthStr} '${yearStr}`;
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className="bk-input h-9 flex items-center gap-1.5 px-2.5 text-sm font-semibold whitespace-nowrap cursor-pointer select-none"
-          data-testid="collect-date-picker"
-        >
-          <CalendarIcon size={13} className="text-muted-foreground shrink-0" />
-          <span>{displayLabel}</span>
-          <span className="text-[11px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full font-bold leading-none">
-            {monthBadge}
-          </span>
-        </button>
-      </PopoverTrigger>
-      <PopoverContent align="start" className="w-auto p-0 shadow-xl">
-        <div className="px-3 pt-3 pb-1 border-b border-border/50 text-xs text-muted-foreground font-medium">
-          Date sets both collection date &amp; EMI month
-        </div>
-        <Calendar
-          mode="single"
-          selected={selected}
-          defaultMonth={selected}
-          onSelect={(date) => {
-            if (!date) return;
-            const ny = date.getFullYear();
-            const nm = String(date.getMonth() + 1).padStart(2, "0");
-            const nd = String(date.getDate()).padStart(2, "0");
-            onChange(`${ny}-${nm}-${nd}`);
-            setOpen(false);
-          }}
-          initialFocus
-        />
-      </PopoverContent>
-    </Popover>
-  );
+// Active month to send to the API for a given FY start year
+function getApiMonthForFy(fyStart) {
+  const curFyStart = getCurrentFyStart();
+  if (fyStart === curFyStart) {
+    const today = new Date();
+    return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
+  }
+  return `${fyStart + 1}-03`;
 }
 
 const fmtMonth = (ym) => {
@@ -131,8 +83,7 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const numAmount = Number(amount);
-    if (isNaN(numAmount) || numAmount < 0) {
+    if (!amount || isNaN(amount) || Number(amount) <= 0) {
       toast.error("Enter valid amount");
       return;
     }
@@ -140,15 +91,11 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
     try {
       const res = await axios.post(
         `${API}/loans/${row.loan_db_id}/payments`,
-        { emi_month: row.emi_month, amount: numAmount, payment_date: date },
+        { emi_month: row.emi_month, amount: Number(amount), payment_date: date },
         { withCredentials: true }
       );
-      if (numAmount === 0) {
-        toast.info(`Visit recorded — ₹0 / ${row.client_name}`);
-      } else {
-        toast.success(`Collected from ${row.client_name} / किस्त जमा हुई`);
-      }
-      onCollected(row.loan_db_id, res.data, row.emi_month, numAmount);
+      toast.success(`Collected from ${row.client_name} / किस्त जमा हुई`);
+      onCollected(row.loan_db_id, res.data, row.emi_month, Number(amount));
       onClose();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Failed to collect");
@@ -183,7 +130,7 @@ function CollectModal({ row, onClose, onCollected, defaultDate }) {
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               className="bk-input"
-              min="0"
+              min="1"
               required
               data-testid="collect-amount-input"
             />
@@ -432,14 +379,14 @@ function EditEmiModal({ row, onClose, onEdited, onDeleted }) {
 }
 
 
-function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, fyMonths, onCollect, onNote, onEdit, collectDate, onCollected }) {
+function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, fyMonths, onCollect, onNote, onEdit, collectDate, onCollected, onOptimisticCollect }) {
   const [expanded, setExpanded] = useState(true);
   const navigate = useNavigate();
 
   const regularRows = misal.rows.filter((r) => !r.is_gyal);
   const gyalRows = misal.rows.filter((r) => r.is_gyal);
   const total = misal.rows.length;
-  const collected = misal.rows.filter((r) => r.emi_status === "paid" && r.emi_month === month).length;
+  const collected = misal.rows.filter((r) => r.emi_status === "paid").length;
 
   const renderRow = (row, isGyal) => {
     const status = EMI_STATUS[row.emi_status] || EMI_STATUS.pending;
@@ -708,42 +655,72 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                 {/* Desktop / Landscape: inline input with Enter-key rapid entry */}
                 <input
                   type="number"
-                  defaultValue={row.emi_amount}
-                  min="0"
+                  // Pre-fill what is actually collectible, not the full instalment.
+                  // A client near payoff owes less than one EMI (e.g. ₹500 left on a
+                  // ₹2,000 EMI); pre-filling ₹2,000 invites over-collection. The EMI
+                  // column still shows the contracted instalment.
+                  defaultValue={
+                    !isGyal && row.outstanding_balance > 0
+                      ? Math.min(row.emi_amount, row.outstanding_balance)
+                      : row.emi_amount
+                  }
+                  min="1"
                   data-action-input={isGyal ? undefined : "true"}
                   onFocus={(e) => e.target.select()}
-                  onKeyDown={async (e) => {
+                  onKeyDown={(e) => {
                     if (e.key !== "Enter") return;
                     e.preventDefault();
-                    const amount = Number(e.target.value);
-                    if (isNaN(amount) || amount < 0) {
+                    const inputEl = e.currentTarget;
+                    // Guard against a second Enter on a row already submitted — the
+                    // row is repainted as collected straight away, but the keystroke
+                    // can land before React swaps the input out.
+                    if (inputEl.dataset.busy === "1") return;
+                    const amount = Number(inputEl.value);
+                    if (!amount || amount <= 0) {
                       toast.error("Enter valid amount");
                       return;
                     }
-                    try {
-                      await axios.post(
-                        `${API}/loans/${row.loan_db_id}/payments`,
-                        { emi_month: row.emi_month, amount, payment_date: collectDate },
-                        { withCredentials: true }
-                      );
-                      if (amount === 0) {
-                        toast.info(`Visit recorded — ₹0 / ${row.client_name_hindi || row.client_name}`);
-                      } else {
-                        toast.success(`किस्त जमा — ${row.client_name_hindi || row.client_name}`);
-                      }
-                      onCollected(row.loan_db_id, null, row.emi_month, amount);
-                      // Focus next uncollected row's input (skip Gyal rows)
-                      const allInputs = [...document.querySelectorAll('[data-action-input="true"]')];
-                      const idx = allInputs.indexOf(e.target);
-                      if (idx >= 0 && idx < allInputs.length - 1) {
-                        allInputs[idx + 1].focus();
-                        allInputs[idx + 1].select();
-                      }
-                    } catch (err) {
-                      toast.error(err.response?.data?.detail || "Failed to collect");
+                    inputEl.dataset.busy = "1";
+
+                    // ── Optimistic: advance before the server answers ──────────
+                    // Work out the next input FIRST, while this row's input is
+                    // still mounted; the optimistic repaint removes it.
+                    const allInputs = [...document.querySelectorAll('[data-action-input="true"]')];
+                    const idx = allInputs.indexOf(inputEl);
+                    const nextInput = idx >= 0 && idx < allInputs.length - 1 ? allInputs[idx + 1] : null;
+
+                    onOptimisticCollect(row.loan_db_id, row.emi_month, amount, collectDate);
+
+                    if (nextInput) {
+                      // Keep the next row on screen as entry moves down the sheet.
+                      // "nearest" only scrolls when the row is actually out of view;
+                      // the input's scroll-mt reserves room for the sticky header.
+                      // Behaviour must stay instant ("auto") — a "smooth" animation
+                      // gets cancelled by the re-render and the page never moves.
+                      nextInput.focus({ preventScroll: true });
+                      nextInput.select();
+                      nextInput.scrollIntoView({ block: "nearest", behavior: "auto" });
                     }
+
+                    // ── Fire-and-reconcile: the operator is already on the next row
+                    axios.post(
+                      `${API}/loans/${row.loan_db_id}/payments`,
+                      { emi_month: row.emi_month, amount, payment_date: collectDate },
+                      { withCredentials: true }
+                    ).then(() => {
+                      onCollected(row.loan_db_id, null, row.emi_month, amount);
+                    }).catch((err) => {
+                      // Roll the row back and name the client — by now the operator
+                      // has moved on, so a bare "Failed to collect" would be useless.
+                      onOptimisticCollect(row.loan_db_id, row.emi_month, amount, collectDate, true);
+                      inputEl.dataset.busy = "";
+                      toast.error(
+                        `${row.client_name_hindi || row.client_name}: ${err.response?.data?.detail || "Failed to collect"}`,
+                        { duration: 8000 }
+                      );
+                    });
                   }}
-                  className={`hidden lg:block landscape:block bk-input h-9 text-center text-sm font-bold w-full tabular-nums [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
+                  className={`hidden lg:block landscape:block bk-input h-9 text-center text-sm font-bold w-full tabular-nums scroll-mt-[140px] scroll-mb-4 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
                     row.emi_status === "overdue"
                       ? "border-red-400 focus:ring-red-200"
                       : ""
@@ -788,7 +765,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {/* Misal Header — sticky below the page controls bar */}
       <button
         onClick={() => setExpanded((v) => !v)}
-        className={`w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors sm:sticky sm:top-14 z-20 ${expanded ? "rounded-t-xl" : "rounded-xl"}`}
+        className={`w-full flex items-center justify-between px-4 py-3 bg-muted/95 backdrop-blur-sm hover:bg-muted transition-colors sm:sticky sm:top-14 z-20 ${expanded ? "rounded-t-xl" : "rounded-xl"}`}
         data-testid={`misal-header-${misal.misal_id}`}
       >
         <div className="flex items-center gap-2">
@@ -809,7 +786,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {expanded && (
         <div className="divide-y divide-border/60">
           {/* Column Header — sticky below toggle */}
-          <div className="grid grid-cols-[52px_1fr_68px_80px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sm:sticky sm:top-[100px] z-10">
+          <div className="grid grid-cols-[52px_1fr_68px_80px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch bg-muted/95 backdrop-blur-sm border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sm:sticky sm:top-[100px] z-10">
             <span className="text-right pr-2 pl-3 py-2 self-center">EMI</span>
             <span className="pl-2 py-2 self-center">नाम / Name</span>
             {/* New columns — desktop or landscape */}
@@ -859,25 +836,16 @@ export default function CollectionSheet() {
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
-  // Single source of truth: collectDate drives both payment_date AND emi_month
-  const [collectDate, setCollectDate] = useState(() => new Date().toISOString().split("T")[0]);
-  // Derive the active EMI month and FY from the selected date — no separate state needed
-  const month = collectDate.slice(0, 7);                  // "YYYY-MM" → emi_month for API
-  const selectedFyStart = getFyStartFromDate(collectDate); // FY derived from date
+  // FY selector state — default to current FY
+  const [selectedFyStart, setSelectedFyStart] = useState(getCurrentFyStart);
+  // Derive the "active month" for API calls and Collect button from the selected FY
+  const month = getApiMonthForFy(selectedFyStart);
   const currentFyStart = getCurrentFyStart();
   // All FYs from 2019-20 up to the current FY (newest first)
   const availableFys = Array.from(
     { length: currentFyStart - 2019 + 1 },
     (_, i) => currentFyStart - i
   );
-  // Jump to a specific FY — updates collectDate to the right default date in that FY
-  const handleFyJump = useCallback((newFy) => {
-    if (newFy === getCurrentFyStart()) {
-      setCollectDate(new Date().toISOString().split("T")[0]);
-    } else {
-      setCollectDate(`${newFy + 1}-03-31`);
-    }
-  }, []);
 
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -885,6 +853,7 @@ export default function CollectionSheet() {
   const [notingRow, setNotingRow] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
   const [selectedMisalId, setSelectedMisalId] = useState("all");
+  const [collectDate, setCollectDate] = useState(new Date().toISOString().split("T")[0]);
   const [printModalOpen, setPrintModalOpen] = useState(false);
   // Per-misal blank rows map: { [misalId]: count }
   const [blankRowsMap, setBlankRowsMap] = useState({});
@@ -922,9 +891,60 @@ export default function CollectionSheet() {
   // Reset Misal filter whenever the Illaka or FY changes
   useEffect(() => { setSelectedMisalId("all"); }, [selectedIllaka, selectedFyStart]);
 
-  const handleCollected = (_loanDbId, _updatedLoan, _emiMonth, _collectedAmount) => {
-    silentFetch();
-  };
+  // ── Optimistic collection ────────────────────────────────────────────────
+  // Rapid Enter-entry can't wait for a round-trip per row, so a collection is
+  // painted into local state immediately and reconciled with the server after
+  // the operator pauses. `revert: true` undoes a row when its POST fails.
+  const applyCollectLocally = useCallback((loanDbId, emiMonth, amount, paymentDate, revert = false) => {
+    setData((prev) => {
+      if (!prev) return prev;
+      const updated = JSON.parse(JSON.stringify(prev));
+      const ym = (paymentDate || "").slice(0, 7);
+      for (const il of updated.illakas) {
+        for (const ms of il.misals) {
+          for (const row of ms.rows) {
+            if (row.loan_db_id !== loanDbId || row.emi_month !== emiMonth) continue;
+            if (revert) {
+              row.emi_status = row._prevEmiStatus ?? "pending";
+              row.emi_paid_amount = 0;
+              row.emi_paid_date = "";
+            } else {
+              row._prevEmiStatus = row.emi_status;
+              row.emi_status = "paid";
+              row.emi_paid_amount = amount;
+              row.emi_paid_date = paymentDate;
+            }
+            // Keep the 12-month strip in sync — cash lands in the payment month,
+            // which is also what the header total reads.
+            const cell = (row.emi_year_data || []).find((y) => y.month === ym);
+            if (cell) {
+              if (revert) {
+                cell.status = cell._prevStatus ?? "pending";
+                cell.paid_amount = cell._prevPaid ?? 0;
+              } else {
+                cell._prevStatus = cell.status;
+                cell._prevPaid = cell.paid_amount;
+                cell.status = "paid";
+                cell.paid_amount = amount;
+              }
+            }
+          }
+        }
+      }
+      return updated;
+    });
+  }, []);
+
+  // Reconcile with the server once entry pauses. Refetching after every single
+  // row would fight the optimistic state of rows still in flight and cause the
+  // sheet to flicker, so it's debounced.
+  const reconcileTimer = useRef(null);
+  useEffect(() => () => clearTimeout(reconcileTimer.current), []);
+
+  const handleCollected = useCallback(() => {
+    clearTimeout(reconcileTimer.current);
+    reconcileTimer.current = setTimeout(() => { silentFetch(); }, 1200);
+  }, [silentFetch]);
 
   const handleNoteSaved = (loanDbId, emiMonth, note) => {
     setData((prev) => {
@@ -1041,10 +1061,16 @@ export default function CollectionSheet() {
                 ))}
               </select>
             )}
-            <CollectDatePicker value={collectDate} onChange={setCollectDate} />
+            <input
+              type="date"
+              value={collectDate}
+              onChange={(e) => setCollectDate(e.target.value)}
+              className="bk-input h-9 py-0 text-sm w-[7.5rem]"
+              data-testid="global-collect-date"
+            />
             <select
               value={selectedFyStart}
-              onChange={(e) => handleFyJump(Number(e.target.value))}
+              onChange={(e) => setSelectedFyStart(Number(e.target.value))}
               className="bk-input h-9 py-0 pr-8 text-sm font-semibold"
               data-testid="fy-select"
             >
@@ -1084,12 +1110,18 @@ export default function CollectionSheet() {
               ))}
             </select>
           )}
-          {/* Line 2: Combined date picker + FY selector + Print */}
+          {/* Line 2: Date + FY selector + Print */}
           <div className="flex items-center gap-2">
-            <CollectDatePicker value={collectDate} onChange={setCollectDate} />
+            <input
+              type="date"
+              value={collectDate}
+              onChange={(e) => setCollectDate(e.target.value)}
+              className="bk-input h-9 py-0 text-sm flex-1 min-w-0"
+              data-testid="global-collect-date"
+            />
             <select
               value={selectedFyStart}
-              onChange={(e) => handleFyJump(Number(e.target.value))}
+              onChange={(e) => setSelectedFyStart(Number(e.target.value))}
               className="bk-input h-9 py-0 text-sm font-semibold shrink-0 w-24"
               data-testid="fy-select"
             >
@@ -1198,6 +1230,7 @@ export default function CollectionSheet() {
                     onEdit={setEditingRow}
                     collectDate={collectDate}
                     onCollected={handleCollected}
+                    onOptimisticCollect={applyCollectLocally}
                   />
                 ))}
               </div>

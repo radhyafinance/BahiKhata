@@ -425,7 +425,16 @@ async def get_collection_sheet(
             "relative_name_hindi":  (kyc.get("primary_borrower") or {}).get("relative_name_hindi") or "",
             "guarantor_name":       (kyc.get("guarantor") or {}).get("name") or "",
             "guarantor_name_hindi": (kyc.get("guarantor") or {}).get("name_hindi") or "",
-            "emi_amount":           emi.get("amount", 0),
+            # Show the loan's CONTRACTED instalment, not the schedule row's amount.
+            # A schedule's final instalment carries the left-over balance (e.g. a
+            # ₹2,000 EMI on a ₹500 remaining balance produces a single ₹500 row),
+            # and once a schedule ends the representative row falls back to that
+            # last amount — so the sheet reported ₹500 as the client's EMI.
+            # Gyal loans have no contracted EMI, so they keep the row amount.
+            "emi_amount":           (
+                emi.get("amount", 0) if loan.get("is_gyal")
+                else (float(loan.get("emi_amount") or 0) or emi.get("amount", 0))
+            ),
             "emi_month":            emi.get("due_month", month),
             "emi_status":           emi.get("status", "pending"),
             "emi_note":             emi.get("note") or "",
