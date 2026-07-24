@@ -227,7 +227,12 @@ class YearEndUndoRequest(BaseModel):
 
 
 class OpeningBalanceLine(BaseModel):
-    account_head_id: str
+    # Either point at an existing head…
+    account_head_id: Optional[str] = None
+    # …or name a party, and the head is created (or reused) on save.
+    # kind: "debtor" → Sundry Debtors (asset) | "creditor" → Sundry Creditors (liability)
+    new_head_name: Optional[str] = None
+    new_head_kind: Optional[str] = None
     debit: float = 0.0
     credit: float = 0.0
 

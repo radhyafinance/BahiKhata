@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Request
 from bson import ObjectId
 from datetime import datetime, timezone, date as date_type
 from typing import Optional, List
-import uuid
+import uuid, re
 from core.database import db
 from core.auth import get_current_user
 from helpers import _doc, create_journal_entry_internal, _get_maalik_illaka_ids, get_admin_maalik_filter_ids
@@ -425,6 +425,9 @@ async def get_cashbook(
                     })
                 if cash_cr > 0:
                     contra = [l for l in entry["lines"] if l.get("account_head_id") != cash_head_id]
+                    # Keep the contra head's identity so payments can be grouped
+                    # into an "Expenses" section (total + breakup) below.
+                    _exp = next((l for l in contra if l.get("group_type") == "expense"), None)
                     cr_raw.append({
                         "entry_id": str(entry["_id"]),
                         "date": entry["date"],
@@ -432,6 +435,8 @@ async def get_cashbook(
                         "entry_type": entry.get("entry_type", "manual"),
                         "amount": cash_cr,
                         "contra_account": ", ".join(l.get("account_head_name", "") for l in contra),
+                        "expense_head_id": (_exp or {}).get("account_head_id", ""),
+                        "expense_head_name": (_exp or {}).get("account_head_name", ""),
                     })
 
     # Group EMI receipts by Misal for the left column
@@ -450,6 +455,13 @@ async def get_cashbook(
         misal_map[mid]["entries"].append(e)
 
     dr_sections = []
+    # An opening-balance entry belongs at the TOP of the receipts side, the way a
+    # cash book reads ("To Balance b/d" first). It used to fall in with the other
+    # entries after the EMI group and so rendered at the very bottom.
+    ob_dr = [e for e in other_dr if e["entry_type"] == "opening_balance"]
+    other_dr = [e for e in other_dr if e["entry_type"] != "opening_balance"]
+    for e in ob_dr:
+        dr_sections.append({"type": "regular", **e})
     if emi_entries:
         dr_sections.append({
             "type": "emi_group",
@@ -460,6 +472,29 @@ async def get_cashbook(
     for e in other_dr:
         dr_sections.append({"type": "regular", **e})
 
+    # ── Payments side: roll expenses up into one section with a breakup ────────
+    exp_rows = [e for e in cr_raw if e.get("expense_head_id")]
+    non_exp = [e for e in cr_raw if not e.get("expense_head_id")]
+    cr_sections = []
+    for e in non_exp:
+        cr_sections.append({"type": "regular", **e})
+    if exp_rows:
+        head_map: dict = {}
+        head_order: list = []
+        for e in exp_rows:
+            hid = e["expense_head_id"]
+            if hid not in head_map:
+                head_map[hid] = {"head_id": hid, "head_name": e["expense_head_name"], "total": 0.0, "entries": []}
+                head_order.append(hid)
+            head_map[hid]["total"] = round(head_map[hid]["total"] + e["amount"], 2)
+            head_map[hid]["entries"].append(e)
+        cr_sections.append({
+            "type": "expense_group",
+            "label": "Expenses",
+            "total": round(sum(e["amount"] for e in exp_rows), 2),
+            "heads": [head_map[h] for h in head_order],
+        })
+
     total_receipts = round(sum(e["amount"] for e in dr_raw), 2)
     total_payments = round(sum(e["amount"] for e in cr_raw), 2)
     return {
@@ -467,6 +502,7 @@ async def get_cashbook(
         "opening_balance": round(opening_balance, 2),
         "dr_sections": dr_sections,
         "cr_entries": cr_raw,
+        "cr_sections": cr_sections,
         "total_receipts": total_receipts,
         "total_payments": total_payments,
         "closing_balance": round(running if (dr_raw or cr_raw) else opening_balance, 2),
@@ -514,6 +550,17 @@ async def get_bid(
     opening_balance = 0.0
     if cash_head_id:
         for e in prev_entries:
+            for line in e.get("lines", []):
+                if line.get("account_head_id") == cash_head_id:
+                    opening_balance += float(line.get("debit", 0)) - float(line.get("credit", 0))
+        # An opening-balance entry dated INSIDE this month is the month's opening
+        # cash, not a receipt. It is skipped in the transaction loop below, so
+        # fold it in here — otherwise this month's closing understates the cash
+        # and the next month opens on a different figure than this one closed.
+        ob_this_month = await db.journal_entries.find(
+            {**query, "entry_type": "opening_balance"}
+        ).to_list(100)
+        for e in ob_this_month:
             for line in e.get("lines", []):
                 if line.get("account_head_id") == cash_head_id:
                     opening_balance += float(line.get("debit", 0)) - float(line.get("credit", 0))
@@ -604,7 +651,11 @@ async def get_bid(
                     hname = c.get("account_head_name", "Other Expense")
                     gname = c.get("group_name", "")
                     if hid not in cr_head_map:
-                        cr_head_map[hid] = {"account_head_name": hname, "group_name": gname, "total": 0.0, "sort_order": 1}
+                        cr_head_map[hid] = {
+                            "account_head_name": hname, "group_name": gname,
+                            "group_type": c.get("group_type", ""),
+                            "total": 0.0, "sort_order": 1,
+                        }
                     cr_head_map[hid]["total"] = round(
                         cr_head_map[hid]["total"] + float(c.get("debit", 0)), 2
                     )
@@ -627,6 +678,22 @@ async def get_bid(
         key=lambda x: (x.get("sort_order", 1), x["group_name"])
     )
 
+    # Roll expense heads up into a single "Expenses" line carrying its own
+    # breakup, so the Bid shows the total and the detail rather than a flat list.
+    exp_heads = [h for h in cr_totals if h.get("group_type") == "expense"]
+    cr_display = [h for h in cr_totals if h.get("group_type") != "expense"]
+    if exp_heads:
+        cr_display.append({
+            "type": "expense_group",
+            "account_head_name": "Expenses",
+            "group_name": "Expenses",
+            "total": round(sum(h["total"] for h in exp_heads), 2),
+            "breakdown": [
+                {"account_head_name": h["account_head_name"], "group_name": h["group_name"], "total": h["total"]}
+                for h in sorted(exp_heads, key=lambda x: -x["total"])
+            ],
+        })
+
     total_dr = round(sum(item["total"] for item in dr_totals), 2)
     total_cr = round(sum(h["total"] for h in cr_totals), 2)
     closing = round(opening_balance + total_dr - total_cr, 2)
@@ -635,7 +702,7 @@ async def get_bid(
         "month": month,
         "opening_balance": round(opening_balance, 2),
         "dr_totals": dr_totals,
-        "cr_totals": list(cr_totals),
+        "cr_totals": cr_display,
         "total_dr": total_dr,
         "total_cr": total_cr,
         "closing_balance": closing,
@@ -861,6 +928,99 @@ async def get_balance_sheet(
 # ── Opening Balance ────────────────────────────────────────────────────────────
 
 
+PARTY_GROUPS = {
+    "debtor":   {"name": "Sundry Debtors",   "type": "asset",     "nature": "debit",  "display_order": 45},
+    "creditor": {"name": "Sundry Creditors", "type": "liability", "nature": "credit", "display_order": 25},
+}
+
+
+async def _find_or_create_party_head(name: str, kind: str, created_by: str) -> dict:
+    """Return the account head for a named sundry debtor/creditor, creating the
+    head (and its group, first time round) if it doesn't exist yet.
+
+    Matching is case-insensitive on the name within the group, so re-entering
+    "Ramesh Traders" reuses the same head instead of duplicating the party.
+    """
+    name = (name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="Party name cannot be empty")
+    spec = PARTY_GROUPS.get(kind)
+    if not spec:
+        raise HTTPException(status_code=400, detail=f"Unknown party kind: {kind}")
+
+    group = await db.account_groups.find_one({"name": spec["name"]})
+    if not group:
+        res = await db.account_groups.insert_one({
+            "name": spec["name"],
+            "type": spec["type"],
+            "nature": spec["nature"],
+            "display_order": spec["display_order"],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        })
+        group = await db.account_groups.find_one({"_id": res.inserted_id})
+
+    existing = await db.account_heads.find_one({
+        "group_name": spec["name"],
+        "name": {"$regex": f"^{re.escape(name)}$", "$options": "i"},
+    })
+    if existing:
+        if existing.get("is_active") is False:
+            await db.account_heads.update_one({"_id": existing["_id"]}, {"$set": {"is_active": True}})
+            existing["is_active"] = True
+        return existing
+
+    doc = {
+        "name": name,
+        "group_id": str(group["_id"]),
+        "group_name": group["name"],
+        "group_type": group["type"],
+        "is_system": False,
+        "system_key": None,
+        "is_active": True,
+        "created_by": created_by,
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+    res = await db.account_heads.insert_one(doc)
+    doc["_id"] = res.inserted_id
+    return doc
+
+
+@router.get("/accounts/aasami-balance")
+async def get_aasami_balance(
+    request: Request,
+    illaka_id: Optional[str] = None,
+    maalik_id: Optional[str] = None,
+):
+    """Total outstanding across live client loans — the Aasami Khata figure used
+    to pre-fill Loans Portfolio (Sundry Debtors) on the opening balance.
+
+    Outstanding = total_repayable - total_paid, over loans that are still live
+    (active/overdue). Gyal (written-off) loans are excluded — they are carried
+    under Bad Debt, not the loan portfolio.
+    """
+    current_user = await get_current_user(request)
+    query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
+    query["status"] = {"$in": ["active", "overdue"]}
+    query["is_gyal"] = {"$ne": True}
+
+    loans = await db.loans.find(
+        query, {"total_repayable": 1, "total_paid": 1, "emi_amount": 1}
+    ).to_list(20000)
+
+    total = 0.0
+    for ln in loans:
+        repayable = float(ln.get("total_repayable") or 0)
+        paid = float(ln.get("total_paid") or 0)
+        total += max(0.0, repayable - paid)
+
+    head = await db.account_heads.find_one({"system_key": "loans_portfolio"})
+    return {
+        "total": round(total, 2),
+        "loan_count": len(loans),
+        "account_head_id": str(head["_id"]) if head else None,
+    }
+
+
 @router.get("/accounts/opening-balance")
 async def get_opening_balance(
     request: Request,
@@ -916,12 +1076,21 @@ async def create_opening_balance(data: OpeningBalanceCreate, request: Request):
         cr = round(float(line.credit), 2)
         if dr == 0.0 and cr == 0.0:
             continue
-        try:
-            head = await db.account_heads.find_one({"_id": ObjectId(line.account_head_id)})
-        except Exception:
-            raise HTTPException(status_code=400, detail=f"Invalid account head: {line.account_head_id}")
-        if not head:
-            raise HTTPException(status_code=404, detail=f"Account head not found: {line.account_head_id}")
+
+        # A named party creates (or reuses) a real account head, so the party
+        # shows up in the Trial Balance / Balance Sheet and can be posted to
+        # again later — not just a label on this one entry.
+        if not line.account_head_id and line.new_head_name:
+            head = await _find_or_create_party_head(
+                line.new_head_name, line.new_head_kind or "debtor", current_user["id"]
+            )
+        else:
+            try:
+                head = await db.account_heads.find_one({"_id": ObjectId(line.account_head_id)})
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"Invalid account head: {line.account_head_id}")
+            if not head:
+                raise HTTPException(status_code=404, detail=f"Account head not found: {line.account_head_id}")
         lines.append({
             "account_head_id": str(head["_id"]),
             "account_head_name": head["name"],

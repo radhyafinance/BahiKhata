@@ -30,16 +30,24 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
 
   const drSections = data?.dr_sections || [];
   const crEntries = data?.cr_entries || [];
+  // Payments grouped as {regular…, expense_group}; fall back to the flat list
+  // if an older backend is still serving cr_entries only.
+  const crSections = data?.cr_sections || crEntries.map((e) => ({ type: "regular", ...e }));
+  const openingBal = data?.opening_balance || 0;
+  const closingBal = data?.closing_balance || 0;
+  // A cash book reads "To Balance b/d" first and "By Balance c/d" last, so both
+  // sides foot to the same figure.
+  const drFooting = Math.round(((data?.total_receipts || 0) + openingBal) * 100) / 100;
 
   return (
     <div>
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[
-          { label: "Opening Balance", value: data?.opening_balance, icon: BookOpen, color: "text-slate-600" },
+          { label: "Opening Cash", value: data?.opening_balance, icon: BookOpen, color: "text-slate-600" },
           { label: "Total Receipts", value: data?.total_receipts, icon: ArrowUpCircle, color: "text-green-600" },
           { label: "Total Payments", value: data?.total_payments, icon: ArrowDownCircle, color: "text-red-600" },
-          { label: "Closing Balance", value: data?.closing_balance, icon: IndianRupee, color: "text-primary" },
+          { label: "Closing Cash", value: data?.closing_balance, icon: IndianRupee, color: "text-primary" },
         ].map(({ label, value, icon: Icon, color }) => (
           <div key={label} className="bg-card border border-border rounded-xl p-4">
             <div className={`flex items-center gap-2 ${color} mb-1`}>
@@ -70,6 +78,16 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
             </div>
 
             <div className="divide-y divide-border">
+              {/* Opening balance carried forward — always the first receipt line */}
+              {openingBal !== 0 && (
+                <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 dark:bg-slate-900/30">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate">To Opening Cash b/d</p>
+                    <p className="text-xs text-muted-foreground">Carried forward</p>
+                  </div>
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-300 ml-2">{fmt(openingBal)}</span>
+                </div>
+              )}
               {drSections.map((section, idx) => {
                 if (section.type === "emi_group") {
                   return (
@@ -145,8 +163,8 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
             </div>
 
             <div className="px-4 py-3 bg-green-50/50 border-t border-border flex justify-between">
-              <span className="text-xs font-bold text-muted-foreground">TOTAL RECEIPTS</span>
-              <span className="font-bold text-green-700">{fmt(data?.total_receipts)}</span>
+              <span className="text-xs font-bold text-muted-foreground">TOTAL</span>
+              <span className="font-bold text-green-700">{fmt(drFooting)}</span>
             </div>
           </div>
 
@@ -161,41 +179,101 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
             </div>
 
             <div className="divide-y divide-border">
-              {crEntries.map((e) => (
-                <div key={e.entry_id || `${e.date}-${e.narration}-${e.amount}`} className="flex items-center justify-between px-4 py-2.5">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate">{e.narration}</p>
-                    <p className="text-xs text-muted-foreground">{e.date} · {e.contra_account}</p>
-                  </div>
-                  <div className="flex items-center gap-2 ml-2">
-                    <span className="text-sm font-bold text-red-700">{fmt(e.amount)}</span>
-                    {canAct && (
-                      <div className="flex gap-0.5">
-                        {e.entry_type === "expense_voucher" && (
-                          <button onClick={() => onEdit(e.entry_id)}
-                            className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors"
-                            title="Edit entry" data-testid={`edit-entry-${e.entry_id}`}>
-                            <Edit3 size={12} />
-                          </button>
-                        )}
-                        <button onClick={() => onDelete(e.entry_id)}
-                          className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
-                          title="Delete entry" data-testid={`delete-entry-${e.entry_id}`}>
-                          <Trash2 size={12} />
-                        </button>
+              {crSections.map((section, idx) => {
+                if (section.type === "expense_group") {
+                  return (
+                    <div key={`exp-${idx}`} className="p-3">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-bold">Expenses</span>
+                        <span className="text-sm font-bold text-red-700">{fmt(section.total)}</span>
                       </div>
-                    )}
+                      {section.heads?.map((h, hi) => (
+                        <div key={hi} className="ml-4 mb-2">
+                          <div className="flex items-center justify-between py-1">
+                            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate max-w-[180px]">
+                              {h.head_name}
+                            </span>
+                            <span className="text-xs font-bold text-red-600">{fmt(h.total)}</span>
+                          </div>
+                          {h.entries?.map((e, ei) => (
+                            <div key={ei} className="flex items-center justify-between py-0.5 ml-2">
+                              <span className="text-xs text-muted-foreground truncate max-w-[160px]">
+                                {e.narration || e.date}
+                              </span>
+                              <div className="flex items-center gap-1">
+                                <span className="text-xs font-medium">{fmt(e.amount)}</span>
+                                {canAct && (
+                                  <div className="flex gap-0.5">
+                                    {e.entry_type === "expense_voucher" && (
+                                      <button onClick={() => onEdit(e.entry_id)}
+                                        className="p-0.5 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                                        title="Edit entry" data-testid={`edit-entry-${e.entry_id}`}>
+                                        <Edit3 size={11} />
+                                      </button>
+                                    )}
+                                    <button onClick={() => onDelete(e.entry_id)}
+                                      className="p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                                      title="Delete entry" data-testid={`delete-entry-${e.entry_id}`}>
+                                      <Trash2 size={11} />
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                }
+                const e = section;
+                return (
+                  <div key={e.entry_id || `${e.date}-${e.narration}-${e.amount}`} className="flex items-center justify-between px-4 py-2.5">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{e.narration}</p>
+                      <p className="text-xs text-muted-foreground">{e.date} · {e.contra_account}</p>
+                    </div>
+                    <div className="flex items-center gap-2 ml-2">
+                      <span className="text-sm font-bold text-red-700">{fmt(e.amount)}</span>
+                      {canAct && (
+                        <div className="flex gap-0.5">
+                          {e.entry_type === "expense_voucher" && (
+                            <button onClick={() => onEdit(e.entry_id)}
+                              className="p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 rounded transition-colors"
+                              title="Edit entry" data-testid={`edit-entry-${e.entry_id}`}>
+                              <Edit3 size={12} />
+                            </button>
+                          )}
+                          <button onClick={() => onDelete(e.entry_id)}
+                            className="p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
+                            title="Delete entry" data-testid={`delete-entry-${e.entry_id}`}>
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {crEntries.length === 0 && (
+                );
+              })}
+              {crSections.length === 0 && (
                 <div className="px-4 py-8 text-center text-sm text-muted-foreground">No payments</div>
               )}
+
+              {/* Closing cash closes the payments side, so both columns foot equal */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-primary/5">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold truncate">By Closing Cash c/d</p>
+                  <p className="text-xs text-muted-foreground">Cash in hand at month end</p>
+                </div>
+                <span className={`text-sm font-bold ml-2 ${closingBal >= 0 ? "text-primary" : "text-destructive"}`}>
+                  {fmt(closingBal)}
+                </span>
+              </div>
             </div>
 
             <div className="px-4 py-3 bg-red-50/50 border-t border-border flex justify-between">
-              <span className="text-xs font-bold text-muted-foreground">TOTAL PAYMENTS</span>
-              <span className="font-bold text-red-700">{fmt(data?.total_payments)}</span>
+              <span className="text-xs font-bold text-muted-foreground">TOTAL</span>
+              <span className="font-bold text-red-700">{fmt(Math.round(((data?.total_payments || 0) + closingBal) * 100) / 100)}</span>
             </div>
           </div>
         </div>
@@ -204,7 +282,7 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
       {/* Closing balance bar */}
       {(drSections.length > 0 || crEntries.length > 0) && (
         <div className={`mt-3 flex items-center justify-between px-5 py-3 rounded-xl border-2 ${(data?.closing_balance || 0) >= 0 ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5"}`}>
-          <span className="font-bold text-sm">Closing Balance</span>
+          <span className="font-bold text-sm">Closing Cash</span>
           <span className={`text-xl font-bold ${(data?.closing_balance || 0) >= 0 ? "text-primary" : "text-destructive"}`}>
             {fmt(data?.closing_balance)}
           </span>

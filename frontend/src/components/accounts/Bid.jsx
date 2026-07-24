@@ -30,16 +30,21 @@ export function Bid({ month, illakaId, maalikId, refresh }) {
   const drTotals = data?.dr_totals || [];
   const crTotals = data?.cr_totals || [];
   const isEmpty = drTotals.length === 0 && crTotals.length === 0;
+  const openingBal = data?.opening_balance || 0;
+  const closingBal = data?.closing_balance || 0;
+  // Both columns foot to the same figure once b/d and c/d are included.
+  const drFooting = Math.round(((data?.total_dr || 0) + openingBal) * 100) / 100;
+  const crFooting = Math.round(((data?.total_cr || 0) + closingBal) * 100) / 100;
 
   return (
     <div>
       {/* Header summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
         {[
-          { label: "Opening Balance", value: data?.opening_balance, color: "text-slate-600", icon: BookOpen },
+          { label: "Opening Cash", value: data?.opening_balance, color: "text-slate-600", icon: BookOpen },
           { label: "Total Receipts", value: data?.total_dr, color: "text-green-600", icon: ArrowUpCircle },
           { label: "Total Payments", value: data?.total_cr, color: "text-red-600", icon: ArrowDownCircle },
-          { label: "Closing Balance", value: data?.closing_balance, color: (data?.closing_balance || 0) >= 0 ? "text-primary" : "text-destructive", icon: IndianRupee },
+          { label: "Closing Cash", value: data?.closing_balance, color: (data?.closing_balance || 0) >= 0 ? "text-primary" : "text-destructive", icon: IndianRupee },
         ].map(({ label, value, color, icon: Icon }) => (
           <div key={label} className="bg-card border border-border rounded-xl p-4">
             <div className={`flex items-center gap-2 ${color} mb-1`}>
@@ -68,6 +73,16 @@ export function Bid({ month, illakaId, maalikId, refresh }) {
               <span className="font-bold text-green-700">{fmt(data?.total_dr)}</span>
             </div>
             <div className="divide-y divide-border">
+              {/* Opening balance leads the receipts side, as a cash book reads */}
+              {openingBal !== 0 && (
+                <div className="flex items-center justify-between px-4 py-3 bg-slate-50 dark:bg-slate-900/30">
+                  <div>
+                    <p className="text-sm font-semibold">To Opening Cash b/d</p>
+                    <p className="text-xs text-muted-foreground">Carried forward</p>
+                  </div>
+                  <span className="font-bold text-slate-700 dark:text-slate-300">{fmt(openingBal)}</span>
+                </div>
+              )}
               {drTotals.map((item, i) => (
                 <div key={item.type === "emi_total" ? "emi_total" : (item.label || i)} className="p-4">
                   {item.type === "emi_total" ? (
@@ -98,7 +113,7 @@ export function Bid({ month, illakaId, maalikId, refresh }) {
             </div>
             <div className="px-4 py-3 bg-green-50/50 border-t border-border flex justify-between">
               <span className="text-xs font-bold text-muted-foreground">TOTAL</span>
-              <span className="font-bold text-green-700">{fmt(data?.total_dr)}</span>
+              <span className="font-bold text-green-700">{fmt(drFooting)}</span>
             </div>
           </div>
 
@@ -113,19 +128,43 @@ export function Bid({ month, illakaId, maalikId, refresh }) {
             </div>
             <div className="divide-y divide-border">
               {crTotals.map((item) => (
-                <div key={item.account_head_name} className="flex items-center justify-between px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium">{item.account_head_name}</p>
-                    <p className="text-xs text-muted-foreground">{item.group_name}</p>
+                item.type === "expense_group" ? (
+                  <div key="expense_group" className="p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-bold text-sm">Expenses</span>
+                      <span className="font-bold text-red-700">{fmt(item.total)}</span>
+                    </div>
+                    {item.breakdown?.map((b, bi) => (
+                      <div key={bi} className="flex items-center justify-between ml-5 py-0.5">
+                        <span className="text-xs text-muted-foreground truncate max-w-[200px]">{b.account_head_name}</span>
+                        <span className="text-xs font-semibold text-red-600">{fmt(b.total)}</span>
+                      </div>
+                    ))}
                   </div>
-                  <span className="font-bold text-red-700">{fmt(item.total)}</span>
-                </div>
+                ) : (
+                  <div key={item.account_head_name} className="flex items-center justify-between px-4 py-3">
+                    <div>
+                      <p className="text-sm font-medium">{item.account_head_name}</p>
+                      <p className="text-xs text-muted-foreground">{item.group_name}</p>
+                    </div>
+                    <span className="font-bold text-red-700">{fmt(item.total)}</span>
+                  </div>
+                )
               ))}
               {crTotals.length === 0 && <div className="px-4 py-8 text-center text-sm text-muted-foreground">No payments</div>}
+
+              {/* Closing cash closes the payments side */}
+              <div className="flex items-center justify-between px-4 py-3 bg-primary/5">
+                <div>
+                  <p className="text-sm font-semibold">By Closing Cash c/d</p>
+                  <p className="text-xs text-muted-foreground">Cash in hand at month end</p>
+                </div>
+                <span className={`font-bold ${closingBal >= 0 ? "text-primary" : "text-destructive"}`}>{fmt(closingBal)}</span>
+              </div>
             </div>
             <div className="px-4 py-3 bg-red-50/50 border-t border-border flex justify-between">
               <span className="text-xs font-bold text-muted-foreground">TOTAL</span>
-              <span className="font-bold text-red-700">{fmt(data?.total_cr)}</span>
+              <span className="font-bold text-red-700">{fmt(crFooting)}</span>
             </div>
           </div>
         </div>
@@ -134,7 +173,7 @@ export function Bid({ month, illakaId, maalikId, refresh }) {
       {/* Closing balance */}
       {!isEmpty && (
         <div className={`mt-3 flex items-center justify-between px-5 py-3 rounded-xl border-2 ${(data?.closing_balance || 0) >= 0 ? "border-primary/30 bg-primary/5" : "border-destructive/30 bg-destructive/5"}`}>
-          <span className="font-bold text-sm">Closing Balance</span>
+          <span className="font-bold text-sm">Closing Cash</span>
           <span className={`text-xl font-bold ${(data?.closing_balance || 0) >= 0 ? "text-primary" : "text-destructive"}`}>
             {fmt(data?.closing_balance)}
           </span>
