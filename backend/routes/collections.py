@@ -421,14 +421,40 @@ async def get_collection_sheet(
                 if not schedule:
                     continue
                 rep_emi = schedule[0] if (loan_disbursed_in_fy and not loan_has_fy_emi) else schedule[-1]
-                emi = {
-                    "due_month":    rep_emi.get("due_month", month),
-                    "amount":       rep_emi.get("amount", 0),
-                    "status":       rep_emi.get("status", "pending"),
-                    "note":         rep_emi.get("note", ""),
-                    "paid_amount":  float(rep_emi.get("paid_amount") or 0),
-                    "paid_date":    rep_emi.get("paid_date", ""),
-                }
+
+                # If the client still owes money, the row has to stay collectable
+                # in THIS month. Borrowing the representative entry's own month and
+                # status meant that once the last scheduled EMI was paid, the client
+                # read as "collected" in every later month and no further entry
+                # could be made — which is what happens to opening-balance imports
+                # as soon as their short schedule runs out.
+                _repayable = float(loan.get("total_repayable") or 0)
+                _paid_all = sum(
+                    float(e.get("paid_amount") or 0)
+                    for e in schedule if e.get("status") == "paid"
+                )
+                _remaining = round(_repayable - _paid_all, 2)
+
+                if _remaining > 0.01:
+                    emi = {
+                        "due_month":    month,
+                        "amount":       float(loan.get("emi_amount") or rep_emi.get("amount", 0)),
+                        "status":       "overdue" if month < f"{date_type.today().year}-{date_type.today().month:02d}" else "pending",
+                        "note":         "",
+                        "paid_amount":  0.0,
+                        "paid_date":    "",
+                        "is_extra_entry": True,   # beyond the original schedule
+                    }
+                else:
+                    # Settled loan — leave it showing its final scheduled entry.
+                    emi = {
+                        "due_month":    rep_emi.get("due_month", month),
+                        "amount":       rep_emi.get("amount", 0),
+                        "status":       rep_emi.get("status", "pending"),
+                        "note":         rep_emi.get("note", ""),
+                        "paid_amount":  float(rep_emi.get("paid_amount") or 0),
+                        "paid_date":    rep_emi.get("paid_date", ""),
+                    }
 
         loan_illaka_id = loan.get("illaka_id", "unknown")
         misal_id       = loan.get("misal_id", "unknown")
@@ -513,17 +539,34 @@ async def get_collection_sheet(
 
     # ── Re-sort rows: display_order (import order) first, then loan_date ────────
     # Combined net-off rows use prev_loan_date as sort key when no display_order.
+    # loan_db_id is the final tiebreaker so the order is fully determined. Loans
+    # created outside an import carry no display_order and can share a loan_date;
+    # without this their relative order would come from whatever Mongo returned,
+    # which would make the serial numbers below shuffle between loads.
     def _row_sort_key(r: dict) -> tuple:
         do = r.get("display_order")
+        lid = r.get("loan_db_id") or ""
         if do is not None:
-            return (0, do, "")
+            return (0, do, "", lid)
         if r.get("is_netoff_combined") and r.get("prev_loan_date"):
-            return (1, 0, r["prev_loan_date"])
-        return (1, 0, r.get("loan_date") or "")
+            return (1, 0, r["prev_loan_date"], lid)
+        return (1, 0, r.get("loan_date") or "", lid)
 
     for il_id in illaka_order:
         for m_id in misal_order[il_id]:
-            illakas_map[il_id]["misals"][m_id]["rows"].sort(key=_row_sort_key)
+            _rows = illakas_map[il_id]["misals"][m_id]["rows"]
+            _rows.sort(key=_row_sort_key)
+            # Serial numbers run per misal, in display order. Gyal rows are listed
+            # separately at the foot of the misal, so they carry their own sequence.
+            _n_reg = 0
+            _n_gyal = 0
+            for _r in _rows:
+                if _r.get("is_gyal"):
+                    _n_gyal += 1
+                    _r["serial_no"] = _n_gyal
+                else:
+                    _n_reg += 1
+                    _r["serial_no"] = _n_reg
 
     # ── Sort misals by display_order (import order), then by name ────────────
     for il_id in illaka_order:

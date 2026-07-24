@@ -245,20 +245,47 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     emi_item = next((e for e in schedule if e["due_month"] == data.emi_month), None)
     if not emi_item:
         if not doc.get("is_gyal"):
-            raise HTTPException(status_code=404, detail=f"EMI month {data.emi_month} not found in loan schedule")
-        # Gyal loan — add a synthetic entry for this month so collection can be recorded
-        emi_item = {
-            "month": len(schedule) + 1,
-            "due_month": data.emi_month,
-            "amount": 0,
-            "status": "pending",
-            "paid_amount": 0.0,
-            "paid_date": None,
-            "collected_by_id": None,
-            "collected_by_name": None,
-            "is_gyal_entry": True,
-        }
-        schedule.append(emi_item)
+            # A client can keep paying after the original schedule runs out — very
+            # common for opening-balance imports, whose schedules are only a few
+            # months long. As long as money is still owed, accept the collection
+            # and extend the schedule with an entry for that month. Without this
+            # the sheet offers the row but the save 404s.
+            _repayable = float(doc.get("total_repayable") or 0)
+            _paid_all = sum(
+                float(e.get("paid_amount") or 0)
+                for e in schedule if e.get("status") == "paid"
+            )
+            if round(_repayable - _paid_all, 2) <= 0.01:
+                raise HTTPException(
+                    status_code=400,
+                    detail="This loan is fully repaid / यह क़र्ज़ पूरा चुक गया है",
+                )
+            emi_item = {
+                "month": len(schedule) + 1,
+                "due_month": data.emi_month,
+                "amount": float(doc.get("emi_amount") or 0),
+                "status": "pending",
+                "paid_amount": 0.0,
+                "paid_date": None,
+                "collected_by_id": None,
+                "collected_by_name": None,
+                "is_extra_entry": True,
+            }
+            schedule.append(emi_item)
+        else:
+            # Gyal loan — add a synthetic entry for this month so collection can be recorded
+            emi_item = {
+                "month": len(schedule) + 1,
+                "due_month": data.emi_month,
+                "amount": 0,
+                "status": "pending",
+                "paid_amount": 0.0,
+                "paid_date": None,
+                "collected_by_id": None,
+                "collected_by_name": None,
+                "is_gyal_entry": True,
+            }
+            schedule.append(emi_item)
     if emi_item["status"] == "paid":
         raise HTTPException(status_code=400, detail="This EMI is already paid / यह किस्त पहले से चुकाई जा चुकी है")
     # Fix: use `is not None` so that 0 is treated as a valid explicit amount

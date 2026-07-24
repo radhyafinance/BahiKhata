@@ -476,7 +476,13 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         }`}
         data-testid={`collection-row-${row.loan_db_id}`}
       >
-        <div className="grid grid-cols-[52px_1fr_68px_80px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch text-sm">
+        <div className="grid grid-cols-[30px_52px_1fr_68px_80px] lg:grid-cols-[30px_52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[30px_52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch text-sm">
+          {/* Serial no — per misal, in display order (Gyal numbered separately) */}
+          <div className="flex items-center justify-center py-3 flex-shrink-0">
+            <span className="text-[11px] tabular-nums font-semibold text-muted-foreground">
+              {row.serial_no ?? ""}
+            </span>
+          </div>
           {/* EMI Amount */}
           <div className="text-right pr-2 pl-3 py-3 flex flex-col justify-center flex-shrink-0">
             {/* Older ancestor EMIs (3+ level chains) — oldest first, all strikethrough */}
@@ -804,11 +810,16 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                       if (amount > 0) {
                         onOptimisticCollect(row.loan_db_id, row.emi_month, amount, collectDate, true);
                       }
-                      inputEl.dataset.busy = "";
                       toast.error(
                         `${row.client_name_hindi || row.client_name}: ${err.response?.data?.detail || "Failed to collect"}`,
                         { duration: 8000 }
                       );
+                    }).finally(() => {
+                      // Release the row once the request settles, on success as well
+                      // as failure. A ₹0 entry leaves the row unpainted and its input
+                      // mounted, so a flag left set here would lock that row for good
+                      // — you could never correct an amount entered as 0 by mistake.
+                      inputEl.dataset.busy = "";
                     });
                   }}
                   className={`hidden lg:block landscape:block bk-input h-9 text-center text-sm font-bold w-full tabular-nums scroll-mt-[140px] scroll-mb-4 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${
@@ -877,7 +888,8 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
       {expanded && (
         <div className="divide-y divide-border/60">
           {/* Column Header — sticky below toggle */}
-          <div className="grid grid-cols-[52px_1fr_68px_80px] lg:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch bg-muted/95 backdrop-blur-sm border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sm:sticky sm:top-[100px] z-10">
+          <div className="grid grid-cols-[30px_52px_1fr_68px_80px] lg:grid-cols-[30px_52px_130px_88px_88px_1fr_68px_80px] landscape:grid-cols-[30px_52px_130px_88px_88px_1fr_68px_80px] gap-0 items-stretch bg-muted/95 backdrop-blur-sm border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider sm:sticky sm:top-[100px] z-10">
+            <span className="text-center py-2 self-center">#</span>
             <span className="text-right pr-2 pl-3 py-2 self-center">EMI</span>
             <span className="pl-2 py-2 self-center">नाम / Name</span>
             {/* New columns — desktop or landscape */}
