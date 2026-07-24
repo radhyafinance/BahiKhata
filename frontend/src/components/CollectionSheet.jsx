@@ -585,10 +585,21 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
           <div className="hidden lg:flex landscape:flex self-stretch border-x border-border divide-x divide-border/50">
             {(row.emi_year_data || []).map((yd) => {
               const isCurr = yd.month === month;
+              // A ₹0 entry is a recorded visit where nothing was collected. The
+              // EMI stays unpaid, so without this the cell is indistinguishable
+              // from a client nobody went to.
+              const visited = yd.visited && yd.status !== "paid";
+              const visitTitle = "Visited — nothing collected (₹0)";
 
               if (yd.status === "na") {
                 return (
-                  <div key={yd.month} className={`flex-1 ${isCurr ? "bg-primary/5" : "bg-muted/10"}`} />
+                  <div
+                    key={yd.month}
+                    title={visited ? visitTitle : undefined}
+                    className={`flex-1 flex items-center justify-center ${isCurr ? "bg-primary/5" : "bg-muted/10"}`}
+                  >
+                    {visited && <span className="w-2 h-2 rounded-full border-2 border-slate-400" />}
+                  </div>
                 );
               }
               if (yd.status === "paid") {
@@ -630,15 +641,26 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               }
               if (yd.status === "overdue") {
                 return (
-                  <div key={yd.month} className={`flex-1 flex items-center justify-center ${isCurr ? "bg-red-100" : ""}`}>
-                    <span className="text-red-400 text-base font-bold">!</span>
+                  <div
+                    key={yd.month}
+                    title={visited ? visitTitle : undefined}
+                    className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${isCurr ? "bg-red-100" : ""}`}
+                  >
+                    <span className="text-red-400 text-base font-bold leading-none">!</span>
+                    {visited && <span className="w-2 h-2 rounded-full border-2 border-slate-400" />}
                   </div>
                 );
               }
               // pending
               return (
-                <div key={yd.month} className={`flex-1 flex items-center justify-center ${isCurr ? "bg-primary/5" : ""}`}>
-                  <span className="text-muted-foreground/20 text-xl leading-none">·</span>
+                <div
+                  key={yd.month}
+                  title={visited ? visitTitle : undefined}
+                  className={`flex-1 flex items-center justify-center ${isCurr ? "bg-primary/5" : ""}`}
+                >
+                  {visited
+                    ? <span className="w-2 h-2 rounded-full border-2 border-slate-400" />
+                    : <span className="text-muted-foreground/20 text-xl leading-none">·</span>}
                 </div>
               );
             })}

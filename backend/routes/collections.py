@@ -49,7 +49,8 @@ def _compute_fy_balances(schedule: list, fy_months: list, total_repayable: float
 
 
 def _build_emi_year_strip(
-    schedule: list, fy_months: list, is_gyal: bool, gyal_year_data: dict
+    schedule: list, fy_months: list, is_gyal: bool, gyal_year_data: dict,
+    visit_months: set = None,
 ) -> list:
     """Build the 12-entry list (one per FY month) for the horizontal FY strip.
 
@@ -114,6 +115,14 @@ def _build_emi_year_strip(
                     })
             else:
                 result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
+
+    # A ₹0 entry records a visit where nothing was collected. It deliberately
+    # leaves the EMI unpaid, so without a marker the sheet looks identical to a
+    # client nobody went to — and the collector has no way to know they've been.
+    if visit_months:
+        for cell in result:
+            if cell["month"] in visit_months and cell["status"] != "paid":
+                cell["visited"] = True
     return result
 
 
@@ -340,6 +349,20 @@ async def get_collection_sheet(
         ).to_list(5000)
         kyc_map = {str(k["_id"]): k for k in raw_kycs}
 
+    # ₹0 "visit recorded" payments — keyed by the month the visit happened
+    # (payment_date), so the sheet can mark a client as visited-but-not-collected.
+    all_loan_ids = [str(ln["_id"]) for ln in loans]
+    visit_map: dict = {}   # loan_id → {YYYY-MM, …}
+    if all_loan_ids:
+        zero_pmts = await db.payments.find(
+            {"loan_id": {"$in": all_loan_ids}, "amount": 0},
+            {"loan_id": 1, "payment_date": 1, "emi_month": 1},
+        ).to_list(20000)
+        for p in zero_pmts:
+            ym = (p.get("payment_date") or "")[:7] or p.get("emi_month") or ""
+            if ym in fy_months:
+                visit_map.setdefault(p["loan_id"], set()).add(ym)
+
     gyal_loan_ids = [str(ln["_id"]) for ln in loans if ln.get("is_gyal")]
     gyal_payment_map: dict = {}   # loan_id → current-month payment
     gyal_year_map: dict    = {}   # loan_id → {emi_month → payment}
@@ -451,6 +474,7 @@ async def get_collection_sheet(
                                         schedule, fy_months,
                                         loan.get("is_gyal", False),
                                         gyal_year_map.get(loan_id_str, {}),
+                                        visit_map.get(loan_id_str),
                                     ),
             # Internal metadata for net-off merge pass (stripped before output)
             "_is_reloan":           loan.get("is_reloan", False),

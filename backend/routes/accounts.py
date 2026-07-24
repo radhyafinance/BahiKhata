@@ -990,33 +990,62 @@ async def get_aasami_balance(
     request: Request,
     illaka_id: Optional[str] = None,
     maalik_id: Optional[str] = None,
+    as_of: Optional[str] = None,
 ):
-    """Total outstanding across live client loans — the Aasami Khata figure used
-    to pre-fill Loans Portfolio (Sundry Debtors) on the opening balance.
+    """Total outstanding across client loans — the Aasami Khata figure used to
+    pre-fill Loans Portfolio (Sundry Debtors) on the opening balance.
 
-    Outstanding = total_repayable - total_paid, over loans that are still live
-    (active/overdue). Gyal (written-off) loans are excluded — they are carried
-    under Bad Debt, not the loan portfolio.
+    `as_of` (YYYY-MM-DD) reconstructs the position on that date, which is what an
+    opening balance needs: only loans disbursed on or before it count, and only
+    payments received on or before it are deducted. Without it the figure would
+    be today's balance posted against a back-dated opening entry.
+
+    Gyal (written-off) loans are excluded — carried under Bad Debt, not the loan
+    portfolio — but only if they were already written off by `as_of`.
     """
     current_user = await get_current_user(request)
     query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
-    query["status"] = {"$in": ["active", "overdue"]}
-    query["is_gyal"] = {"$ne": True}
+    if as_of:
+        query["loan_date"] = {"$lte": as_of}
+    else:
+        query["status"] = {"$in": ["active", "overdue"]}
+        query["is_gyal"] = {"$ne": True}
 
     loans = await db.loans.find(
-        query, {"total_repayable": 1, "total_paid": 1, "emi_amount": 1}
+        query,
+        {"total_repayable": 1, "total_paid": 1, "emi_schedule": 1,
+         "is_gyal": 1, "gyal_since": 1, "status": 1},
     ).to_list(20000)
 
+    as_of_ym = (as_of or "")[:7]
     total = 0.0
+    counted = 0
     for ln in loans:
+        if ln.get("is_gyal"):
+            # Written off before the date → already out of the portfolio then.
+            since = ln.get("gyal_since") or ""
+            if not as_of or not since or since <= as_of_ym:
+                continue
         repayable = float(ln.get("total_repayable") or 0)
-        paid = float(ln.get("total_paid") or 0)
-        total += max(0.0, repayable - paid)
+        if as_of:
+            paid = sum(
+                float(e.get("paid_amount") or 0)
+                for e in ln.get("emi_schedule", [])
+                if e.get("status") == "paid" and (e.get("paid_date") or "") <= as_of
+            )
+        else:
+            paid = float(ln.get("total_paid") or 0)
+        outstanding = round(max(0.0, repayable - paid), 2)
+        if outstanding <= 0:
+            continue          # settled by this date — not part of the portfolio
+        total += outstanding
+        counted += 1
 
     head = await db.account_heads.find_one({"system_key": "loans_portfolio"})
     return {
         "total": round(total, 2),
-        "loan_count": len(loans),
+        "loan_count": counted,
+        "as_of": as_of,
         "account_head_id": str(head["_id"]) if head else None,
     }
 

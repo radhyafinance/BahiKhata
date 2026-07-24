@@ -54,11 +54,14 @@ export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
           if (eData.entry.date) setDate(eData.entry.date);
         }
 
-        // Aasami Khata — total outstanding across live client loans. Fill it in
-        // automatically; a saved entry's own figure still wins so an edited
-        // opening balance isn't silently overwritten.
+        // Aasami Khata — outstanding as of the entry's own date (see the
+        // effect below, which refetches whenever that date changes). A saved
+        // entry's own figure still wins so an edit isn't silently overwritten.
+        const asOf = eData.entry?.date || date;
         try {
-          const aRes = await fetch(`${API}/api/accounts/aasami-balance?${params}`, { credentials: "include" });
+          const aParams = new URLSearchParams(params);
+          aParams.set("as_of", asOf);
+          const aRes = await fetch(`${API}/api/accounts/aasami-balance?${aParams}`, { credentials: "include" });
           const aData = await aRes.json();
           if (aData.account_head_id) {
             setAasami(aData);
@@ -86,6 +89,27 @@ export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
     load();
   // eslint-disable-next-line react-hooks/exhaustive-deps -- API/fetch/toast/setState are stable; only illakaId triggers reload
   }, [illakaId]);
+
+  // The Aasami figure is a position on a date, so it has to move with the date
+  // picker — otherwise a back-dated opening balance gets today's number.
+  useEffect(() => {
+    if (loadingHeads || !date) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const p = new URLSearchParams();
+        if (illakaId) p.set("illaka_id", illakaId);
+        p.set("as_of", date);
+        const res = await fetch(`${API}/api/accounts/aasami-balance?${p}`, { credentials: "include" });
+        const d = await res.json();
+        if (cancelled || !d.account_head_id) return;
+        setAasami(d);
+        setAmounts(a => ({ ...a, [d.account_head_id]: d.total }));
+      } catch { /* non-critical — the field stays manual */ }
+    })();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- refetch only when the as-of date changes
+  }, [date]);
 
   const partyDr = parties
     .filter(p => p.kind === "debtor")
@@ -283,7 +307,7 @@ export function OpeningBalanceModal({ illakaId, onClose, onSaved }) {
                             </p>
                             {isAasami ? (
                               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                                Auto-filled from {aasami.loan_count} live client balances
+                                {aasami.loan_count} client balances as of {aasami.as_of || date}
                                 <button
                                   type="button"
                                   onClick={() => setAmounts(a => ({ ...a, [hid]: aasami.total }))}
