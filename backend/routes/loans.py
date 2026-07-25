@@ -8,7 +8,7 @@ from core.auth import get_current_user
 from helpers import (
     _doc, generate_loan_number, _build_emi_schedule,
     _get_loan_status, _apply_overdue_to_schedule, _add_months, _loan_query_for_user,
-    get_admin_maalik_filter_ids,
+    get_admin_maalik_filter_ids, apply_illaka_scope, permitted_illaka_ids,
     create_journal_entry_internal, _get_system_heads, _make_head_line, book_loan_disbursement
 )
 from models import LoanCreate, LoanStatusUpdate, PaymentCreate, PaymentEdit, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest, YearEndUndoRequest
@@ -80,11 +80,7 @@ async def list_loans(
 ):
     current_user = await get_current_user(request)
     query = await _loan_query_for_user(current_user)
-    if illaka_id:
-        query["illaka_id"] = illaka_id
-    elif maalik_id and current_user["role"] == "admin":
-        ids = await get_admin_maalik_filter_ids(maalik_id)
-        query["illaka_id"] = {"$in": ids}
+    await apply_illaka_scope(current_user, query, illaka_id, maalik_id)
     if misal_id:
         query["misal_id"] = misal_id
     if kyc_id:
@@ -241,6 +237,25 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     doc = await db.loans.find_one({"_id": ObjectId(loan_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Loan not found")
+
+    # Only staff assigned to this illaka may collect against it. The sheet
+    # already hides other illakas, but the endpoint accepted any loan id.
+    allowed = await permitted_illaka_ids(current_user)
+    if allowed is not None and doc.get("illaka_id") not in allowed:
+        raise HTTPException(status_code=403, detail="This client is not in your assigned Illaka")
+
+    # Back-dating guard. The sheet freezes past months for muneem/sipahi; that
+    # was UI-only, so the same request could be replayed against the API.
+    # Keyed on the PAYMENT date, not the EMI month, so collecting arrears
+    # (an old EMI paid today) stays allowed.
+    if current_user["role"] in ("muneem", "sipahi"):
+        today = date_type.today()
+        this_month = f"{today.year}-{today.month:02d}"
+        if (data.payment_date or "")[:7] < this_month:
+            raise HTTPException(
+                status_code=403,
+                detail="Cannot record a collection for a past month / पिछले महीने की एंट्री नहीं कर सकते",
+            )
     schedule = doc.get("emi_schedule", [])
     emi_item = next((e for e in schedule if e["due_month"] == data.emi_month), None)
     if not emi_item:

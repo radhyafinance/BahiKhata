@@ -610,15 +610,23 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               }
               if (yd.status === "paid") {
                 const hasNote = !!yd.note;
+                // More than one instalment collected in this month (arrears
+                // catch-up). The amount is their sum; flag it so it doesn't read
+                // as one unusually large EMI.
+                const multi = (yd.entry_count || 1) > 1;
+                const paidTitle = multi
+                  ? `${yd.entry_count} किस्त वसूल — कुल ₹${yd.paid_amount}${hasNote ? ` — ${yd.note}` : ""}`
+                  : hasNote ? `₹${yd.paid_amount} — ${yd.note}` : `Paid ₹${yd.paid_amount}`;
                 return (
                   <div
                     key={yd.month}
-                    title={hasNote ? `₹${yd.paid_amount} — ${yd.note}` : `Paid ₹${yd.paid_amount}`}
+                    title={paidTitle}
                     className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${isCurr ? "bg-green-200" : "bg-green-100"}`}
                   >
                     <span className="text-green-800 text-sm font-bold leading-none">✓</span>
                     <span className="text-green-700 text-xs font-bold leading-none">{fmtK(yd.paid_amount)}</span>
-                    {hasNote && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
+                    {multi && <span className="text-green-700 text-[9px] font-semibold leading-none">{yd.entry_count} किस्त</span>}
+                    {hasNote && !multi && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
                   </div>
                 );
               }
@@ -1032,11 +1040,19 @@ export default function CollectionSheet() {
               if (revert) {
                 cell.status = cell._prevStatus ?? "pending";
                 cell.paid_amount = cell._prevPaid ?? 0;
+                if ((cell.entry_count || 1) > 1) cell.entry_count -= 1;
+                else delete cell.entry_count;
               } else {
+                // Arrears catch-up: a second instalment collected the same month
+                // must ADD to what's already shown, not replace it — otherwise
+                // the strip and the header total drop the earlier payment even
+                // though the Cash Book kept it.
+                const alreadyPaid = cell.status === "paid";
                 cell._prevStatus = cell.status;
                 cell._prevPaid = cell.paid_amount;
                 cell.status = "paid";
-                cell.paid_amount = amount;
+                cell.paid_amount = (alreadyPaid ? (cell.paid_amount || 0) : 0) + amount;
+                if (alreadyPaid) cell.entry_count = (cell.entry_count || 1) + 1;
               }
             }
           }
