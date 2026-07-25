@@ -4,7 +4,7 @@ from datetime import date as date_type
 from bson import ObjectId
 from core.database import db
 from core.auth import get_current_user
-from helpers import _loan_query_for_user, get_admin_maalik_filter_ids
+from helpers import _loan_query_for_user, get_admin_maalik_filter_ids, apply_illaka_scope
 
 router = APIRouter()
 
@@ -55,9 +55,10 @@ def _build_emi_year_strip(
     """Build the 12-entry list (one per FY month) for the horizontal FY strip.
 
     For non-gyal loans the priority is:
-    1. If any EMI was physically COLLECTED in this month (paid_date[:7] == fy_m),
-       show it as paid — this handles old overdue loans whose due_month is in a
-       past FY but whose payment was received in the current FY.
+    1. Every EMI physically COLLECTED in this month (paid_date[:7] == fy_m),
+       added together — this handles old overdue loans whose due_month is in a
+       past FY but whose payment was received in the current FY, and arrears
+       catch-ups where more than one instalment is handed over the same day.
     2. Fall back to the scheduled due_month match (pending / overdue / etc.).
     3. If nothing matches → "na".
     """
@@ -70,8 +71,11 @@ def _build_emi_year_strip(
         if is_gyal:
             gyal_pmt = gyal_year_data.get(fy_m)
             if gyal_pmt:
-                result.append({"month": fy_m, "status": "paid",
-                                "paid_amount": float(gyal_pmt.get("amount") or 0), "note": ""})
+                cell = {"month": fy_m, "status": "paid",
+                        "paid_amount": float(gyal_pmt.get("amount") or 0), "note": ""}
+                if int(gyal_pmt.get("entry_count") or 1) > 1:
+                    cell["entry_count"] = int(gyal_pmt["entry_count"])
+                result.append(cell)
             elif sched_item:
                 result.append({"month": fy_m, "status": sched_item.get("status", "pending"),
                                 "paid_amount": float(sched_item.get("paid_amount") or 0),
@@ -79,23 +83,40 @@ def _build_emi_year_strip(
             else:
                 result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
         else:
-            # Priority 1: EMI physically collected in this FY month (paid_date[:7] == fy_m).
+            # Priority 1: EMIs physically collected in this FY month (paid_date[:7] == fy_m).
             # This shows the payment in the column matching WHEN MONEY WAS RECEIVED —
             # regardless of which due_month it was for.
-            paid_this_month = next(
-                (e for e in schedule
-                 if e.get("status") == "paid"
-                 and (e.get("paid_date") or "")[:7] == fy_m
-                 and not e.get("is_gyal_entry")),
-                None,
-            )
+            #
+            # ALL of them, added together. A client catching up on arrears hands
+            # over two instalments on the same day; Priority 2 below then hides
+            # each one from its own due_month column because it was already
+            # "shown" here. Taking only the first match meant every instalment
+            # after the first vanished from the sheet and from the header total,
+            # while the Cash Book — which reads the payments collection — still
+            # had the money. The two disagreed and the sheet was the one lying.
+            paid_this_month = [
+                e for e in schedule
+                if e.get("status") == "paid"
+                and (e.get("paid_date") or "")[:7] == fy_m
+                and not e.get("is_gyal_entry")
+            ]
             if paid_this_month:
-                result.append({
+                cell = {
                     "month": fy_m,
                     "status": "paid",
-                    "paid_amount": float(paid_this_month.get("paid_amount") or 0),
-                    "note": paid_this_month.get("note") or "",
-                })
+                    "paid_amount": sum(float(e.get("paid_amount") or 0) for e in paid_this_month),
+                    "note": " · ".join(
+                        n for n in (e.get("note") or "" for e in paid_this_month) if n
+                    ),
+                }
+                if len(paid_this_month) > 1:
+                    # Flagged so the cell can say "2 किस्त" instead of reading as
+                    # one unusually large payment.
+                    cell["entry_count"] = len(paid_this_month)
+                    cell["entry_months"] = sorted(
+                        e.get("due_month") or "" for e in paid_this_month
+                    )
+                result.append(cell)
             elif sched_item:
                 # Priority 2: scheduled EMI for this month.
                 # If this EMI is paid but its paid_date falls in a DIFFERENT month
@@ -299,11 +320,7 @@ async def get_collection_sheet(
 
     query = await _loan_query_for_user(current_user)
     # No status filter — closed loans must stay visible until their FY schedule ends.
-    if illaka_id:
-        query["illaka_id"] = illaka_id
-    elif maalik_id and current_user["role"] == "admin":
-        ids = await get_admin_maalik_filter_ids(maalik_id)
-        query["illaka_id"] = {"$in": ids}
+    await apply_illaka_scope(current_user, query, illaka_id, maalik_id)
 
     loans = await db.loans.find(query).sort(
         [("illaka_id", 1), ("misal_id", 1), ("loan_date", 1)]
@@ -370,9 +387,26 @@ async def get_collection_sheet(
         gyal_pmts = await db.payments.find(
             {"loan_id": {"$in": gyal_loan_ids}, "emi_month": {"$in": fy_months}}
         ).to_list(5000)
+        # Gyal months are keyed by emi_month, and there can legitimately be more
+        # than one payment against a month — a ₹0 visit followed by a real
+        # collection, or two hand-overs. Keeping only the last one read meant a
+        # ₹0 visit could wipe out a real payment. Add them up instead, and carry
+        # the latest payment_date.
+        gyal_raw: dict = {}
         for p in gyal_pmts:
-            lid = p["loan_id"]
-            gyal_year_map.setdefault(lid, {})[p["emi_month"]] = p
+            gyal_raw.setdefault(p["loan_id"], {}).setdefault(p["emi_month"], []).append(p)
+        for lid, months_data in gyal_raw.items():
+            for emi_m, pmts in months_data.items():
+                total = sum(float(p.get("amount") or 0) for p in pmts)
+                if total <= 0:
+                    # Visit only — nothing collected. Leave it out so the month
+                    # reads as unpaid and picks up the visit marker instead.
+                    continue
+                gyal_year_map.setdefault(lid, {})[emi_m] = {
+                    "amount": total,
+                    "payment_date": max((p.get("payment_date") or "") for p in pmts),
+                    "entry_count": sum(1 for p in pmts if float(p.get("amount") or 0) > 0),
+                }
         for lid, months_data in gyal_year_map.items():
             if month in months_data:
                 gyal_payment_map[lid] = months_data[month]

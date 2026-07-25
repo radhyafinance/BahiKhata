@@ -3,7 +3,7 @@ from typing import Optional
 from datetime import datetime, timezone, date as date_type
 from core.database import db
 from core.auth import get_current_user
-from helpers import _kyc_query_for_user, _loan_query_for_user, get_admin_maalik_filter_ids, _add_months
+from helpers import _kyc_query_for_user, _loan_query_for_user, get_admin_maalik_filter_ids, _add_months, apply_illaka_scope
 
 router = APIRouter()
 
@@ -34,13 +34,8 @@ async def dashboard_stats(request: Request, illaka_id: Optional[str] = None, maa
     current_user = await get_current_user(request)
     kyc_query = await _kyc_query_for_user(current_user)
     loan_query = await _loan_query_for_user(current_user)
-    if illaka_id:
-        kyc_query["illaka_id"] = illaka_id
-        loan_query["illaka_id"] = illaka_id
-    elif maalik_id and current_user["role"] == "admin":
-        ids = await get_admin_maalik_filter_ids(maalik_id)
-        kyc_query["illaka_id"] = {"$in": ids}
-        loan_query["illaka_id"] = {"$in": ids}
+    await apply_illaka_scope(current_user, kyc_query, illaka_id, maalik_id)
+    await apply_illaka_scope(current_user, loan_query, illaka_id, maalik_id)
     today = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     return {
         "total": await db.kycs.count_documents(kyc_query),
@@ -66,11 +61,7 @@ async def dashboard_overview(
     current_user = await get_current_user(request)
     loan_query = await _loan_query_for_user(current_user)
 
-    if illaka_id:
-        loan_query["illaka_id"] = illaka_id
-    elif maalik_id and current_user["role"] == "admin":
-        ids = await get_admin_maalik_filter_ids(maalik_id)
-        loan_query["illaka_id"] = {"$in": ids}
+    await apply_illaka_scope(current_user, loan_query, illaka_id, maalik_id)
 
     today = date_type.today()
     if month:

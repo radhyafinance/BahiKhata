@@ -112,6 +112,40 @@ async def get_admin_maalik_filter_ids(maalik_user_id: str) -> list:
         return []
 
 
+NO_ILLAKA_SENTINEL = "__none__"
+
+
+async def permitted_illaka_ids(user: dict):
+    """Illaka ids this user may access. Returns None when unrestricted (admin)."""
+    role = user.get("role")
+    if role == "admin":
+        return None
+    if role == "maalik":
+        return await _get_maalik_illaka_ids(user)
+    return list(user.get("assigned_illaka_ids", []) or [])
+
+
+async def apply_illaka_scope(user: dict, query: dict, illaka_id: str = None, maalik_id: str = None) -> dict:
+    """Narrow `query` to a requested illaka WITHOUT ever widening it.
+
+    Routes used to do `query["illaka_id"] = illaka_id`, which overwrote the
+    role restriction already on the query — so any signed-in user could read
+    (and write to) any other illaka just by passing its id. This applies the
+    request as a filter only when the user is actually entitled to that illaka;
+    otherwise the query is pointed at a sentinel that matches nothing.
+    """
+    allowed = await permitted_illaka_ids(user)
+    if illaka_id:
+        if allowed is None or illaka_id in allowed:
+            query["illaka_id"] = illaka_id
+        else:
+            query["illaka_id"] = NO_ILLAKA_SENTINEL
+    elif maalik_id and user.get("role") == "admin":
+        ids = await get_admin_maalik_filter_ids(maalik_id)
+        query["illaka_id"] = {"$in": ids}
+    return query
+
+
 async def _kyc_query_for_user(user: dict) -> dict:
     query = {}
     if user["role"] == "admin":

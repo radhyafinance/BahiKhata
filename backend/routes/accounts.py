@@ -5,7 +5,8 @@ from typing import Optional, List
 import uuid, re
 from core.database import db
 from core.auth import get_current_user
-from helpers import _doc, create_journal_entry_internal, _get_maalik_illaka_ids, get_admin_maalik_filter_ids
+from helpers import (_doc, create_journal_entry_internal, _get_maalik_illaka_ids,
+                     get_admin_maalik_filter_ids, apply_illaka_scope, permitted_illaka_ids)
 from models import (
     AccountHeadCreate, AccountHeadUpdate, JournalEntryCreate, SimpleEntryCreate,
     ExpenseTemplateCreate, ExpenseTemplateField, ExpenseSubmissionCreate,
@@ -39,8 +40,11 @@ async def _illaka_filter_for_user(user: dict, illaka_id: Optional[str], maalik_i
             query["illaka_id"] = illaka_id if illaka_id in assigned else "__none__"
         else:
             query["illaka_id"] = {"$in": assigned}
-    elif user["role"] == "sadar_muneem":
-        assigned = user.get("assigned_illaka_ids", [])
+    else:
+        # sipahi — and any role added later. This used to fall through with an
+        # empty query, i.e. NO filter at all, so a sipahi saw every illaka's
+        # books without even asking for them. Default to deny.
+        assigned = user.get("assigned_illaka_ids", []) or []
         if illaka_id:
             query["illaka_id"] = illaka_id if illaka_id in assigned else "__none__"
         else:
@@ -831,20 +835,15 @@ async def get_balance_sheet(
     # ── Compute Aasami Khata from loans collection ────────────────────────────
     # Outstanding = sum of (total_repayable - total_paid) for non-gyal active/overdue loans
     # that were disbursed on or before end of the selected month.
+    # Scope by role FIRST, then narrow to any requested illaka. Previously an
+    # explicit illaka_id short-circuited the role branches below it, so this
+    # query — which is what produces the Aasami figure — ignored the caller's
+    # permissions entirely.
     loan_query: dict = {"loan_date": {"$lt": next_month_start}}
-    if illaka_id:
-        loan_query["illaka_id"] = illaka_id
-    elif maalik_id and current_user["role"] == "admin":
-        from helpers import get_admin_maalik_filter_ids
-        ids = await get_admin_maalik_filter_ids(maalik_id)
-        loan_query["illaka_id"] = {"$in": ids}
-    elif current_user["role"] == "maalik":
-        from helpers import _get_maalik_illaka_ids
-        ids = await _get_maalik_illaka_ids(current_user)
-        loan_query["illaka_id"] = {"$in": ids}
-    elif current_user["role"] in ("muneem", "sadar_muneem", "sipahi"):
-        assigned = current_user.get("assigned_illaka_ids", [])
-        loan_query["illaka_id"] = {"$in": assigned}
+    _allowed = await permitted_illaka_ids(current_user)
+    if _allowed is not None:
+        loan_query["illaka_id"] = {"$in": _allowed}
+    await apply_illaka_scope(current_user, loan_query, illaka_id, maalik_id)
 
     loans = await db.loans.find(
         loan_query,
@@ -1056,10 +1055,12 @@ async def get_opening_balance(
     illaka_id: Optional[str] = None,
 ):
     """Return the opening balance journal entry for an illaka, if it exists."""
-    await get_current_user(request)
+    current_user = await get_current_user(request)
     query: dict = {"entry_type": "opening_balance"}
-    if illaka_id:
-        query["illaka_id"] = illaka_id
+    _allowed = await permitted_illaka_ids(current_user)
+    if _allowed is not None:
+        query["illaka_id"] = {"$in": _allowed}
+    await apply_illaka_scope(current_user, query, illaka_id)
     entry = await db.journal_entries.find_one(query)
     if not entry:
         return {"entry": None}

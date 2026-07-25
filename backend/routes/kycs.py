@@ -8,7 +8,7 @@ from core.auth import get_current_user
 from helpers import (
     _doc, generate_customer_id, generate_loan_number,
     _build_emi_schedule, _get_loan_status, _add_months, _kyc_query_for_user,
-    get_admin_maalik_filter_ids, book_loan_disbursement,
+    get_admin_maalik_filter_ids, book_loan_disbursement, apply_illaka_scope,
 )
 from models import KYCCreate, KYCStatusUpdate, QuickLoanCreate
 
@@ -66,11 +66,7 @@ async def list_kycs(
 ):
     current_user = await get_current_user(request)
     query = await _kyc_query_for_user(current_user)
-    if illaka_id:
-        query["illaka_id"] = illaka_id
-    elif maalik_id and current_user["role"] == "admin":
-        ids = await get_admin_maalik_filter_ids(maalik_id)
-        query["illaka_id"] = {"$in": ids}
+    await apply_illaka_scope(current_user, query, illaka_id, maalik_id)
     if misal_id:
         query["misal_id"] = misal_id
     if status:
