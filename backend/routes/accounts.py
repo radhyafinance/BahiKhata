@@ -515,6 +515,51 @@ async def get_cashbook(
 
 # ── Bid (Monthly Aggregate Cashbook) ──────────────────────────────────────────
 
+def _allocate_cash_to_contra(contra_lines: list, cash_amount: float, side: str) -> list:
+    """Split one entry's cash movement across its contra heads.
+
+    Returns [(line, amount), …] whose amounts sum to exactly `cash_amount`.
+
+    The Bid used to add the FULL cash amount to EVERY contra head, so a single
+    ₹2,000 receipt split over two heads was reported as ₹4,000 — overstating
+    receipts and, because closing = opening + Jama − Kharch, handing the next
+    month a wrong opening figure. Each head must instead take only its own share.
+
+    `side` is the column the contra lines carry: "credit" for a cash receipt
+    (Dr Cash / Cr heads), "debit" for a cash payment (Cr Cash / Dr heads).
+
+    Amounts are taken from the lines themselves and normalised so the side still
+    totals the actual cash moved. For a balanced entry the weights already sum to
+    the cash amount and normalising is a no-op; for a mixed entry (cash receipt
+    plus an expense in the same voucher) it keeps the Bid's closing balance equal
+    to the real cash position instead of drifting.
+    """
+    if not contra_lines or cash_amount <= 0:
+        return []
+
+    other = "debit" if side == "credit" else "credit"
+    weights = [float(l.get(side, 0) or 0) for l in contra_lines]
+    if sum(weights) <= 0:
+        # Degenerate entry — fall back to the opposite column, then to an even split.
+        weights = [float(l.get(other, 0) or 0) for l in contra_lines]
+    if sum(weights) <= 0:
+        weights = [1.0] * len(contra_lines)
+
+    total_w = sum(weights)
+    out = []
+    for line, w in zip(contra_lines, weights):
+        out.append([line, round(cash_amount * w / total_w, 2)])
+
+    # Push any rounding remainder onto the largest share so the column still
+    # totals the cash actually moved.
+    drift = round(cash_amount - sum(a for _, a in out), 2)
+    if drift:
+        out.sort(key=lambda p: -p[1])
+        out[0][1] = round(out[0][1] + drift, 2)
+
+    return [(l, a) for l, a in out if a > 0]
+
+
 @router.get("/accounts/bid")
 async def get_bid(
     request: Request,
@@ -637,20 +682,21 @@ async def get_bid(
             cash_dr = sum(float(l.get("debit", 0)) for l in lines if l.get("account_head_id") == cash_head_id)
             cash_cr = sum(float(l.get("credit", 0)) for l in lines if l.get("account_head_id") == cash_head_id)
 
+            contra = [l for l in lines if l.get("account_head_id") != cash_head_id]
+
             if cash_dr > 0:
-                # Cash received → Jama/Debit side (group by contra head)
-                contra = [l for l in lines if l.get("account_head_id") != cash_head_id]
-                for c in contra:
+                # Cash received → Jama/Debit side (group by contra head).
+                # Each head takes its OWN share, not the whole receipt.
+                for c, amt in _allocate_cash_to_contra(contra, cash_dr, "credit"):
                     hid = c.get("account_head_id", "")
                     hname = c.get("account_head_name", "Other Income")
                     if hid not in dr_head_map:
                         dr_head_map[hid] = {"account_head_name": hname, "total": 0.0}
-                    dr_head_map[hid]["total"] = round(dr_head_map[hid]["total"] + cash_dr, 2)
+                    dr_head_map[hid]["total"] = round(dr_head_map[hid]["total"] + amt, 2)
 
             if cash_cr > 0:
-                # Cash paid → Kharch/Credit side (use debit of contra for multi-line entries)
-                contra = [l for l in lines if l.get("account_head_id") != cash_head_id]
-                for c in contra:
+                # Cash paid → Kharch/Credit side, likewise split by contra share.
+                for c, amt in _allocate_cash_to_contra(contra, cash_cr, "debit"):
                     hid = c.get("account_head_id", "")
                     hname = c.get("account_head_name", "Other Expense")
                     gname = c.get("group_name", "")
@@ -660,9 +706,7 @@ async def get_bid(
                             "group_type": c.get("group_type", ""),
                             "total": 0.0, "sort_order": 1,
                         }
-                    cr_head_map[hid]["total"] = round(
-                        cr_head_map[hid]["total"] + float(c.get("debit", 0)), 2
-                    )
+                    cr_head_map[hid]["total"] = round(cr_head_map[hid]["total"] + amt, 2)
 
     # ── Build response ──────────────────────────────────────────────────────
     dr_totals = []

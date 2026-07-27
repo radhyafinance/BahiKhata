@@ -275,7 +275,7 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
                     status_code=400,
                     detail="This loan is fully repaid / यह क़र्ज़ पूरा चुक गया है",
                 )
-            emi_item = {
+            new_entry = {
                 "month": len(schedule) + 1,
                 "due_month": data.emi_month,
                 "amount": float(doc.get("emi_amount") or 0),
@@ -286,10 +286,9 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
                 "collected_by_name": None,
                 "is_extra_entry": True,
             }
-            schedule.append(emi_item)
         else:
             # Gyal loan — add a synthetic entry for this month so collection can be recorded
-            emi_item = {
+            new_entry = {
                 "month": len(schedule) + 1,
                 "due_month": data.emi_month,
                 "amount": 0,
@@ -300,7 +299,9 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
                 "collected_by_name": None,
                 "is_gyal_entry": True,
             }
-            schedule.append(emi_item)
+        emi_item = new_entry
+    else:
+        new_entry = None
     if emi_item["status"] == "paid":
         raise HTTPException(status_code=400, detail="This EMI is already paid / यह किस्त पहले से चुकाई जा चुकी है")
     # Fix: use `is not None` so that 0 is treated as a valid explicit amount
@@ -316,19 +317,54 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
         })
         updated_loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
         return _doc(updated_loan)
+
     # ── Normal payment: mark EMI paid and book journal entry ─────────────────
-    emi_item.update({
-        "status": "paid",
-        "paid_amount": amount,
-        "paid_date": data.payment_date,
-        "collected_by_id": current_user["id"],
-        "collected_by_name": current_user["name"],
-    })
-    total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
-    new_status = _get_loan_status(schedule)
+    # This must be ATOMIC. The check above and the write below are separated by
+    # awaits, so two collectors saving the same client at the same moment both
+    # read "pending", both pass, and both write — inserting two payments and two
+    # journal entries for one instalment. The loan's own schedule showed a single
+    # payment (last write wins) while the Cash Book showed double the cash, so the
+    # two disagreed and the money looked real.
+    #
+    # Instead of writing the whole schedule back, flip just this EMI with the
+    # "not yet paid" condition inside the query. Mongo applies it atomically, so
+    # exactly one of the racing requests can match; the loser matches nothing and
+    # is rejected the same way a genuine repeat collection is.
+    oid = ObjectId(loan_id)
+    if new_entry is not None:
+        # Appending a month beyond the original schedule races the same way, so
+        # guard it on "no entry for this month exists yet". If a concurrent
+        # request appended first, its entry is used and this one falls through to
+        # the flip below — where exactly one of them will win.
+        await db.loans.update_one(
+            {"_id": oid, "emi_schedule.due_month": {"$ne": data.emi_month}},
+            {"$push": {"emi_schedule": new_entry}},
+        )
+
+    claim = await db.loans.update_one(
+        {"_id": oid,
+         "emi_schedule": {"$elemMatch": {"due_month": data.emi_month, "status": {"$ne": "paid"}}}},
+        {"$set": {
+            "emi_schedule.$[e].status": "paid",
+            "emi_schedule.$[e].paid_amount": amount,
+            "emi_schedule.$[e].paid_date": data.payment_date,
+            "emi_schedule.$[e].collected_by_id": current_user["id"],
+            "emi_schedule.$[e].collected_by_name": current_user["name"],
+            "updated_at": now,
+        }},
+        array_filters=[{"e.due_month": data.emi_month, "e.status": {"$ne": "paid"}}],
+    )
+    if claim.modified_count == 0:
+        raise HTTPException(status_code=400, detail="This EMI is already paid / यह किस्त पहले से चुकाई जा चुकी है")
+
+    # Derived totals, recomputed from the authoritative post-claim document.
+    claimed = await db.loans.find_one({"_id": oid})
+    claimed_schedule = claimed.get("emi_schedule", [])
+    total_paid = sum(e.get("paid_amount", 0) for e in claimed_schedule if e["status"] == "paid")
+    new_status = _get_loan_status(claimed_schedule)
     await db.loans.update_one(
-        {"_id": ObjectId(loan_id)},
-        {"$set": {"emi_schedule": schedule, "total_paid": total_paid, "status": new_status, "updated_at": now}}
+        {"_id": oid},
+        {"$set": {"total_paid": total_paid, "status": new_status, "updated_at": now}}
     )
     await db.payments.insert_one({
         "loan_id": loan_id, "emi_month": data.emi_month,
