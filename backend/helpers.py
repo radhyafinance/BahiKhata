@@ -176,9 +176,32 @@ async def create_journal_entry_internal(
     created_by_name: str = None,
     **extra_fields,
 ) -> str:
-    """Insert a balanced double-entry journal entry. Returns the new entry's id."""
+    """Insert a balanced double-entry journal entry. Returns the new entry's id.
+
+    Refuses to write an entry whose debits and credits disagree. Every report in
+    the app — trial balance, cash book, Bid, balance sheet — assumes each entry
+    balances, and nothing downstream re-checks it. A single unbalanced entry
+    silently skews every one of them, and because the Balance Sheet derives
+    opening capital as a plug it still reports `is_balanced: true`, so the damage
+    would not show up where anyone is looking for it.
+
+    ₹0.01 tolerance, matching the check the manual-entry endpoint already applies
+    to user input; this covers the paths that build lines in code.
+    """
     now = datetime.now(timezone.utc).isoformat()
-    total_amount = sum(float(line.get("debit", 0)) for line in lines)
+    total_amount = round(sum(float(line.get("debit", 0) or 0) for line in lines), 2)
+    total_credit = round(sum(float(line.get("credit", 0) or 0) for line in lines), 2)
+    if abs(total_amount - total_credit) > 0.01:
+        msg = (
+            f"Refusing to write unbalanced journal entry "
+            f"(Dr {total_amount:.2f} != Cr {total_credit:.2f}, diff {total_amount - total_credit:+.2f}) "
+            f"| type={entry_type} | illaka={illaka_id} | date={date} | narration={narration!r}"
+        )
+        # Logged as well as raised: two internal callers wrap this in a
+        # try/except that only warns, so without the log an imbalance there
+        # would vanish without trace.
+        logging.getLogger(__name__).error(msg)
+        raise ValueError(msg)
     doc = {
         "date": date,
         "illaka_id": illaka_id,

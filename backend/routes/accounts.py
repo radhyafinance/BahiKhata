@@ -891,14 +891,51 @@ async def get_balance_sheet(
 
     loans = await db.loans.find(
         loan_query,
-        {"total_repayable": 1, "total_paid": 1, "is_gyal": 1, "status": 1}
+        {"total_repayable": 1, "total_paid": 1, "emi_schedule": 1, "is_gyal": 1,
+         "gyal_since": 1, "status": 1, "netoff_closed": 1, "netoff_date": 1}
     ).to_list(50000)
 
-    aasami_balance = round(sum(
-        max(0.0, float(ln.get("total_repayable") or 0) - float(ln.get("total_paid") or 0))
-        for ln in loans
-        if not ln.get("is_gyal") and ln.get("status") in ("active", "overdue")
-    ), 2)
+    # The figure has to be the position AS AT the selected month's end, the same
+    # way `/accounts/aasami-balance?as_of=` reconstructs it. `total_paid`,
+    # `status`, `is_gyal` and `netoff_closed` are all TODAY's values, so reading
+    # them directly reported today's portfolio on every past month: a Balance
+    # Sheet for April deducted payments received in May, June and July, and
+    # dropped loans that were still live in April but have since closed. Only
+    # the disbursement-date filter above was month-aware, so the month selector
+    # appeared to work while the number never moved.
+    aasami_balance = 0.0
+    for ln in loans:
+        # Written off on or before this month → already out of the portfolio then.
+        if ln.get("is_gyal"):
+            since = (ln.get("gyal_since") or "")[:7]
+            if not since or since <= month:
+                continue
+        # Closed by net-off on or before this month → likewise out.
+        if ln.get("netoff_closed") and (ln.get("netoff_date") or "") < next_month_start:
+            continue
+        repayable = float(ln.get("total_repayable") or 0)
+        sched = ln.get("emi_schedule", [])
+        sched_paid_all = sum(
+            float(e.get("paid_amount") or 0)
+            for e in sched if e.get("status") == "paid"
+        )
+        # Imported loans carry repayments made BEFORE the import inside
+        # `total_paid`, with no dated schedule entry to match. Rebuilding the
+        # paid figure from the schedule alone would silently drop that history
+        # and overstate the portfolio. Whatever `total_paid` holds beyond the
+        # dated entries is pre-import money, so it predates any selectable month
+        # and always counts.
+        baseline_paid = max(0.0, float(ln.get("total_paid") or 0) - sched_paid_all)
+        paid = baseline_paid + sum(
+            float(e.get("paid_amount") or 0)
+            for e in sched
+            if e.get("status") == "paid" and (e.get("paid_date") or "") < next_month_start
+        )
+        outstanding = round(max(0.0, repayable - paid), 2)
+        if outstanding <= 0:
+            continue          # settled by this date — not part of the portfolio
+        aasami_balance += outstanding
+    aasami_balance = round(aasami_balance, 2)
 
     assets, liabilities, equity_items = [], [], []
     income_total = 0.0
@@ -1400,6 +1437,14 @@ async def create_or_update_expense_submission(data: ExpenseSubmissionCreate, req
         f = field_map.get(e.field_id)
         if not f:
             raise HTTPException(status_code=400, detail=f"Field {e.field_id} not found in template")
+        # A negative line was accepted, silently left out of the journal's debit
+        # side, but still counted in the sheet's own total — so the expense sheet
+        # and the books reported different figures for the same submission.
+        if float(e.amount) < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{f['label']}' cannot be negative / रकम ऋणात्मक नहीं हो सकती",
+            )
         enriched_entries.append({
             "field_id": e.field_id,
             "field_label": f["label"],
@@ -1418,6 +1463,7 @@ async def create_or_update_expense_submission(data: ExpenseSubmissionCreate, req
             raise HTTPException(status_code=500, detail="Cash in Hand account not found")
 
         lines = []
+        posted_total = 0.0
         for e in enriched_entries:
             if float(e["amount"]) > 0:
                 head = await db.account_heads.find_one({"_id": ObjectId(e["account_head_id"])})
@@ -1429,14 +1475,19 @@ async def create_or_update_expense_submission(data: ExpenseSubmissionCreate, req
                     "debit": float(e["amount"]),
                     "credit": 0.0,
                 })
+                posted_total += float(e["amount"])
         if lines:
+            # Credit the sum of the lines actually posted, not `total_amount`.
+            # The debit side skips entries of zero or less, while total_amount
+            # sums every entry — so a single negative amount made the two
+            # disagree and wrote an unbalanced entry that no report would catch.
             lines.append({
                 "account_head_id": str(cash_head["_id"]),
                 "account_head_name": cash_head["name"],
                 "group_name": cash_head.get("group_name", ""),
                 "group_type": cash_head.get("group_type", ""),
                 "debit": 0.0,
-                "credit": total_amount,
+                "credit": round(posted_total, 2),
             })
             illaka_doc = await db.illakas.find_one({"_id": ObjectId(data.illaka_id)})
             illaka_name = illaka_doc.get("name", "") if illaka_doc else ""
