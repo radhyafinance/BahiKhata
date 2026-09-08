@@ -1,0 +1,10 @@
+# Bahi Khata — development and test tooling
+#
+#   pip install -r requirements.txt -r requirements-dev.txt
+#
+# These were previously mixed into requirements.txt, which meant every
+# production deploy also installed linters, formatters and type checkers.
+
+-r requirements.txt
+
+pytest==9.0.2

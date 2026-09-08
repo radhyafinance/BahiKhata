@@ -114,4 +114,7 @@ frontend/node_modules/.cache/default-development/9.pack
 .env
 .env.*
 *.env
+# ...but the templates must be committed — they document required config.
+!.env.example
+!**/.env.example
 frontend/node_modules/.cache/default-development/4.pack

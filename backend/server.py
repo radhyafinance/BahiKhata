@@ -1,7 +1,7 @@
 from dotenv import load_dotenv
 load_dotenv()
 
-import os, logging
+import os, asyncio, logging
 from datetime import datetime, timezone
 from fastapi import FastAPI, APIRouter
 from starlette.middleware.cors import CORSMiddleware
@@ -100,11 +100,22 @@ async def startup():
         if updates:
             await db.users.update_one({"_id": existing["_id"]}, {"$set": updates})
 
-    try:
-        init_storage()
-        logger.info("Storage initialized")
-    except Exception as e:
-        logger.error(f"Storage init failed: {e}")
+    # Storage warm-up, off the event loop and off the critical path.
+    #
+    # `init_storage()` is a synchronous HTTP call with a 30-second timeout. Called
+    # directly here it blocked the event loop for that entire timeout whenever the
+    # storage service was slow or unreachable — the server took over a minute to
+    # accept its first connection, and a health check would have reported the app
+    # as dead. It is only a warm-up: put_object/get_object initialise lazily on
+    # first use, so nothing depends on it finishing before startup completes.
+    async def _warm_storage():
+        try:
+            await asyncio.to_thread(init_storage)
+            logger.info("Storage initialized")
+        except Exception as exc:
+            logger.error(f"Storage init failed: {exc}")
+
+    asyncio.create_task(_warm_storage())
 
     await _seed_account_groups_and_heads()
     await _migrate_add_gyal_heads()
