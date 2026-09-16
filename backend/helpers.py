@@ -31,9 +31,28 @@ async def generate_customer_id(illaka_name: str) -> str:
 
 
 async def generate_loan_number(customer_id: str, kyc_id: str) -> str:
-    """Generate Loan ID: {customer_id}-L{n} sequential per customer."""
-    count = await db.loans.count_documents({"kyc_id": kyc_id})
-    return f"{customer_id}-L{count + 1}"
+    """Generate Loan ID: {customer_id}-L{n}, one past the highest already used.
+
+    This was count_documents() + 1, which reuses a number as soon as any loan is
+    deleted: create two loans, delete the first, and the third is handed the same
+    number as the second. That was merely untidy while nothing enforced
+    uniqueness — but loan_number now carries a unique index, so the reuse raises
+    DuplicateKeyError and the customer can never be given another loan.
+
+    Reading the highest suffix instead means numbers are never reused. Callers
+    still retry on collision, since two simultaneous loans can read the same
+    highest value.
+    """
+    prefix = f"{customer_id}-L"
+    highest = 0
+    async for d in db.loans.find({"kyc_id": kyc_id}, {"loan_number": 1}):
+        num = str(d.get("loan_number") or "")
+        if num.startswith(prefix):
+            try:
+                highest = max(highest, int(num[len(prefix):]))
+            except ValueError:
+                pass
+    return f"{prefix}{highest + 1}"
 
 
 def _add_months(dt: date_type, months: int) -> date_type:
@@ -176,9 +195,32 @@ async def create_journal_entry_internal(
     created_by_name: str = None,
     **extra_fields,
 ) -> str:
-    """Insert a balanced double-entry journal entry. Returns the new entry's id."""
+    """Insert a balanced double-entry journal entry. Returns the new entry's id.
+
+    Refuses to write an entry whose debits and credits disagree. Every report in
+    the app — trial balance, cash book, Bid, balance sheet — assumes each entry
+    balances, and nothing downstream re-checks it. A single unbalanced entry
+    silently skews every one of them, and because the Balance Sheet derives
+    opening capital as a plug it still reports `is_balanced: true`, so the damage
+    would not show up where anyone is looking for it.
+
+    ₹0.01 tolerance, matching the check the manual-entry endpoint already applies
+    to user input; this covers the paths that build lines in code.
+    """
     now = datetime.now(timezone.utc).isoformat()
-    total_amount = sum(float(line.get("debit", 0)) for line in lines)
+    total_amount = round(sum(float(line.get("debit", 0) or 0) for line in lines), 2)
+    total_credit = round(sum(float(line.get("credit", 0) or 0) for line in lines), 2)
+    if abs(total_amount - total_credit) > 0.01:
+        msg = (
+            f"Refusing to write unbalanced journal entry "
+            f"(Dr {total_amount:.2f} != Cr {total_credit:.2f}, diff {total_amount - total_credit:+.2f}) "
+            f"| type={entry_type} | illaka={illaka_id} | date={date} | narration={narration!r}"
+        )
+        # Logged as well as raised: two internal callers wrap this in a
+        # try/except that only warns, so without the log an imbalance there
+        # would vanish without trace.
+        logging.getLogger(__name__).error(msg)
+        raise ValueError(msg)
     doc = {
         "date": date,
         "illaka_id": illaka_id,
@@ -265,3 +307,32 @@ async def book_loan_disbursement(loan_doc: dict, user_id: str, user_name: str) -
         )
     except Exception as exc:
         logging.getLogger(__name__).warning(f"Failed to book loan disbursement: {exc}")
+
+
+def _import_baseline(loan_doc: dict) -> float:
+    """Repayments that predate the schedule, in rupees.
+
+    A loan imported with an opening balance carries what was already repaid
+    inside `total_paid`, with no dated instalment to match it. Anything in the
+    stored total beyond what the schedule's own paid rows account for is that
+    pre-import money, and it always counts.
+
+    MUST be called before the schedule is modified — the caller mutates the very
+    list this reads, so computing it afterwards sees the new state and produces
+    a baseline that silently absorbs the change.
+    """
+    stored = float(loan_doc.get("total_paid") or 0)
+    from_schedule = sum(
+        float(e.get("paid_amount") or 0)
+        for e in (loan_doc.get("emi_schedule") or [])
+        if e.get("status") == "paid"
+    )
+    return max(0.0, stored - from_schedule)
+
+
+def _total_paid_with_baseline(baseline: float, schedule: list) -> float:
+    """Pre-import money plus everything the schedule now records as paid."""
+    return baseline + sum(
+        float(e.get("paid_amount") or 0)
+        for e in schedule if e.get("status") == "paid"
+    )

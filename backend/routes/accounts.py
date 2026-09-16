@@ -1,5 +1,6 @@
 from fastapi import APIRouter, HTTPException, Request
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timezone, date as date_type
 from typing import Optional, List
 import uuid, re
@@ -269,6 +270,41 @@ async def create_simple_entry(data: SimpleEntryCreate, request: Request):
     return _doc(await db.journal_entries.find_one({"_id": ObjectId(entry_id)}))
 
 
+# Journal entries a user may edit or delete directly. Everything else is created
+# and removed by the operation it belongs to — a collection, a disbursement, a
+# net-off settlement, a write-off, an opening balance, a monthly expense sheet —
+# and each of those has its own endpoint that unwinds the whole transaction.
+#
+# Removing one of them here deletes the accounting while the loan schedule,
+# total_paid and the payments record all survive: the client still reads as paid
+# and no cash was ever recorded. The Balance Sheet does not reveal it either,
+# because opening_capital is a plug and absorbs the difference silently.
+MANUALLY_EDITABLE_ENTRY_TYPES = {"manual", "expense_voucher"}
+
+_AUTO_ENTRY_OWNER = {
+    "emi_collection":    "the collection it belongs to (uncollect it on the Vasuli sheet)",
+    "loan_disbursement": "the loan it belongs to",
+    "netoff_settlement": "the re-loan it belongs to",
+    "gyal_writeoff":     "year-end closing (use Undo)",
+    "opening_balance":   "the opening balance screen",
+    "expense_sheet":     "the monthly expense submission",
+}
+
+
+def _reject_if_auto_generated(entry: dict, verb: str) -> None:
+    etype = entry.get("entry_type", "manual")
+    if etype in MANUALLY_EDITABLE_ENTRY_TYPES:
+        return
+    owner = _AUTO_ENTRY_OWNER.get(etype)
+    detail = (
+        f"This entry was created automatically and cannot be {verb} here. "
+        f"Remove it through {owner}."
+        if owner else
+        f"Auto-generated entries cannot be {verb}."
+    )
+    raise HTTPException(status_code=400, detail=detail)
+
+
 @router.put("/accounts/entries/{entry_id}")
 async def update_journal_entry(entry_id: str, data: SimpleEntryCreate, request: Request):
     """Edit a simple entry (expense_voucher or manual)."""
@@ -281,8 +317,7 @@ async def update_journal_entry(entry_id: str, data: SimpleEntryCreate, request: 
         raise HTTPException(status_code=400, detail="Invalid entry ID")
     if not entry:
         raise HTTPException(status_code=404, detail="Journal entry not found")
-    if entry.get("entry_type") in ("loan_disbursement", "emi_collection"):
-        raise HTTPException(status_code=400, detail="Auto-generated entries cannot be edited")
+    _reject_if_auto_generated(entry, "edited")
 
     if current_user["role"] == "muneem":
         today = date_type.today()
@@ -353,8 +388,40 @@ async def delete_journal_entry(entry_id: str, request: Request):
         raise HTTPException(status_code=400, detail="Invalid entry ID")
     if not entry:
         raise HTTPException(status_code=404, detail="Journal entry not found")
+    # PUT already refused auto-generated entries; DELETE did not, and the Cash
+    # Book put a delete control on every EMI row. One click removed a
+    # collection's accounting and left the loan reading as paid.
+    _reject_if_auto_generated(entry, "deleted")
     await db.journal_entries.delete_one({"_id": ObjectId(entry_id)})
     return {"message": "Entry deleted"}
+
+
+async def _cash_balance_for(query: dict, cash_head_id: str) -> float:
+    """Net cash movement (debits - credits) across every entry matching `query`.
+
+    Summed by Mongo rather than in Python. The previous version pulled every
+    matching journal entry into memory with `.to_list(10000)` and added the cash
+    lines here, which silently stopped at ten thousand entries — after which the
+    opening balance for every subsequent month was permanently understated, with
+    no error and nothing on screen to show it. This spans the whole history of an
+    illaka, so that cap was always going to be reached.
+    """
+    if not cash_head_id:
+        return 0.0
+    cur = db.journal_entries.aggregate([
+        {"$match": query},
+        {"$unwind": "$lines"},
+        {"$match": {"lines.account_head_id": cash_head_id}},
+        {"$group": {
+            "_id": None,
+            "dr": {"$sum": {"$toDouble": {"$ifNull": ["$lines.debit", 0]}}},
+            "cr": {"$sum": {"$toDouble": {"$ifNull": ["$lines.credit", 0]}}},
+        }},
+    ])
+    rows = await cur.to_list(1)
+    if not rows:
+        return 0.0
+    return round(float(rows[0]["dr"]) - float(rows[0]["cr"]), 2)
 
 
 # ── Cash Book (two-column: Dr left, Cr right, EMIs grouped by Misal) ───────────
@@ -383,14 +450,9 @@ async def get_cashbook(
     # Opening balance: cumulative cash before this month
     opening_query = dict(query)
     opening_query["date"] = {"$lt": f"{month}-01"}
-    prev_entries = await db.journal_entries.find(opening_query).to_list(10000)
-    opening_balance = 0.0
-    for e in prev_entries:
-        for line in e.get("lines", []):
-            if line.get("account_head_id") == cash_head_id:
-                opening_balance += float(line.get("debit", 0)) - float(line.get("credit", 0))
+    opening_balance = await _cash_balance_for(opening_query, cash_head_id)
 
-    entries = await db.journal_entries.find(query).sort("date", 1).to_list(2000)
+    entries = await db.journal_entries.find(query).sort("date", 1).to_list(None)
 
     # Live misal name lookup to reflect any renames
     _unique_misal_ids = list({e.get("misal_id") for e in entries if e.get("misal_id")})
@@ -595,26 +657,21 @@ async def get_bid(
     # Opening balance (cumulative cash position before this month)
     opening_query = dict(query)
     opening_query["date"] = {"$lt": f"{month}-01"}
-    prev_entries = await db.journal_entries.find(opening_query).to_list(10000)
-    opening_balance = 0.0
+    opening_balance = await _cash_balance_for(opening_query, cash_head_id)
     if cash_head_id:
-        for e in prev_entries:
-            for line in e.get("lines", []):
-                if line.get("account_head_id") == cash_head_id:
-                    opening_balance += float(line.get("debit", 0)) - float(line.get("credit", 0))
         # An opening-balance entry dated INSIDE this month is the month's opening
         # cash, not a receipt. It is skipped in the transaction loop below, so
         # fold it in here — otherwise this month's closing understates the cash
         # and the next month opens on a different figure than this one closed.
         ob_this_month = await db.journal_entries.find(
             {**query, "entry_type": "opening_balance"}
-        ).to_list(100)
+        ).to_list(None)
         for e in ob_this_month:
             for line in e.get("lines", []):
                 if line.get("account_head_id") == cash_head_id:
                     opening_balance += float(line.get("debit", 0)) - float(line.get("credit", 0))
 
-    entries = await db.journal_entries.find(query).to_list(2000)
+    entries = await db.journal_entries.find(query).to_list(None)
 
     # Live misal name lookup to reflect any renames
     _unique_misal_ids_bid = list({e.get("misal_id") for e in entries if e.get("misal_id")})
@@ -782,7 +839,7 @@ async def get_trial_balance(
     next_month_start = f"{next_y}-{next_m:02d}-01"
     query["date"] = {"$lt": next_month_start}
 
-    entries = await db.journal_entries.find(query).to_list(50000)
+    entries = await db.journal_entries.find(query).to_list(None)
 
     head_totals: dict = {}
     for entry in entries:
@@ -849,7 +906,7 @@ async def get_balance_sheet(
     next_month_start = f"{next_y}-{next_m:02d}-01"
     query["date"] = {"$lt": next_month_start}
 
-    entries = await db.journal_entries.find(query).to_list(50000)
+    entries = await db.journal_entries.find(query).to_list(None)
 
     # Find the loans_portfolio account head id so we can skip it from journal aggregation
     # (we replace it with the computed outstanding from the loans collection)
@@ -891,14 +948,54 @@ async def get_balance_sheet(
 
     loans = await db.loans.find(
         loan_query,
-        {"total_repayable": 1, "total_paid": 1, "is_gyal": 1, "status": 1}
-    ).to_list(50000)
+        {"total_repayable": 1, "total_paid": 1, "emi_schedule": 1, "is_gyal": 1,
+         "gyal_since": 1, "status": 1, "netoff_closed": 1, "netoff_date": 1}
+    ).to_list(None)
 
-    aasami_balance = round(sum(
-        max(0.0, float(ln.get("total_repayable") or 0) - float(ln.get("total_paid") or 0))
-        for ln in loans
-        if not ln.get("is_gyal") and ln.get("status") in ("active", "overdue")
-    ), 2)
+    # The figure has to be the position AS AT the selected month's end, the same
+    # way `/accounts/aasami-balance?as_of=` reconstructs it. `total_paid`,
+    # `status`, `is_gyal` and `netoff_closed` are all TODAY's values, so reading
+    # them directly reported today's portfolio on every past month: a Balance
+    # Sheet for April deducted payments received in May, June and July, and
+    # dropped loans that were still live in April but have since closed. Only
+    # the disbursement-date filter above was month-aware, so the month selector
+    # appeared to work while the number never moved.
+    aasami_balance = 0.0
+    for ln in loans:
+        # Written off on or before this month → already out of the portfolio then.
+        if ln.get("is_gyal"):
+            since = (ln.get("gyal_since") or "")[:7]
+            if not since or since <= month:
+                continue
+        # Closed by net-off on or before this month → likewise out.
+        # netoff_date is a plain YYYY-MM-DD for entries written since the fix, and
+        # a full ISO timestamp for older ones. Comparing only the date part makes
+        # both behave the same.
+        if ln.get("netoff_closed") and (ln.get("netoff_date") or "")[:10] < next_month_start:
+            continue
+        repayable = float(ln.get("total_repayable") or 0)
+        sched = ln.get("emi_schedule", [])
+        sched_paid_all = sum(
+            float(e.get("paid_amount") or 0)
+            for e in sched if e.get("status") == "paid"
+        )
+        # Imported loans carry repayments made BEFORE the import inside
+        # `total_paid`, with no dated schedule entry to match. Rebuilding the
+        # paid figure from the schedule alone would silently drop that history
+        # and overstate the portfolio. Whatever `total_paid` holds beyond the
+        # dated entries is pre-import money, so it predates any selectable month
+        # and always counts.
+        baseline_paid = max(0.0, float(ln.get("total_paid") or 0) - sched_paid_all)
+        paid = baseline_paid + sum(
+            float(e.get("paid_amount") or 0)
+            for e in sched
+            if e.get("status") == "paid" and (e.get("paid_date") or "") < next_month_start
+        )
+        outstanding = round(max(0.0, repayable - paid), 2)
+        if outstanding <= 0:
+            continue          # settled by this date — not part of the portfolio
+        aasami_balance += outstanding
+    aasami_balance = round(aasami_balance, 2)
 
     assets, liabilities, equity_items = [], [], []
     income_total = 0.0
@@ -1057,8 +1154,9 @@ async def get_aasami_balance(
     loans = await db.loans.find(
         query,
         {"total_repayable": 1, "total_paid": 1, "emi_schedule": 1,
-         "is_gyal": 1, "gyal_since": 1, "status": 1},
-    ).to_list(20000)
+         "is_gyal": 1, "gyal_since": 1, "status": 1,
+         "netoff_closed": 1, "netoff_date": 1},
+    ).to_list(None)
 
     as_of_ym = (as_of or "")[:7]
     total = 0.0
@@ -1066,14 +1164,34 @@ async def get_aasami_balance(
     for ln in loans:
         if ln.get("is_gyal"):
             # Written off before the date → already out of the portfolio then.
-            since = ln.get("gyal_since") or ""
+            # Truncate BOTH sides. gyal_since is stored as YYYY-MM-DD by the
+            # year-end closing and as YYYY-MM by the importer; comparing a full
+            # date against a 7-character month made "2026-03-31" <= "2026-03"
+            # false, so a loan written off ON the closing date was excluded by
+            # the Balance Sheet and still counted here.
+            since = (ln.get("gyal_since") or "")[:7]
             if not as_of or not since or since <= as_of_ym:
                 continue
+        # A loan closed by net-off is no longer receivable — its balance was
+        # rolled into the re-loan, which is counted separately. The `as_of`
+        # branch dropped the status filter entirely and so counted both, double
+        # counting the rolled-over amount.
+        if as_of and ln.get("netoff_closed") and (ln.get("netoff_date") or "")[:10] <= as_of:
+            continue
         repayable = float(ln.get("total_repayable") or 0)
+        sched = ln.get("emi_schedule", [])
         if as_of:
-            paid = sum(
+            sched_paid_all = sum(
                 float(e.get("paid_amount") or 0)
-                for e in ln.get("emi_schedule", [])
+                for e in sched if e.get("status") == "paid"
+            )
+            # Imported loans carry pre-import repayments inside total_paid with
+            # no dated schedule row. Rebuilding from the schedule alone dropped
+            # that history and overstated the portfolio.
+            baseline = max(0.0, float(ln.get("total_paid") or 0) - sched_paid_all)
+            paid = baseline + sum(
+                float(e.get("paid_amount") or 0)
+                for e in sched
                 if e.get("status") == "paid" and (e.get("paid_date") or "") <= as_of
             )
         else:
@@ -1120,11 +1238,8 @@ async def create_opening_balance(data: OpeningBalanceCreate, request: Request):
     if current_user["role"] not in ["admin", "maalik"]:
         raise HTTPException(status_code=403, detail="Only admin or maalik can set opening balances")
 
-    # Delete previous opening balance for this illaka (allow re-entry)
-    await db.journal_entries.delete_one({
-        "entry_type": "opening_balance",
-        "illaka_id": data.illaka_id,
-    })
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", data.date or ""):
+        raise HTTPException(status_code=400, detail="date must be YYYY-MM-DD")
 
     # Ensure Opening Capital equity head exists
     capital_head = await db.account_heads.find_one({"system_key": "opening_capital"})
@@ -1191,6 +1306,19 @@ async def create_opening_balance(data: OpeningBalanceCreate, request: Request):
             "credit": diff if diff > 0 else 0.0,
         })
 
+    # Replace only the opening balance for THIS DATE, and only after the input
+    # has been validated.
+    #
+    # The delete used to run at the top and match on illaka alone, so (a) saving
+    # a new financial year's opening silently destroyed the previous year's and
+    # every earlier month lost that cash, and (b) a save rejected further down
+    # had already deleted the existing one, leaving the illaka with none at all.
+    await db.journal_entries.delete_many({
+        "entry_type": "opening_balance",
+        "illaka_id": data.illaka_id,
+        "date": data.date,
+    })
+
     await create_journal_entry_internal(
         illaka_id=data.illaka_id,
         date=data.date,
@@ -1249,7 +1377,7 @@ async def get_closing_balances(
     # All journal entries for this illaka up to and including the closing date
     entries = await db.journal_entries.find(
         {"illaka_id": illaka_id, "date": {"$lte": closing_date}}
-    ).to_list(50000)
+    ).to_list(None)
 
     head_totals: dict = {}
     for entry in entries:
@@ -1400,6 +1528,14 @@ async def create_or_update_expense_submission(data: ExpenseSubmissionCreate, req
         f = field_map.get(e.field_id)
         if not f:
             raise HTTPException(status_code=400, detail=f"Field {e.field_id} not found in template")
+        # A negative line was accepted, silently left out of the journal's debit
+        # side, but still counted in the sheet's own total — so the expense sheet
+        # and the books reported different figures for the same submission.
+        if float(e.amount) < 0:
+            raise HTTPException(
+                status_code=400,
+                detail=f"'{f['label']}' cannot be negative / रकम ऋणात्मक नहीं हो सकती",
+            )
         enriched_entries.append({
             "field_id": e.field_id,
             "field_label": f["label"],
@@ -1418,6 +1554,7 @@ async def create_or_update_expense_submission(data: ExpenseSubmissionCreate, req
             raise HTTPException(status_code=500, detail="Cash in Hand account not found")
 
         lines = []
+        posted_total = 0.0
         for e in enriched_entries:
             if float(e["amount"]) > 0:
                 head = await db.account_heads.find_one({"_id": ObjectId(e["account_head_id"])})
@@ -1429,17 +1566,43 @@ async def create_or_update_expense_submission(data: ExpenseSubmissionCreate, req
                     "debit": float(e["amount"]),
                     "credit": 0.0,
                 })
+                posted_total += float(e["amount"])
+
+        # Remove the superseded entry BEFORE deciding whether a new one is
+        # needed. This used to sit inside `if lines:`, so re-submitting a month
+        # with every line zeroed left the previous entry in the books while the
+        # submission read zero — and fix 1 now refuses to delete an
+        # `expense_sheet` entry, making the orphan permanent.
+        if existing and existing.get("journal_entry_id"):
+            try:
+                await db.journal_entries.delete_one(
+                    {"_id": ObjectId(existing["journal_entry_id"])}
+                )
+            except Exception:
+                pass
+
         if lines:
+            # Credit the sum of the lines actually posted, not `total_amount`.
+            # The debit side skips entries of zero or less, while total_amount
+            # sums every entry — so a single negative amount made the two
+            # disagree and wrote an unbalanced entry that no report would catch.
             lines.append({
                 "account_head_id": str(cash_head["_id"]),
                 "account_head_name": cash_head["name"],
                 "group_name": cash_head.get("group_name", ""),
                 "group_type": cash_head.get("group_type", ""),
                 "debit": 0.0,
-                "credit": total_amount,
+                "credit": round(posted_total, 2),
             })
             illaka_doc = await db.illakas.find_one({"_id": ObjectId(data.illaka_id)})
             illaka_name = illaka_doc.get("name", "") if illaka_doc else ""
+            # Re-submitting a month must REPLACE its accounting, not add to it.
+            # The previous entry was left in place while journal_entry_id was
+            # overwritten to point at the new one, so the month's expenses were
+            # booked twice and the orphan could no longer be reached — deleting
+            # the submission removed only the newer entry. The "already
+            # submitted" guard above does not stop this, because it applies to
+            # muneem alone and admin and maalik walk straight past it.
             entry_id = await create_journal_entry_internal(
                 illaka_id=data.illaka_id,
                 date=f"{data.month}-01",  # First of the month as date
@@ -1472,7 +1635,22 @@ async def create_or_update_expense_submission(data: ExpenseSubmissionCreate, req
             doc["created_at"] = existing.get("created_at", now)
         else:
             doc["created_at"] = now
-            result = await db.expense_submissions.insert_one(doc)
+            try:
+                result = await db.expense_submissions.insert_one(doc)
+            except DuplicateKeyError:
+                # Another submission for this illaka and month won the race. The
+                # journal entry booked above belongs to a submission that will
+                # never exist, and nothing could delete it afterwards — so undo
+                # it here rather than leaving the month double-booked.
+                if entry_id:
+                    try:
+                        await db.journal_entries.delete_one({"_id": ObjectId(entry_id)})
+                    except Exception:
+                        pass
+                raise HTTPException(
+                    status_code=409,
+                    detail="This month's expense sheet was submitted by someone else just now. Reload and review it.",
+                )
             doc["_id"] = result.inserted_id
         return {"submission": _doc(doc), "message": "Expense sheet submitted and journal entry created"}
 
@@ -1574,7 +1752,7 @@ async def get_monthly_summary(
     query = await _illaka_filter_for_user(current_user, illaka_id, maalik_id)
     query["date"] = {"$regex": f"^{month}"}
 
-    entries = await db.journal_entries.find(query).to_list(2000)
+    entries = await db.journal_entries.find(query).to_list(None)
     head_totals: dict = {}
     for entry in entries:
         for line in entry.get("lines", []):

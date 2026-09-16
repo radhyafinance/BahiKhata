@@ -123,8 +123,17 @@ def _build_emi_year_strip(
                 # within this FY, it is already shown there via Priority 1 above.
                 # Suppress it here so the entry appears in exactly one column.
                 paid_m = (sched_item.get("paid_date") or "")[:7]
+                # The `paid_m in fy_months` test used to let a payment received
+                # in the NEXT financial year show in its due month here as well
+                # as in its receipt month there — an EMI due March 2026 paid on
+                # 10 April 2026 was counted once in FY25-26 and again in FY26-27,
+                # while the Cash Book had it only once.
+                #
+                # A strip column means "money received in this month". If the
+                # money arrived in some other month, this column shows nothing,
+                # whether or not that other month falls inside this FY.
                 if (sched_item.get("status") == "paid"
-                        and paid_m in fy_months
+                        and paid_m
                         and paid_m != fy_m):
                     result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
                 else:
@@ -324,7 +333,7 @@ async def get_collection_sheet(
 
     loans = await db.loans.find(query).sort(
         [("illaka_id", 1), ("misal_id", 1), ("loan_date", 1)]
-    ).to_list(5000)
+    ).to_list(None)
 
     # ── Bulk lookups ──────────────────────────────────────────────────────────
     unique_illaka_ids = list({ln.get("illaka_id") for ln in loans if ln.get("illaka_id")})
@@ -363,7 +372,7 @@ async def get_collection_sheet(
             {"_id": {"$in": valid_kyc_oids}},
             {"_id": 1, "primary_borrower.relative_name": 1, "primary_borrower.relative_name_hindi": 1,
              "guarantor.name": 1, "guarantor.name_hindi": 1, "customer_id": 1},
-        ).to_list(5000)
+        ).to_list(None)
         kyc_map = {str(k["_id"]): k for k in raw_kycs}
 
     # ₹0 "visit recorded" payments — keyed by the month the visit happened
@@ -374,7 +383,7 @@ async def get_collection_sheet(
         zero_pmts = await db.payments.find(
             {"loan_id": {"$in": all_loan_ids}, "amount": 0},
             {"loan_id": 1, "payment_date": 1, "emi_month": 1},
-        ).to_list(20000)
+        ).to_list(None)
         for p in zero_pmts:
             ym = (p.get("payment_date") or "")[:7] or p.get("emi_month") or ""
             if ym in fy_months:
@@ -386,7 +395,7 @@ async def get_collection_sheet(
     if gyal_loan_ids:
         gyal_pmts = await db.payments.find(
             {"loan_id": {"$in": gyal_loan_ids}, "emi_month": {"$in": fy_months}}
-        ).to_list(5000)
+        ).to_list(None)
         # Gyal months are keyed by emi_month, and there can legitimately be more
         # than one payment against a month — a ₹0 visit followed by a real
         # collection, or two hand-overs. Keeping only the last one read meant a
@@ -630,7 +639,7 @@ async def get_collection_sheet(
         closing_docs = await db.illaka_closings.find(
             {"illaka_id": {"$in": result_illaka_ids}},
             {"illaka_id": 1, "closing_date": 1},
-        ).to_list(5000)
+        ).to_list(None)
         for cd in closing_docs:
             il_id = cd.get("illaka_id", "")
             gs    = cd.get("closing_date", "")
@@ -660,8 +669,11 @@ async def monthly_summary(request: Request, illaka_id: str, month: str):
         from fastapi import HTTPException
         raise HTTPException(status_code=400, detail="month must be YYYY-MM")
 
+    # Closed loans are included deliberately. Filtering to active/overdue dropped
+    # every collection made on a loan that has since been repaid or netted off,
+    # so a month's takings shrank as loans closed.
     loans = await db.loans.find(
-        {"illaka_id": illaka_id, "status": {"$in": ["active", "overdue"]}},
+        {"illaka_id": illaka_id},
         {"misal_id": 1, "misal_name": 1, "emi_amount": 1, "emi_schedule": 1}
     ).to_list(None)
 
@@ -669,15 +681,34 @@ async def monthly_summary(request: Request, illaka_id: str, month: str):
     for loan in loans:
         mid   = loan.get("misal_id", "")
         mname = loan.get("misal_name", "Unknown")
-        if mid not in misal_map:
-            misal_map[mid] = {"misal_id": mid, "misal_name": mname, "utaar": 0.0, "vayda": 0.0, "clients": 0, "clients_paid": 0}
-        entry = next((e for e in loan.get("emi_schedule", []) if e.get("due_month") == month), None)
-        if not entry:
+        schedule = loan.get("emi_schedule", [])
+
+        # Utaar — what was SCHEDULED for this month. A netoff row was settled by
+        # a re-loan rather than falling due, so it is not counted.
+        due_entry = next(
+            (e for e in schedule
+             if e.get("due_month") == month and e.get("status") != "netoff"),
+            None,
+        )
+        # Vayda — what was actually RECEIVED this month, keyed on payment date.
+        # It used to be keyed on due_month, so an instalment due in July but paid
+        # in September was reported as July's collection and never appeared in
+        # September — the figure labelled "Collected" was not money collected.
+        paid_entries = [
+            e for e in schedule
+            if e.get("status") == "paid" and (e.get("paid_date") or "")[:7] == month
+        ]
+        if not due_entry and not paid_entries:
             continue
-        misal_map[mid]["clients"] += 1
-        misal_map[mid]["utaar"]   += float(loan.get("emi_amount") or 0)
-        if entry.get("status") == "paid":
-            misal_map[mid]["vayda"] += float(entry.get("paid_amount") or loan.get("emi_amount") or 0)
+
+        if mid not in misal_map:
+            misal_map[mid] = {"misal_id": mid, "misal_name": mname, "utaar": 0.0,
+                              "vayda": 0.0, "clients": 0, "clients_paid": 0}
+        if due_entry:
+            misal_map[mid]["clients"] += 1
+            misal_map[mid]["utaar"]   += float(loan.get("emi_amount") or 0)
+        if paid_entries:
+            misal_map[mid]["vayda"] += sum(float(e.get("paid_amount") or 0) for e in paid_entries)
             misal_map[mid]["clients_paid"] += 1
 
     misals = sorted(misal_map.values(), key=lambda m: m["misal_name"])

@@ -78,7 +78,7 @@ async def dashboard_overview(
     fy_months = _fy_months(fy_start_year)
 
     # Fetch all relevant loans
-    loans = await db.loans.find(loan_query).to_list(50000)
+    loans = await db.loans.find(loan_query).to_list(None)
 
     # Fetch illaka names
     illaka_ids_in_data = list({l["illaka_id"] for l in loans if l.get("illaka_id")})
@@ -142,6 +142,11 @@ async def dashboard_overview(
             paid_date = emi.get("paid_date") or ""
             paid_ym = paid_date[:7] if paid_date else ""
             amt = float(emi.get("amount") or 0)
+            # Vayda is money RECEIVED, so it must read paid_amount — not the
+            # scheduled instalment. Using `amt` reported a part payment at its
+            # full scheduled value, and counted Gyal recoveries (whose synthetic
+            # rows carry amount: 0) as nothing at all.
+            paid_amt = float(emi.get("paid_amount") or 0)
 
             # Utaar — EMIs scheduled this month
             if due_ym == current_ym:
@@ -152,9 +157,9 @@ async def dashboard_overview(
 
             # Vayda — EMIs physically collected this month
             if paid_ym == current_ym and emi.get("status") == "paid":
-                ia["vayda"] += amt
+                ia["vayda"] += paid_amt
                 ia["vayda_count"] += 1
-                total_vayda += amt
+                total_vayda += paid_amt
                 total_vayda_count += 1
 
             # FY graph — Utaar
@@ -164,8 +169,8 @@ async def dashboard_overview(
 
             # FY graph — Vayda (by paid_date)
             if paid_ym in total_fy and emi.get("status") == "paid":
-                ia["fy"][paid_ym]["vayda"] += amt
-                total_fy[paid_ym]["vayda"] += amt
+                ia["fy"][paid_ym]["vayda"] += paid_amt
+                total_fy[paid_ym]["vayda"] += paid_amt
 
         # ── देन (Disbursements this month) ──
         loan_date = loan.get("loan_date") or ""
