@@ -11,6 +11,14 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
   const [loading, setLoading] = useState(true);
   const canAct = user?.role === "admin" || user?.role === "maalik";
 
+  // Only entries a person actually created by hand can be removed here. A
+  // collection, disbursement, net-off, write-off, opening balance or expense
+  // sheet is created and removed by the operation it belongs to; deleting one
+  // here used to strip the accounting while leaving the loan reading as paid.
+  // The API refuses these now — this just stops offering a button that errors.
+  const canDelete = (entryType) =>
+    canAct && (entryType === "manual" || entryType === "expense_voucher");
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -114,13 +122,9 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
                               </span>
                               <div className="flex items-center gap-1">
                                 <span className="text-xs font-medium">{fmt(e.amount)}</span>
-                                {canAct && (
-                                  <button onClick={() => onDelete(e.entry_id)}
-                                    className="p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded transition-colors"
-                                    title="Delete EMI entry" data-testid={`delete-emi-${e.entry_id}`}>
-                                    <Trash2 size={11} />
-                                  </button>
-                                )}
+                                {/* No delete control on EMI rows — an emi_collection
+                                    entry is unwound by uncollecting on the Vasuli
+                                    sheet, not by deleting its accounting. */}
                               </div>
                             </div>
                           ))}
@@ -137,7 +141,7 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
                     </div>
                     <div className="flex items-center gap-2 ml-2">
                       <span className="text-sm font-bold text-green-700">{fmt(section.amount)}</span>
-                      {canAct && (
+                      {canDelete(section.entry_type) && (
                         <div className="flex gap-0.5">
                           {section.entry_type === "expense_voucher" && (
                             <button onClick={() => onEdit(section.entry_id)}
@@ -202,7 +206,7 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
                               </span>
                               <div className="flex items-center gap-1">
                                 <span className="text-xs font-medium">{fmt(e.amount)}</span>
-                                {canAct && (
+                                {canDelete(e.entry_type) && (
                                   <div className="flex gap-0.5">
                                     {e.entry_type === "expense_voucher" && (
                                       <button onClick={() => onEdit(e.entry_id)}
@@ -235,7 +239,7 @@ export function CashBook({ month, illakaId, maalikId, refresh, user, onDelete, o
                     </div>
                     <div className="flex items-center gap-2 ml-2">
                       <span className="text-sm font-bold text-red-700">{fmt(e.amount)}</span>
-                      {canAct && (
+                      {canDelete(e.entry_type) && (
                         <div className="flex gap-0.5">
                           {e.entry_type === "expense_voucher" && (
                             <button onClick={() => onEdit(e.entry_id)}

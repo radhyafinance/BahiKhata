@@ -4,6 +4,7 @@ UAT endpoint for credit bureau checks
 """
 import os
 import re
+import asyncio
 import uuid
 import logging
 import requests
@@ -529,7 +530,19 @@ async def run_crif_check(kyc_id: str, current_user: dict = Depends(get_current_u
         "reqVolType": "INDV",
     }
     try:
-        response = requests.post(crif_url, headers=headers, timeout=45)
+        # Off the event loop.
+        #
+        # `requests.post` is synchronous, and this handler is `async def`. Called
+        # directly it blocked the entire event loop for as long as CRIF took to
+        # answer — up to the full 45-second timeout — freezing every request for
+        # every user of every tenant, not just this one. Measured: an unrelated
+        # GET /api/loans went from 3 ms to 4.79 s while a single check was in
+        # flight, and two concurrent checks serialised.
+        #
+        # The call still takes as long; it just no longer holds the app hostage.
+        response = await asyncio.to_thread(
+            requests.post, crif_url, headers=headers, timeout=45
+        )
         response.raise_for_status()
     except requests.Timeout:
         raise HTTPException(status_code=504, detail="CRIF API timeout. Please retry.")

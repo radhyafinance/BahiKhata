@@ -1,15 +1,19 @@
 from fastapi import APIRouter, HTTPException, Request
 from bson import ObjectId
+from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timezone, date as date_type
 from typing import Optional
 import calendar
+import re
+import logging
 from core.database import db
 from core.auth import get_current_user
 from helpers import (
     _doc, generate_loan_number, _build_emi_schedule,
     _get_loan_status, _apply_overdue_to_schedule, _add_months, _loan_query_for_user,
     get_admin_maalik_filter_ids, apply_illaka_scope, permitted_illaka_ids,
-    create_journal_entry_internal, _get_system_heads, _make_head_line, book_loan_disbursement
+    create_journal_entry_internal, _get_system_heads, _make_head_line, book_loan_disbursement,
+    _import_baseline, _total_paid_with_baseline,
 )
 from models import LoanCreate, LoanStatusUpdate, PaymentCreate, PaymentEdit, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest, YearEndUndoRequest
 
@@ -64,6 +68,39 @@ async def _book_emi_collection(loan_doc: dict, payment: dict, user_id: str, user
     except Exception as e:
         import logging
         logging.getLogger(__name__).warning(f"Failed to book EMI collection entry: {e}")
+
+
+async def _assert_loan_in_scope(current_user: dict, loan: dict) -> None:
+    """Refuse to touch a loan outside the caller's illakas.
+
+    Read endpoints have always been scoped, but most WRITE endpoints only
+    checked the role — so a muneem could edit, collect against, re-loan or
+    delete a loan belonging to a branch it cannot even list, just by knowing or
+    guessing the id. Same rule as the sheet applies: admin is unrestricted,
+    everyone else is limited to their assigned illakas.
+    """
+    allowed = await permitted_illaka_ids(current_user)
+    if allowed is not None and loan.get("illaka_id") not in allowed:
+        raise HTTPException(
+            status_code=403, detail="This client is not in your assigned Illaka"
+        )
+
+
+async def _insert_loan(doc: dict, customer_id: str, kyc_id: str, attempts: int = 6):
+    """Insert a loan, re-allocating its number if another request took it first.
+
+    loan_number is unique now, so two simultaneous loans for one customer can
+    collide on the same generated number. Without a retry that surfaced as a 500.
+    """
+    for _ in range(attempts):
+        try:
+            return await db.loans.insert_one(doc)
+        except DuplicateKeyError:
+            doc["loan_number"] = await generate_loan_number(customer_id, kyc_id)
+    raise HTTPException(
+        status_code=409,
+        detail="Could not allocate a loan number just now — please try again.",
+    )
 
 
 @router.get("/loans")
@@ -152,8 +189,9 @@ async def create_loan(data: LoanCreate, request: Request):
         "emi_schedule": schedule,
         "created_at": now, "updated_at": now,
     }
-    result = await db.loans.insert_one(doc)
+    result = await _insert_loan(doc, customer_id, data.kyc_id)
     doc["_id"] = result.inserted_id
+    doc["loan_number"] = doc["loan_number"]
     await book_loan_disbursement(doc, current_user["id"], current_user["name"])
     return _doc(doc)
 
@@ -187,25 +225,84 @@ async def update_loan(loan_id: str, data: LoanCreate, request: Request):
         raise HTTPException(status_code=404, detail="Loan not found")
     if current_user["role"] not in ["admin", "maalik", "muneem", "sadar_muneem"] and loan.get("sipahi_id") != current_user["id"]:
         raise HTTPException(status_code=403, detail="Access denied")
-    loan_date_obj = date_type.fromisoformat(data.loan_date)
-    emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)
+    await _assert_loan_in_scope(current_user, loan)
     old_schedule = loan.get("emi_schedule", [])
-    for i, item in enumerate(schedule):
-        if i < len(old_schedule) and old_schedule[i]["status"] == "paid":
-            schedule[i] = old_schedule[i]
+    now = datetime.now(timezone.utc).isoformat()
+
+    # Details anyone may correct at any time — they touch no money.
     updates = {
-        "client_name": data.client_name, "client_phone": data.client_phone,
-        "principal_amount": data.principal_amount, "emi_amount": emi_amount,
-        "total_repayable": emi_amount * 12,
-        "interest_amount": (emi_amount * 12) - data.principal_amount,
-        "loan_date": data.loan_date,
-        "due_date": _add_months(loan_date_obj, 12).isoformat(),
-        "notes": data.notes, "emi_schedule": schedule,
-        "status": _get_loan_status(schedule),
-        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "client_name": data.client_name,
+        "client_phone": data.client_phone,
+        "notes": data.notes,
+        "updated_at": now,
     }
+
+    terms_changed = (
+        float(data.principal_amount) != float(loan.get("principal_amount") or 0)
+        or (data.loan_date or "") != (loan.get("loan_date") or "")
+    )
+
+    # The schedule is only rebuilt when the terms actually change.
+    #
+    # It used to be rebuilt on EVERY edit: always exactly twelve rows from the
+    # originated-loan formula, carrying paid instalments across BY INDEX. Fixing
+    # a spelling mistake on an imported loan therefore truncated a twenty-row
+    # schedule to twelve, deleted the collections recorded in rows thirteen
+    # onward, overwrote the opening balance with a computed figure, and left the
+    # loan marked closed with money still owed. Nothing warned, and the response
+    # was a 200.
+    if terms_changed:
+        paid_rows = [e for e in old_schedule if e.get("status") == "paid"]
+        if loan.get("is_import"):
+            raise HTTPException(
+                status_code=400,
+                detail=("This loan was imported with an opening balance, so its terms "
+                        "cannot be recalculated. Correct the name, phone or notes here; "
+                        "for a wrong balance, delete the loan and re-import it."),
+            )
+        if paid_rows:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"{len(paid_rows)} instalment(s) have already been collected on this "
+                        f"loan, so the amount and date can no longer be changed — rebuilding "
+                        f"the schedule would erase them. Delete the collections first, or "
+                        f"delete the loan and create it again."),
+            )
+        if len(old_schedule) > 12:
+            raise HTTPException(
+                status_code=400,
+                detail=("This loan's schedule is longer than twelve instalments and would be "
+                        "truncated by a recalculation. Delete and recreate it instead."),
+            )
+
+        loan_date_obj = date_type.fromisoformat(data.loan_date)
+        emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)
+        updates.update({
+            "principal_amount": data.principal_amount,
+            "emi_amount": emi_amount,
+            "total_repayable": emi_amount * 12,
+            "interest_amount": (emi_amount * 12) - data.principal_amount,
+            "loan_date": data.loan_date,
+            "due_date": _add_months(loan_date_obj, 12).isoformat(),
+            "emi_schedule": schedule,
+            "status": _get_loan_status(schedule),
+        })
+
     await db.loans.update_one({"_id": ObjectId(loan_id)}, {"$set": updates})
-    return _doc(await db.loans.find_one({"_id": ObjectId(loan_id)}))
+    updated = await db.loans.find_one({"_id": ObjectId(loan_id)})
+
+    # Keep the books in step with the loan book. Changing the principal used to
+    # leave the original disbursement entry untouched, so Loans Portfolio kept
+    # the old figure while the loan carried the new one — a divergence no report
+    # would ever surface.
+    if terms_changed:
+        await db.journal_entries.delete_many(
+            {"reference_id": loan_id, "entry_type": "loan_disbursement"}
+        )
+        await book_loan_disbursement(updated, current_user["id"], current_user["name"])
+        updated = await db.loans.find_one({"_id": ObjectId(loan_id)})
+
+    return _doc(updated)
 
 
 @router.patch("/loans/{loan_id}/status")
@@ -256,6 +353,12 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
                 status_code=403,
                 detail="Cannot record a collection for a past month / पिछले महीने की एंट्री नहीं कर सकते",
             )
+    # Validate the month before it can be written into the schedule. Junk values
+    # like "2026-13" or "junkmonth" were accepted, marked paid, and then made the
+    # delete path 500 forever — a row nothing could clear.
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", data.emi_month or ""):
+        raise HTTPException(status_code=400, detail="emi_month must be in YYYY-MM format")
+
     schedule = doc.get("emi_schedule", [])
     emi_item = next((e for e in schedule if e["due_month"] == data.emi_month), None)
     if not emi_item:
@@ -343,7 +446,10 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
 
     claim = await db.loans.update_one(
         {"_id": oid,
-         "emi_schedule": {"$elemMatch": {"due_month": data.emi_month, "status": {"$ne": "paid"}}}},
+         "emi_schedule": {"$elemMatch": {
+             "due_month": data.emi_month,
+             "status": {"$nin": ["paid", "netoff"]},
+         }}},
         {"$set": {
             "emi_schedule.$[e].status": "paid",
             "emi_schedule.$[e].paid_amount": amount,
@@ -352,7 +458,11 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
             "emi_schedule.$[e].collected_by_name": current_user["name"],
             "updated_at": now,
         }},
-        array_filters=[{"e.due_month": data.emi_month, "e.status": {"$ne": "paid"}}],
+        # "netoff" is excluded as well as "paid": that instalment was settled by
+        # a re-loan, and collecting cash against it books money on a debt that no
+        # longer exists.
+        array_filters=[{"e.due_month": data.emi_month,
+                        "e.status": {"$nin": ["paid", "netoff"]}}],
     )
     if claim.modified_count == 0:
         raise HTTPException(status_code=400, detail="This EMI is already paid / यह किस्त पहले से चुकाई जा चुकी है")
@@ -360,7 +470,20 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     # Derived totals, recomputed from the authoritative post-claim document.
     claimed = await db.loans.find_one({"_id": oid})
     claimed_schedule = claimed.get("emi_schedule", [])
-    total_paid = sum(e.get("paid_amount", 0) for e in claimed_schedule if e["status"] == "paid")
+    # Preserve repayments that predate the schedule.
+    #
+    # A loan imported with an opening balance carries the money already repaid
+    # inside total_paid, with no dated instalment to match. Recomputing from the
+    # schedule alone discarded it — so recording one ordinary collection erased
+    # that history and pushed the outstanding balance UP, changing what a PAST
+    # month's Balance Sheet reported.
+    _sched_paid_before = sum(
+        float(e.get("paid_amount") or 0) for e in schedule if e.get("status") == "paid"
+    )
+    _baseline_paid = max(0.0, float(doc.get("total_paid") or 0) - _sched_paid_before)
+    total_paid = _baseline_paid + sum(
+        float(e.get("paid_amount") or 0) for e in claimed_schedule if e["status"] == "paid"
+    )
     new_status = _get_loan_status(claimed_schedule)
     await db.loans.update_one(
         {"_id": oid},
@@ -373,6 +496,17 @@ async def collect_emi(loan_id: str, data: PaymentCreate, request: Request):
         "notes": data.notes, "created_at": now,
     })
     updated_loan = await db.loans.find_one({"_id": ObjectId(loan_id)})
+    if not updated_loan:
+        # The loan was deleted while this collection was in flight. The payment
+        # row is already written, so returning _doc(None) crashed with a 500
+        # AFTER the money was recorded — leaving an orphan payment nobody could
+        # reach. Undo it and say so.
+        await db.payments.delete_one({"loan_id": loan_id, "emi_month": data.emi_month,
+                                      "created_at": now})
+        raise HTTPException(
+            status_code=409,
+            detail="This loan was deleted while the collection was being saved. Nothing was recorded.",
+        )
     payment_record = {"amount": amount, "payment_date": data.payment_date, "emi_month": data.emi_month}
     await _book_emi_collection(updated_loan, payment_record, current_user["id"], current_user["name"])
     return _doc(updated_loan)
@@ -389,15 +523,67 @@ async def delete_loan(loan_id: str, request: Request):
     except Exception:
         raise HTTPException(status_code=400, detail="Invalid loan ID")
 
-    loan = await db.loans.find_one({"_id": oid}, {"_id": 1, "loan_number": 1})
+    loan = await db.loans.find_one({"_id": oid})
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    await _assert_loan_in_scope(current_user, loan)
 
     await db.payments.delete_many({"loan_id": loan_id})
     await db.journal_entries.delete_many({"reference_id": loan_id})
     await db.loans.delete_one({"_id": oid})
 
-    return {"deleted": True, "loan_id": loan_id, "loan_number": loan.get("loan_number")}
+    # Deleting a re-loan has to release the parent it closed.
+    #
+    # Creating a re-loan with net-off marks the old loan's instalments "netoff",
+    # sets status "closed" and netoff_closed, and points reloan_id at the new
+    # loan. Deleting the new loan used to leave every one of those in place: the
+    # old loan stayed permanently closed against a re-loan that no longer
+    # existed, with no endpoint able to reopen it. The only fix was editing the
+    # database by hand.
+    reopened = None
+    parent_id = str(loan.get("parent_loan_id") or "")
+    if loan.get("is_reloan") and parent_id:
+        try:
+            parent = await db.loans.find_one({"_id": ObjectId(parent_id)})
+        except Exception:
+            parent = None
+        # Only release a parent that points back at THIS child. A parent can
+        # have more than one re-loan, and deleting an unrelated later one used to
+        # reopen a balance the FIRST child had legitimately absorbed —
+        # resurrecting a receivable the client had already had rolled over.
+        if (parent and parent.get("netoff_closed")
+                and str(parent.get("reloan_id") or "") == loan_id):
+            schedule = parent.get("emi_schedule", [])
+            for emi in schedule:
+                if emi.get("status") == "netoff":
+                    # "netoff" carries no memory of what the instalment was
+                    # before, so reset to pending and let the normal overdue
+                    # rule re-derive it from the due month.
+                    emi["status"] = "pending"
+                    if str(emi.get("note") or "").startswith("Net-off:"):
+                        emi["note"] = ""
+            _apply_overdue_to_schedule(schedule)
+            await db.loans.update_one(
+                {"_id": parent["_id"]},
+                {"$set": {
+                    "emi_schedule": schedule,
+                    "status": _get_loan_status(schedule),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
+                },
+                 "$unset": {"netoff_closed": "", "netoff_date": "", "reloan_id": ""}},
+            )
+            reopened = {
+                "loan_id": parent_id,
+                "loan_number": parent.get("loan_number"),
+                "status": _get_loan_status(schedule),
+            }
+
+    return {
+        "deleted": True,
+        "loan_id": loan_id,
+        "loan_number": loan.get("loan_number"),
+        "reopened_parent": reopened,
+    }
 
 
 @router.delete("/loans/{loan_id}/payments/{emi_month}")
@@ -408,7 +594,9 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     doc = await db.loans.find_one({"_id": ObjectId(loan_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Loan not found")
+    await _assert_loan_in_scope(current_user, doc)
     schedule = doc.get("emi_schedule", [])
+    _baseline = _import_baseline(doc)   # before any mutation below
     emi_item = next((e for e in schedule if e["due_month"] == emi_month), None)
     if not emi_item:
         raise HTTPException(status_code=404, detail="EMI month not found")
@@ -420,7 +608,7 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
     if emi_item.get("is_gyal_entry"):
         # Synthetic Gyal entries: remove row entirely
         schedule = [e for e in schedule if e["due_month"] != emi_month]
-        total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
+        total_paid = _total_paid_with_baseline(_baseline, schedule)
         await db.loans.update_one(
             {"_id": ObjectId(loan_id)},
             {"$set": {"emi_schedule": schedule, "total_paid": total_paid,
@@ -434,7 +622,7 @@ async def uncollect_emi(loan_id: str, emi_month: str, request: Request):
             "status": new_emi_status, "paid_amount": 0.0,
             "paid_date": None, "collected_by_id": None, "collected_by_name": None
         })
-        total_paid = sum(e.get("paid_amount", 0) for e in schedule if e["status"] == "paid")
+        total_paid = _total_paid_with_baseline(_baseline, schedule)
         await db.loans.update_one(
             {"_id": ObjectId(loan_id)},
             {"$set": {"emi_schedule": schedule, "total_paid": total_paid,
@@ -481,6 +669,7 @@ async def edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, requ
     doc = await db.loans.find_one({"_id": oid})
     if not doc:
         raise HTTPException(status_code=404, detail="Loan not found")
+    await _assert_loan_in_scope(current_user, doc)
 
     # Role-based time restriction
     if current_user["role"] in ["muneem", "sipahi"]:
@@ -501,6 +690,7 @@ async def edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, requ
                 )
 
     schedule = doc.get("emi_schedule", [])
+    _baseline = _import_baseline(doc)   # before any mutation below
     emi_item = next((e for e in schedule if e.get("due_month") == emi_month), None)
     if not emi_item:
         raise HTTPException(status_code=404, detail=f"EMI month {emi_month} not found in schedule")
@@ -536,7 +726,7 @@ async def edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, requ
     emi_item["edited_by_id"] = current_user["id"]
     emi_item["edited_by_name"] = current_user["name"]
 
-    total_paid = sum(float(e.get("paid_amount") or 0) for e in schedule if e.get("status") == "paid")
+    total_paid = _total_paid_with_baseline(_baseline, schedule)
     await db.loans.update_one(
         {"_id": oid},
         {"$set": {"emi_schedule": schedule, "total_paid": total_paid, "updated_at": now}}
@@ -559,7 +749,7 @@ async def edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, requ
 @router.patch("/loans/{loan_id}/emi-note")
 async def update_emi_note(loan_id: str, data: EmiNoteUpdate, request: Request):
     """Add or update a note on a specific EMI."""
-    await get_current_user(request)
+    current_user = await get_current_user(request)
     try:
         oid = ObjectId(loan_id)
     except Exception:
@@ -567,13 +757,56 @@ async def update_emi_note(loan_id: str, data: EmiNoteUpdate, request: Request):
     doc = await db.loans.find_one({"_id": oid})
     if not doc:
         raise HTTPException(status_code=404, detail="Loan not found")
+    await _assert_loan_in_scope(current_user, doc)
+    # The month must be a real YYYY-MM. Unvalidated input used to create
+    # permanent junk rows in the schedule that nothing could clear.
+    if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", data.emi_month or ""):
+        raise HTTPException(status_code=400, detail="emi_month must be in YYYY-MM format")
+
     schedule = doc.get("emi_schedule", [])
     emi_item = next((e for e in schedule if e["due_month"] == data.emi_month), None)
-    if not emi_item:
-        raise HTTPException(status_code=404, detail=f"EMI {data.emi_month} not found in schedule")
-    emi_item["note"] = data.note.strip()
     now = datetime.now(timezone.utc).isoformat()
-    await db.loans.update_one({"_id": oid}, {"$set": {"emi_schedule": schedule, "updated_at": now}})
+
+    if emi_item:
+        emi_item["note"] = data.note.strip()
+        await db.loans.update_one(
+            {"_id": oid}, {"$set": {"emi_schedule": schedule, "updated_at": now}}
+        )
+    else:
+        # No row for this month — extend the schedule rather than refusing.
+        #
+        # The Vasuli sheet shows a row for every month of the financial year and
+        # offers a note field on each, but a loan whose schedule is shorter than
+        # that (an opening-balance import, or any month past the original twelve)
+        # has no matching entry. Writing a note then failed with "EMI not found
+        # in schedule" on a row the sheet had just displayed. Collections already
+        # extend the schedule in this situation; notes now do the same.
+        this_month = f"{date_type.today().year}-{date_type.today().month:02d}"
+        new_entry = {
+            "month": len(schedule) + 1,
+            "due_month": data.emi_month,
+            "amount": float(doc.get("emi_amount") or 0),
+            "status": "overdue" if data.emi_month < this_month else "pending",
+            "paid_amount": 0.0,
+            "paid_date": None,
+            "collected_by_id": None,
+            "collected_by_name": None,
+            "note": data.note.strip(),
+            "is_extra_entry": True,
+        }
+        # Guarded so two simultaneous notes cannot create two rows for one month.
+        pushed = await db.loans.update_one(
+            {"_id": oid, "emi_schedule.due_month": {"$ne": data.emi_month}},
+            {"$push": {"emi_schedule": new_entry}, "$set": {"updated_at": now}},
+        )
+        if pushed.modified_count == 0:
+            # Another request added the row first — write the note onto it.
+            await db.loans.update_one(
+                {"_id": oid},
+                {"$set": {"emi_schedule.$[e].note": data.note.strip(), "updated_at": now}},
+                array_filters=[{"e.due_month": data.emi_month}],
+            )
+
     return _doc(await db.loans.find_one({"_id": oid}))
 
 
@@ -589,6 +822,7 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
     loan = await db.loans.find_one({"_id": oid})
     if not loan:
         raise HTTPException(status_code=404, detail="Loan not found")
+    await _assert_loan_in_scope(current_user, loan)
 
     kyc_id = loan.get("kyc_id")
     customer_id = loan.get("customer_id", "—")
@@ -604,23 +838,43 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
     outstanding = max(0.0, total_repayable - total_paid)
     netoff_amount = 0.0
 
-    # Net-off: close existing active/overdue loan
-    if data.net_off and outstanding > 0 and loan.get("status") != "closed":
+    # Net-off: close existing active/overdue loan.
+    #
+    # The close is claimed atomically. The guard used to read the loan, decide,
+    # then write — with awaits in between — so two simultaneous re-loans both saw
+    # an open loan and both proceeded: two child loans, the balance netted off
+    # twice, and two settlement entries for one debt. That reproduced 20 times
+    # out of 20, on one worker and on four.
+    #
+    # It also gated on `status != "closed"` rather than on netoff_closed, which
+    # meant flipping a closed loan back to active through the status endpoint let
+    # the same balance be netted off a second time.
+    if data.net_off and outstanding > 0:
         for emi in schedule:
             if emi.get("status") != "paid":
                 emi["status"] = "netoff"
                 emi["note"] = f"Net-off: closed via re-loan on {data.loan_date}"
-        netoff_amount = outstanding
-        await db.loans.update_one(
-            {"_id": oid},
+        claim = await db.loans.update_one(
+            {"_id": oid, "netoff_closed": {"$ne": True}, "status": {"$ne": "closed"}},
             {"$set": {
                 "emi_schedule": schedule,
                 "status": "closed",
                 "netoff_closed": True,
-                "netoff_date": now,
+                # The DATE THE NET-OFF HAPPENED, not the moment it was typed in.
+                # This was the server clock, so a January net-off recorded in
+                # September stayed in the portfolio until September and then
+                # dropped out in one step with no repayment behind it.
+                "netoff_date": data.loan_date,
                 "updated_at": now,
             }}
         )
+        if claim.modified_count == 0:
+            raise HTTPException(
+                status_code=409,
+                detail=("This loan has already been closed by a net-off. Refresh the "
+                        "page — its balance is already carried into a re-loan."),
+            )
+        netoff_amount = outstanding
 
     # Update KYC phone / co_borrower / guarantor if provided
     if kyc_id:
@@ -700,8 +954,9 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
         "updated_at": now,
     }
 
-    result = await db.loans.insert_one(new_loan_doc)
+    result = await _insert_loan(new_loan_doc, customer_id, kyc_id or loan_id)
     new_id = str(result.inserted_id)
+    loan_number = new_loan_doc["loan_number"]
 
     # Back-link old loan to new loan
     await db.loans.update_one({"_id": oid}, {"$set": {"reloan_id": new_id, "updated_at": now}})
@@ -709,6 +964,49 @@ async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
     new_loan_doc["_id"] = result.inserted_id
     # Book accounting entry for the re-loan disbursement
     await book_loan_disbursement(new_loan_doc, current_user["id"], current_user["name"])
+
+    # Book the net-off settlement.
+    #
+    # A net-off clears the old loan's outstanding balance by rolling it into the
+    # new one. That is a real settlement and needs its own entry, but none was
+    # ever written — only the new disbursement was booked. Two consequences:
+    # Loans Portfolio kept carrying a balance that had been cleared, so the asset
+    # was overstated by the netted-off amount; and the cash book showed the full
+    # new loan going out with no corresponding receipt, when only the difference
+    # actually left the drawer.
+    #
+    # Dr Cash / Cr Loans Portfolio, for the amount rolled over. Combined with the
+    # disbursement entry above, cash nets to the difference actually paid out,
+    # and the receipt now appears on the Jama side where it belongs.
+    #
+    # reference_id is the NEW loan, so deleting the re-loan removes this entry
+    # along with the disbursement rather than stranding half the transaction.
+    if netoff_amount > 0:
+        sys_heads = await _get_system_heads()
+        if "cash_in_hand" in sys_heads and "loans_portfolio" in sys_heads:
+            await create_journal_entry_internal(
+                illaka_id=loan.get("illaka_id", ""),
+                date=data.loan_date,
+                narration=(
+                    f"Net-off settlement of {loan.get('loan_number', '')} "
+                    f"against re-loan {loan_number} | {loan.get('client_name', '')}"
+                ),
+                lines=[
+                    _make_head_line(sys_heads["cash_in_hand"], netoff_amount, 0.0),
+                    _make_head_line(sys_heads["loans_portfolio"], 0.0, netoff_amount),
+                ],
+                entry_type="netoff_settlement",
+                reference_id=new_id,
+                settled_loan_id=loan_id,
+                created_by_id=current_user["id"],
+                created_by_name=current_user["name"],
+            )
+        else:
+            logging.getLogger(__name__).error(
+                "Net-off settlement NOT booked for loan %s — cash_in_hand or "
+                "loans_portfolio head missing. Books will not balance.", loan_id
+            )
+
     return _doc(new_loan_doc)
 
 
@@ -756,13 +1054,38 @@ async def year_end_closing(data: YearEndClosingRequest, request: Request):
         raise HTTPException(status_code=403, detail="Only Admin or Maalik can perform year-end closing")
 
     # Check for duplicate closing
-    existing = await db.illaka_closings.find_one(
-        {"illaka_id": data.illaka_id, "closing_date": data.closing_date}
-    )
-    if existing:
-        raise HTTPException(status_code=400, detail=f"A closing for {data.closing_date} already exists for this Illaka.")
+    now = datetime.now(timezone.utc).isoformat()
+    # Validate the date BEFORE claiming. The claim used to be inserted first and
+    # fromisoformat() called after, so a malformed date left a permanent closing
+    # row behind: every later attempt got a 409, and because a junk string sorts
+    # above real dates it also froze EMI editing for the whole illaka.
+    try:
+        closing_date_obj = date_type.fromisoformat(data.closing_date)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="closing_date must be YYYY-MM-DD")
 
-    closing_date_obj = date_type.fromisoformat(data.closing_date)
+    # Claim this closing BEFORE writing off a single loan.
+    #
+    # The check used to read here and the closing row was written at the very
+    # end, after the whole write-off loop. Two simultaneous requests both found
+    # no closing, both ran the loop, and every qualifying loan was written off
+    # twice, leaving two closing rows that broke the undo path. Inserting first
+    # means the loser stops here, having changed nothing.
+    try:
+        claim = await db.illaka_closings.insert_one({
+            "illaka_id": data.illaka_id,
+            "closing_date": data.closing_date,
+            "gyal_count": 0,
+            "created_by_id": current_user["id"],
+            "created_by_name": current_user["name"],
+            "created_at": now,
+        })
+    except DuplicateKeyError:
+        raise HTTPException(
+            status_code=409,
+            detail=f"A closing for {data.closing_date} already exists for this Illaka.",
+        )
+
     cutoff = _add_months(closing_date_obj, -36)
     query = {
         "illaka_id": data.illaka_id,
@@ -770,20 +1093,26 @@ async def year_end_closing(data: YearEndClosingRequest, request: Request):
         "is_gyal": {"$ne": True},
         "loan_date": {"$lte": cutoff.isoformat()},
     }
-    loans_to_gyal = await db.loans.find(query).to_list(5000)
+    loans_to_gyal = await db.loans.find(query).to_list(None)
 
     heads = await db.account_heads.find(
         {"system_key": {"$in": ["loans_portfolio", "bad_debt_written_off"]}}
     ).to_list(10)
     head_map = {h["system_key"]: h for h in heads}
-    now = datetime.now(timezone.utc).isoformat()
     count = 0
 
     for loan in loans_to_gyal:
-        await db.loans.update_one(
-            {"_id": loan["_id"]},
+        # Claim the loan itself. The unique index only prevents two closings on
+        # the SAME date; two closings at DIFFERENT dates ran concurrently, both
+        # selected the same loans, and wrote every one of them off twice —
+        # doubling Bad Debt and driving Loans Portfolio negative. Marking is_gyal
+        # conditionally means the second closing claims nothing.
+        marked = await db.loans.update_one(
+            {"_id": loan["_id"], "is_gyal": {"$ne": True}},
             {"$set": {"is_gyal": True, "gyal_since": data.closing_date, "updated_at": now}}
         )
+        if marked.modified_count == 0:
+            continue
         if "loans_portfolio" in head_map and "bad_debt_written_off" in head_map:
             outstanding = max(0.0, float(loan.get("total_repayable") or 0) - float(loan.get("total_paid") or 0))
             if outstanding > 0:
@@ -803,15 +1132,8 @@ async def year_end_closing(data: YearEndClosingRequest, request: Request):
                 )
         count += 1
 
-    # Always record the closing — even if 0 Gyal loans
-    await db.illaka_closings.insert_one({
-        "illaka_id": data.illaka_id,
-        "closing_date": data.closing_date,
-        "gyal_count": count,
-        "created_by_id": current_user["id"],
-        "created_by_name": current_user["name"],
-        "created_at": now,
-    })
+    # Record the final Gyal count on the row claimed above.
+    await db.illaka_closings.update_one({"_id": claim.inserted_id}, {"$set": {"gyal_count": count}})
 
     msg = f"{count} loan(s) marked as Gyal (Bad Debt)" if count > 0 else "Year-end closing recorded. No loans qualified for Gyal."
     return {"marked_count": count, "message": msg}
@@ -859,7 +1181,7 @@ async def year_end_closing_undo(data: YearEndUndoRequest, request: Request):
     # Undo Gyal loans that were marked on this closing date
     loans_to_undo = await db.loans.find(
         {"illaka_id": data.illaka_id, "is_gyal": True, "gyal_since": data.closing_date}
-    ).to_list(5000)
+    ).to_list(None)
     now = datetime.now(timezone.utc).isoformat()
     count = 0
     for loan in loans_to_undo:

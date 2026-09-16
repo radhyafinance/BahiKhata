@@ -75,6 +75,43 @@ async def startup():
     await db.loans.create_index("status")
     await db.loans.create_index([("loan_date", -1)])
     await db.payments.create_index("loan_id")
+
+    # ── Uniqueness the database enforces, not application code ────────────────
+    # Every one of these was previously a find_one() followed by an insert, with
+    # an await in between. Two simultaneous requests both found nothing and both
+    # inserted: duplicate loan numbers, duplicate borrowers for one Aadhaar
+    # (bypassing the double-lending check), two opening balances for one period,
+    # a year-end closing applied twice. Each reproduced 20 times out of 20.
+    #
+    # Created leniently: if a collection already holds duplicates the index will
+    # not build, and refusing to start the server over historical data helps
+    # nobody. The failure is logged loudly so it can be cleaned up.
+    async def _unique(coll, keys, name, **kw):
+        try:
+            await db[coll].create_index(keys, unique=True, name=name, **kw)
+        except Exception as exc:
+            logger.error(
+                "Could not create unique index %s on %s — existing duplicates must be "
+                "cleaned up before this constraint can be enforced: %s", name, coll, exc
+            )
+
+    await _unique("loans", "loan_number", "uq_loan_number",
+                  partialFilterExpression={"loan_number": {"$type": "string"}})
+    await _unique("kycs", "customer_id", "uq_customer_id",
+                  partialFilterExpression={"customer_id": {"$type": "string"}})
+    await _unique("kycs", "primary_borrower.aadhaar_number", "uq_primary_aadhaar",
+                  partialFilterExpression={"primary_borrower.aadhaar_number": {"$gt": ""}})
+    await _unique("illakas", "name", "uq_illaka_name")
+    # One year-end closing per illaka per closing date
+    await _unique("illaka_closings", [("illaka_id", 1), ("closing_date", 1)],
+                  "uq_illaka_closing")
+    # One monthly expense sheet per illaka per month
+    await _unique("expense_submissions", [("illaka_id", 1), ("month", 1)],
+                  "uq_expense_submission")
+    # One opening-balance journal entry per illaka per date
+    await _unique("journal_entries", [("illaka_id", 1), ("date", 1)],
+                  "uq_opening_balance_entry",
+                  partialFilterExpression={"entry_type": "opening_balance"})
     await db.webauthn_challenges.create_index("session_id", unique=True)
     # Auto-expire challenges after 10 minutes
     await db.webauthn_challenges.create_index("created_at", expireAfterSeconds=600)
