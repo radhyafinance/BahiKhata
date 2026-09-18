@@ -1,3 +1,4 @@
+import asyncio
 from fastapi import APIRouter, HTTPException, Request, UploadFile, File, Query
 from fastapi.responses import Response as FastResponse
 import uuid
@@ -56,11 +57,14 @@ async def upload_file(request: Request, file: UploadFile = File(...)):
     data = await file.read()
     original_size = len(data)
     # Compress images before storing
-    data, ct = compress_image(data, ct)
+    # Compression and the upload are blocking calls. Run on the server's own
+    # thread they froze every other request for up to two minutes — long enough
+    # for a year-end closing elsewhere to lose its lock.
+    data, ct = await asyncio.to_thread(compress_image, data, ct)
     # Always store as .jpg after compression (unless PDF)
     store_ext = ext if ct == "application/pdf" else "jpg"
     path = f"{APP_NAME}/uploads/{uuid.uuid4()}.{store_ext}"
-    result = put_object(path, data, ct)
+    result = await asyncio.to_thread(put_object, path, data, ct)
     return {
         "path": result["path"],
         "size": len(data),
@@ -82,7 +86,7 @@ async def serve_file(path: str, request: Request, auth: str = Query(None)):
         except jwt.InvalidTokenError:
             raise HTTPException(status_code=401, detail="Invalid token")
     try:
-        data, ct = get_object(path)
+        data, ct = await asyncio.to_thread(get_object, path)
         return FastResponse(content=data, media_type=ct)
     except Exception:
         raise HTTPException(status_code=404, detail="File not found")
@@ -93,7 +97,7 @@ async def verify_face(data: OCRRequest, request: Request):
     """Check whether the uploaded photo contains a real human face (KYC live photo validation)."""
     await get_current_user(request)
     try:
-        file_data, ct = get_object(data.path)
+        file_data, ct = await asyncio.to_thread(get_object, data.path)
     except Exception:
         raise HTTPException(status_code=404, detail="File not found in storage")
 
@@ -153,7 +157,7 @@ Return ONLY a valid JSON object — no markdown, no explanation:
 async def ocr_aadhaar(data: OCRRequest, request: Request):
     await get_current_user(request)
     try:
-        file_data, ct = get_object(data.path)
+        file_data, ct = await asyncio.to_thread(get_object, data.path)
     except Exception:
         raise HTTPException(status_code=404, detail="File not found in storage")
 
@@ -212,7 +216,7 @@ async def ocr_aadhaar_back(data: OCRRequest, request: Request):
     """OCR for Aadhaar card back side — extracts Address and Husband/Father name."""
     await get_current_user(request)
     try:
-        file_data, ct = get_object(data.path)
+        file_data, ct = await asyncio.to_thread(get_object, data.path)
     except Exception:
         raise HTTPException(status_code=404, detail="File not found in storage")
 

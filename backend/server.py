@@ -143,6 +143,22 @@ async def startup():
     except Exception as e:
         logger.error(f"Storage init failed: {e}")
 
+    # The people on every existing loan are recorded once, in the background, so
+    # the first loan after a deploy does not wait for it (with 20,000 loans that
+    # took 14 seconds and could time out and be retried). A lending request that
+    # arrives before it finishes waits for it.
+    import asyncio
+    from helpers import ensure_people_recorded
+
+    async def _record_people_in_background():
+        try:
+            await ensure_people_recorded()
+            logger.info("People recorded on loans")
+        except Exception as exc:
+            logger.error("Recording people on loans failed; it will be retried on the next loan: %s", exc)
+
+    asyncio.create_task(_record_people_in_background())
+
     await _seed_account_groups_and_heads()
     await _migrate_add_gyal_heads()
 

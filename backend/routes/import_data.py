@@ -16,7 +16,10 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
 from core.database import db
 from core.auth import get_current_user
-from helpers import _doc, generate_customer_id, generate_loan_number, _add_months
+from helpers import (
+    _doc, generate_customer_id, generate_loan_number, _add_months,
+    validate_phone, loan_people, insert_kyc, valid_date,
+)
 
 router = APIRouter()
 
@@ -109,10 +112,20 @@ async def _create_ob_kyc_and_loan(
     display_order: int = None,
 ) -> dict:
     """Create a minimal KYC + opening-balance loan. Returns loan doc."""
+    # Imported phones are free text; they are checked and stored in one form like
+    # every other phone, so an imported client can be matched to a Gyal record.
+    client_phone = validate_phone(client_phone, "Client phone")
+    loan_date = valid_date(loan_date, "Loan date")
     now = datetime.now(timezone.utc).isoformat()
-    illaka = await db.illakas.find_one({"_id": ObjectId(illaka_id)})
-    illaka_name = illaka["name"] if illaka else illaka_id
-    misal = await db.misals.find_one({"_id": ObjectId(misal_id)})
+    # An illaka or misal id that is not an ObjectId crashed here with a 500.
+    try:
+        illaka = await db.illakas.find_one({"_id": ObjectId(str(illaka_id).strip())})
+        misal = await db.misals.find_one({"_id": ObjectId(str(misal_id).strip())})
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Illaka or Misal id")
+    if not illaka:
+        raise HTTPException(status_code=404, detail="Illaka not found")
+    illaka_name = illaka["name"]
     misal_name = misal["name"] if misal else misal_id
 
     # ── KYC ─────────────────────────────────────────────────────────────────
@@ -128,7 +141,7 @@ async def _create_ob_kyc_and_loan(
         "is_import": True,
         "primary_borrower": {
             "name": client_name.strip(),
-            "phone": (client_phone or "").strip(),
+            "phone": client_phone,
             "address": "",
             "father_husband_name": "",
         },
@@ -144,7 +157,8 @@ async def _create_ob_kyc_and_loan(
         "created_by_name": created_by_name,
     }
 
-    kyc_result = await db.kycs.insert_one(kyc_doc)
+    kyc_result = await insert_kyc(kyc_doc, illaka_name)
+    customer_id = kyc_doc["customer_id"]
     kyc_id = str(kyc_result.inserted_id)
 
     # ── Loan ────────────────────────────────────────────────────────────────
@@ -162,7 +176,7 @@ async def _create_ob_kyc_and_loan(
         "misal_id": misal_id,
         "misal_name": misal_name,
         "client_name": client_name.strip(),
-        "client_phone": (client_phone or "").strip(),
+        "client_phone": client_phone,
         "loan_date": loan_date,
         "loan_type": "opening_balance",
         "principal_amount": opening_balance,
@@ -175,6 +189,7 @@ async def _create_ob_kyc_and_loan(
         "gyal_since": _today_ym() if is_gyal else None,
         "is_import": True,
         "total_paid": 0.0,
+        "people": loan_people(kyc_doc),
         "created_at": now,
         "updated_at": now,
         "created_by_id": created_by_id,
@@ -182,6 +197,8 @@ async def _create_ob_kyc_and_loan(
     }
     if display_order is not None:
         loan_doc["display_order"] = display_order
+    # The people are recorded on the loan, so an import recorded as Gyal blocks
+    # the person from new loans by Aadhaar or phone like any written-off client.
     await db.loans.insert_one(loan_doc)
     return {"loan_number": loan_number, "kyc_id": kyc_id, "emi_count": len(schedule), "is_gyal": is_gyal}
 
@@ -342,10 +359,7 @@ async def create_opening_balance(data: OpeningBalanceEntry, request: Request):
         raise HTTPException(status_code=400, detail="Opening balance must be > 0")
     if data.emi_amount is not None and data.emi_amount <= 0:
         raise HTTPException(status_code=400, detail="EMI amount must be > 0 (or leave blank for Gyal)")
-    try:
-        date_type.fromisoformat(data.loan_date)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid loan date format. Use YYYY-MM-DD")
+    data.loan_date = valid_date(data.loan_date, "Loan date")
 
     result = await _create_ob_kyc_and_loan(
         illaka_id=data.illaka_id,
@@ -387,6 +401,8 @@ async def excel_preview(request: Request, file: UploadFile = File(...)):
         if all(cell is None or str(cell).strip() == "" for cell in row):
             continue  # skip blank rows
 
+        # A sheet with fewer columns than the template crashed with an IndexError.
+        row = tuple(row) + (None,) * max(0, len(COLS) - len(row))
         vals = {COLS[i]: (str(row[i]).strip() if row[i] is not None else "") for i in range(len(COLS))}
 
         errors = []
@@ -417,6 +433,12 @@ async def excel_preview(request: Request, file: UploadFile = File(...)):
         else:
             emi = None  # blank → Gyal
 
+        # Phone format
+        try:
+            vals["client_phone"] = validate_phone(vals.get("client_phone"), "Client phone")
+        except HTTPException as exc:
+            errors.append(exc.detail)
+
         # Date check
         loan_date = vals.get("loan_date", "")
         try:
@@ -424,8 +446,9 @@ async def excel_preview(request: Request, file: UploadFile = File(...)):
             if "/" in loan_date:
                 parts = loan_date.split("/")
                 loan_date = f"{parts[2]}-{parts[1].zfill(2)}-{parts[0].zfill(2)}"
-            date_type.fromisoformat(loan_date[:10])
-            loan_date = loan_date[:10]
+            # Strictly YYYY-MM-DD: "20230110" was accepted and stored as typed,
+            # and a loan dated that way was never written off.
+            loan_date = valid_date(loan_date[:10], "Loan date")
         except Exception:
             errors.append(f"Loan date '{loan_date}' is invalid. Use YYYY-MM-DD")
 
@@ -498,7 +521,7 @@ async def excel_confirm(data: ExcelConfirmRequest, request: Request):
             )
             imported.append({**result, "client_name": row.client_name})
         except Exception as e:
-            failed.append({"client_name": row.client_name, "error": str(e)})
+            failed.append({"client_name": row.client_name, "error": getattr(e, "detail", None) or str(e)})
 
     return {
         "imported_count": len(imported),
