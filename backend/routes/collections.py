@@ -4,7 +4,7 @@ from datetime import date as date_type
 from bson import ObjectId
 from core.database import db
 from core.auth import get_current_user
-from helpers import _loan_query_for_user, get_admin_maalik_filter_ids, apply_illaka_scope
+from helpers import _loan_query_for_user, get_admin_maalik_filter_ids, apply_illaka_scope, paid_so_far, OWED_TOLERANCE
 
 router = APIRouter()
 
@@ -50,7 +50,7 @@ def _compute_fy_balances(schedule: list, fy_months: list, total_repayable: float
 
 def _build_emi_year_strip(
     schedule: list, fy_months: list, is_gyal: bool, gyal_year_data: dict,
-    visit_months: set = None,
+    visit_months: set = None, month_notes: dict = None,
 ) -> list:
     """Build the 12-entry list (one per FY month) for the horizontal FY strip.
 
@@ -71,8 +71,13 @@ def _build_emi_year_strip(
         if is_gyal:
             gyal_pmt = gyal_year_data.get(fy_m)
             if gyal_pmt:
+                gyal_row = next(
+                    (e for e in schedule if e.get("due_month") == fy_m and e.get("is_gyal_entry")),
+                    None,
+                )
                 cell = {"month": fy_m, "status": "paid",
-                        "paid_amount": float(gyal_pmt.get("amount") or 0), "note": ""}
+                        "paid_amount": float(gyal_pmt.get("amount") or 0),
+                        "note": (gyal_row or {}).get("note") or ""}
                 if int(gyal_pmt.get("entry_count") or 1) > 1:
                     cell["entry_count"] = int(gyal_pmt["entry_count"])
                 result.append(cell)
@@ -94,11 +99,14 @@ def _build_emi_year_strip(
             # after the first vanished from the sheet and from the header total,
             # while the Cash Book — which reads the payments collection — still
             # had the money. The two disagreed and the sheet was the one lying.
+            # Recoveries collected while the loan was Gyal are included: once the
+            # write-off is undone they are ordinary money received, and excluding
+            # them made them vanish from the strip while the Cash Book still had
+            # them.
             paid_this_month = [
                 e for e in schedule
                 if e.get("status") == "paid"
                 and (e.get("paid_date") or "")[:7] == fy_m
-                and not e.get("is_gyal_entry")
             ]
             if paid_this_month:
                 cell = {
@@ -146,6 +154,23 @@ def _build_emi_year_strip(
             else:
                 result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
 
+    # Notes written on months that have no instalment live beside the schedule.
+    # They only fill a cell that has no note of its own; the cell's status and
+    # amount are untouched, so a note can never make a month look owed or paid.
+    if month_notes:
+        for cell in result:
+            extra = month_notes.get(cell["month"])
+            if not extra:
+                continue
+            existing = cell.get("note") or ""
+            if not existing:
+                cell["note"] = extra
+            elif extra not in existing.split(" · "):
+                # A cell can already carry the note of an instalment paid in
+                # this month for another month. The month's own note used to be
+                # dropped in that case.
+                cell["note"] = f"{existing} · {extra}"
+
     # A ₹0 entry records a visit where nothing was collected. It deliberately
     # leaves the EMI unpaid, so without a marker the sheet looks identical to a
     # client nobody went to — and the collector has no way to know they've been.
@@ -184,8 +209,30 @@ def _merge_netoff_rows(rows: list, all_loans_by_id: dict, fy_months: list) -> li
         parent_id = row["_parent_loan_id"]
         parent_row = row_by_loan_id.get(parent_id)
 
+        # A parent that still owes keeps its own row. A re-loan taken WITHOUT
+        # net-off leaves the old loan open, and merging it into the new one hid
+        # it from the sheet entirely: the balance still counted in the monthly
+        # summary, but no row was left to collect it on. Only a parent that is
+        # closed — by net-off, or by being paid off — belongs in the chain.
+        parent_doc = all_loans_by_id.get(parent_id)
+        # A loan repaid in one lump sum keeps its later instalments pending, so
+        # its status never reads "closed" — but it owes nothing, and showing it
+        # as its own row offered a collection that overpaid it.
+        parent_owes_nothing = bool(parent_doc) and (
+            float(parent_doc.get("total_paid") or 0)
+            >= float(parent_doc.get("total_repayable") or 0) - 0.01
+        )
+        parent_closed = (
+            bool(parent_row.get("_netoff_closed")) if parent_row and parent_doc is None
+            else bool(parent_doc and (parent_doc.get("netoff_closed")
+                                      or parent_doc.get("status") == "closed"
+                                      or parent_owes_nothing))
+        )
+        if not parent_closed:
+            continue
+
         # ── Case A: parent appears as a row in this FY ───────────────────────
-        # Merge regardless of whether parent was netoff-closed or closed normally.
+        # Merge whether the parent was netoff-closed or closed normally.
         if parent_row:
             parent_strip = {e["month"]: e for e in parent_row["emi_year_data"]}
             parent_opening = float(parent_row.get("opening_balance") or 0)
@@ -478,7 +525,7 @@ async def get_collection_sheet(
                 )
                 _remaining = round(_repayable - _paid_all, 2)
 
-                if _remaining > 0.01:
+                if _remaining >= 1.0:   # under a rupee left is paid (helpers.OWED_TOLERANCE)
                     emi = {
                         "due_month":    month,
                         "amount":       float(loan.get("emi_amount") or rep_emi.get("amount", 0)),
@@ -498,6 +545,14 @@ async def get_collection_sheet(
                         "paid_amount":  float(rep_emi.get("paid_amount") or 0),
                         "paid_date":    rep_emi.get("paid_date", ""),
                     }
+
+        # A loan repaid in full — by a lump sum, or to within a rupee — takes no more
+        # money, but its remaining instalment rows still read pending and the sheet
+        # offered Collect, which the server then refused every month.
+        if (not loan.get("is_gyal") and emi.get("status") not in ("paid", "netoff")
+                and loan.get("total_repayable") is not None
+                and float(loan.get("total_repayable") or 0) - paid_so_far(loan) < OWED_TOLERANCE):
+            emi = dict(emi, status="closed")
 
         loan_illaka_id = loan.get("illaka_id", "unknown")
         misal_id       = loan.get("misal_id", "unknown")
@@ -529,7 +584,10 @@ async def get_collection_sheet(
             ),
             "emi_month":            emi.get("due_month", month),
             "emi_status":           emi.get("status", "pending"),
-            "emi_note":             emi.get("note") or "",
+            # A note on a month with no instalment is kept beside the schedule
+            # (loan.month_notes), never in it, so it is read from there.
+            "emi_note":             emi.get("note")
+                                    or (loan.get("month_notes") or {}).get(emi.get("due_month", month), ""),
             "emi_paid_amount":      float(emi.get("paid_amount") or 0) if emi.get("status") == "paid" else 0,
             "emi_paid_date":        emi.get("paid_date") or "",
             "outstanding_balance":  outstanding,
@@ -544,6 +602,7 @@ async def get_collection_sheet(
                                         loan.get("is_gyal", False),
                                         gyal_year_map.get(loan_id_str, {}),
                                         visit_map.get(loan_id_str),
+                                        loan.get("month_notes") or {},
                                     ),
             # Internal metadata for net-off merge pass (stripped before output)
             "_is_reloan":           loan.get("is_reloan", False),
@@ -684,10 +743,13 @@ async def monthly_summary(request: Request, illaka_id: str, month: str):
         schedule = loan.get("emi_schedule", [])
 
         # Utaar — what was SCHEDULED for this month. A netoff row was settled by
-        # a re-loan rather than falling due, so it is not counted.
+        # a re-loan rather than falling due, so it is not counted; nor is a Gyal
+        # recovery row, which only exists because money was recovered (it was
+        # counted as a full EMI due).
         due_entry = next(
             (e for e in schedule
-             if e.get("due_month") == month and e.get("status") != "netoff"),
+             if e.get("due_month") == month and e.get("status") != "netoff"
+             and not e.get("is_gyal_entry")),
             None,
         )
         # Vayda — what was actually RECEIVED this month, keyed on payment date.

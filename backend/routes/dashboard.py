@@ -148,8 +148,13 @@ async def dashboard_overview(
             # rows carry amount: 0) as nothing at all.
             paid_amt = float(emi.get("paid_amount") or 0)
 
+            # A netoff instalment was settled by a re-loan rather than falling
+            # due, so it is not part of what was due — the monthly summary
+            # already excluded it, and the dashboard reported it on top.
+            is_netoff = emi.get("status") == "netoff"
+
             # Utaar — EMIs scheduled this month
-            if due_ym == current_ym:
+            if due_ym == current_ym and not is_netoff:
                 ia["utaar"] += amt
                 ia["utaar_count"] += 1
                 total_utaar += amt
@@ -163,7 +168,7 @@ async def dashboard_overview(
                 total_vayda_count += 1
 
             # FY graph — Utaar
-            if due_ym in total_fy:
+            if due_ym in total_fy and not is_netoff:
                 ia["fy"][due_ym]["utaar"] += amt
                 total_fy[due_ym]["utaar"] += amt
 
