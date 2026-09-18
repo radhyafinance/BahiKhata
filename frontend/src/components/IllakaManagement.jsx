@@ -177,7 +177,10 @@ function YearEndClosingModal({ illaka, onClose }) {
       );
       setDone(res.data);
       setHistory(prev => {
-        const updated = [{ closing_date: closingDate, count: res.data.marked_count }, ...(prev || [])];
+        // Re-running a closing finishes it; it is not a second entry in the history.
+        const others = (prev || []).filter(h => h.closing_date !== closingDate);
+        const existing = (prev || []).find(h => h.closing_date === closingDate);
+        const updated = [{ closing_date: closingDate, count: (existing?.count || 0) + res.data.marked_count }, ...others];
         return updated.sort((a, b) => b.closing_date.localeCompare(a.closing_date));
       });
       toast.success(res.data.message);

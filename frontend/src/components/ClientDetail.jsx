@@ -473,6 +473,14 @@ function LoanPassbookCard({ loan: initialLoan, navigate, onLoanUpdated }) {
             </div>
             );
           })}
+          {/* Notes written on months that have no instalment row */}
+          {Object.entries(loan.month_notes || {}).filter(([, t]) => t).sort(([a], [b]) => a.localeCompare(b)).map(([month, text]) => (
+            <div key={`month-note-${month}`} className="px-4 py-1.5" data-testid={`passbook-month-note-${loan.id}-${month}`}>
+              <div className="p-1.5 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-800 break-words">
+                <span className="font-semibold">{month}:</span> {text}
+              </div>
+            </div>
+          ))}
         </div>
       )}
 
@@ -773,8 +781,8 @@ export default function ClientDetail() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-amber-900">KYC Incomplete</p>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  This client was added without full KYC. Aadhaar photos are missing. Re-loans are allowed but CRIF checks will not be possible.
-                  <span className="block mt-0.5 text-amber-600">यह ग्राहक बिना पूरे KYC के जोड़ा गया है। पुनः ऋण दिया जा सकता है, लेकिन CRIF जाँच के लिए आधार अनिवार्य है।</span>
+                  This client was added without full KYC. Aadhaar photos are missing. A new loan or re-loan needs the borrower's Aadhaar number on the KYC, and CRIF checks will not be possible without it.
+                  <span className="block mt-0.5 text-amber-600">यह ग्राहक बिना पूरे KYC के जोड़ा गया है। नए कर्ज़ या पुनः ऋण के लिए उधारकर्ता का आधार नंबर ज़रूरी है; CRIF जाँच के लिए भी आधार अनिवार्य है।</span>
                 </p>
               </div>
               <button

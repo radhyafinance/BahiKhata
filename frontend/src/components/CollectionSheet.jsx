@@ -120,6 +120,7 @@ const fmtLoanDate = (dateStr) => {
 const EMI_STATUS = {
   paid: { cls: "bg-green-100 text-green-800", label: "Collected", icon: CheckCircle, iconCls: "text-green-600" },
   netoff: { cls: "bg-blue-50 text-blue-700", label: "Net-off", icon: CheckCircle, iconCls: "text-blue-500" },
+  closed: { cls: "bg-green-50 text-green-700", label: "Repaid", icon: CheckCircle, iconCls: "text-green-500" },
   overdue: { cls: "bg-red-100 text-red-700", label: "Overdue", icon: AlertCircle, iconCls: "text-red-600" },
   pending: { cls: "bg-gray-100 text-gray-600", label: "Pending", icon: Clock, iconCls: "text-gray-400" },
 };
@@ -444,7 +445,8 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
   const renderRow = (row, isGyal) => {
     const status = EMI_STATUS[row.emi_status] || EMI_STATUS.pending;
     const StatusIcon = status.icon;
-    const isPaid = row.emi_status === "paid" || row.emi_status === "netoff";
+    // "closed": the loan is repaid in full, so there is nothing to collect this month.
+    const isPaid = row.emi_status === "paid" || row.emi_status === "netoff" || row.emi_status === "closed";
     const clientName = row.client_name_hindi || row.client_name || "—";
     const husbandName = row.relative_name_hindi || row.relative_name || "";
     const guarantorName = row.guarantor_name_hindi || row.guarantor_name || "";
@@ -694,6 +696,8 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                 <CheckCircle size={20} className={row.emi_status === "netoff" ? "text-blue-400" : "text-green-500"} />
                 {row.emi_status === "netoff" ? (
                   <span className="text-[9px] text-blue-500 font-semibold">Net-off</span>
+                ) : row.emi_status === "closed" ? (
+                  <span className="text-[9px] text-green-600 font-semibold">Repaid</span>
                 ) : canEditRow ? (
                   <button
                     onClick={() => onEdit(row)}

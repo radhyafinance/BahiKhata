@@ -484,6 +484,12 @@ export default function LoanDetail() {
             })}
           </div>
         )}
+        {/* Notes written on months that have no instalment row */}
+        {Object.entries(loan.month_notes || {}).filter(([, t]) => t).sort(([a], [b]) => a.localeCompare(b)).map(([month, text]) => (
+          <div key={`month-note-${month}`} className="mt-1 p-1.5 bg-amber-50 border border-amber-200 rounded-lg" data-testid={`emi-month-note-${month}`}>
+            <p className="text-[11px] text-amber-800 leading-snug break-words"><span className="font-semibold">{month}:</span> {text}</p>
+          </div>
+        ))}
       </div>
 
       {loan.notes && (
