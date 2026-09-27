@@ -13,6 +13,7 @@ import ReLoanModal from "./ReLoanModal";
 import CrifCheck from "./CrifCheck";
 import ImageViewer from "./ImageViewer";
 import { getSuffixHindi } from "./kyc/utils";
+import { DocUpload } from "./kyc/DocUpload";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -505,6 +506,66 @@ function LoanPassbookCard({ loan: initialLoan, navigate, onLoanUpdated }) {
   );
 }
 
+// ─── Add Aadhaar (number required, photos optional) ──────────────────────────
+function AddAadhaarModal({ kycId, onClose, onSaved }) {
+  const [number, setNumber] = useState("");
+  const [front, setFront] = useState(null);
+  const [back, setBack] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [uploads, setUploads] = useState(0);
+  const tracking = (v) => setUploads(n => Math.max(0, n + (v ? 1 : -1)));
+
+  const save = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const res = await axios.patch(
+        `${API}/kycs/${kycId}/aadhaar`,
+        { aadhaar_number: number, aadhaar_front_path: front, aadhaar_back_path: back },
+        { withCredentials: true }
+      );
+      toast.success("Aadhaar added / आधार जोड़ा गया");
+      onSaved(res.data);
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.detail || "Could not add Aadhaar");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="add-aadhaar-modal">
+      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
+      <form onSubmit={save} className="relative bg-card rounded-xl shadow-2xl w-full max-w-sm border border-border p-4 space-y-4 max-h-[90vh] overflow-y-auto">
+        <div>
+          <p className="font-bold text-base font-['Outfit']">Add Aadhaar / आधार जोड़ें</p>
+          <p className="text-xs text-muted-foreground">Borrower's Aadhaar number. Photos are optional.</p>
+        </div>
+        <div>
+          <label className="bk-label">
+            <span className="bk-label-en">Aadhaar Number <span className="text-destructive">*</span></span>
+            <span className="bk-label-hi">आधार संख्या</span>
+          </label>
+          <input
+            type="text" value={number} onChange={e => setNumber(e.target.value)}
+            className="bk-input" placeholder="XXXX XXXX XXXX" required autoFocus
+            data-testid="add-aadhaar-number"
+          />
+        </div>
+        <DocUpload label="Aadhaar Front (optional)" labelHi="आधार — सामने" value={front} onChange={setFront} onUploadingChange={tracking} testId="add-aadhaar-front" />
+        <DocUpload label="Aadhaar Back (optional)" labelHi="आधार — पीछे" value={back} onChange={setBack} onUploadingChange={tracking} testId="add-aadhaar-back" />
+        <div className="flex gap-2">
+          <button type="button" onClick={onClose} className="flex-1 py-2 rounded-lg border border-border text-sm">Cancel</button>
+          <button type="submit" disabled={saving || uploads > 0 || !number.trim()} className="bk-btn-primary flex-1 flex items-center justify-center gap-2" data-testid="add-aadhaar-save">
+            {saving ? "Saving…" : uploads > 0 ? "Uploading photo…" : "Save / सहेजें"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 // ─── Main ClientDetail ────────────────────────────────────────────────────────
 export default function ClientDetail() {
   const { id } = useParams();
@@ -519,6 +580,7 @@ export default function ClientDetail() {
   const [loans, setLoans] = useState(null);
   const [loansLoading, setLoansLoading] = useState(false);
   const [showReloan, setShowReloan] = useState(false);
+  const [showAddAadhaar, setShowAddAadhaar] = useState(false);
   const [viewer, setViewer] = useState(null); // null | { images, index }
 
   useEffect(() => {
@@ -781,17 +843,28 @@ export default function ClientDetail() {
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-bold text-amber-900">KYC Incomplete</p>
                 <p className="text-xs text-amber-700 mt-0.5">
-                  This client was added without full KYC. Aadhaar photos are missing. A new loan or re-loan needs the borrower's Aadhaar number on the KYC, and CRIF checks will not be possible without it.
-                  <span className="block mt-0.5 text-amber-600">यह ग्राहक बिना पूरे KYC के जोड़ा गया है। नए कर्ज़ या पुनः ऋण के लिए उधारकर्ता का आधार नंबर ज़रूरी है; CRIF जाँच के लिए भी आधार अनिवार्य है।</span>
+                  This client was added without full KYC. Aadhaar photos are missing. Where the Illaka requires Aadhaar, a new loan or re-loan needs the borrower's Aadhaar number on the KYC, and CRIF checks are not possible without it.
+                  <span className="block mt-0.5 text-amber-600">यह ग्राहक बिना पूरे KYC के जोड़ा गया है। जिस इलाके में आधार ज़रूरी है वहाँ नए कर्ज़ या पुनः ऋण के लिए उधारकर्ता का आधार नंबर चाहिए; CRIF जाँच के लिए भी आधार अनिवार्य है।</span>
                 </p>
               </div>
-              <button
-                onClick={() => navigate(`/kyc/${id}/edit`)}
-                className="shrink-0 text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition-colors whitespace-nowrap"
-                data-testid="complete-kyc-btn"
-              >
-                Complete KYC →
-              </button>
+              <div className="shrink-0 flex flex-col gap-1.5">
+                {!kyc?.primary_borrower?.aadhaar_number && (
+                  <button
+                    onClick={() => setShowAddAadhaar(true)}
+                    className="text-xs font-bold text-white bg-amber-600 px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors whitespace-nowrap"
+                    data-testid="add-aadhaar-btn"
+                  >
+                    Add Aadhaar
+                  </button>
+                )}
+                <button
+                  onClick={() => navigate(`/kyc/${id}/edit`)}
+                  className="text-xs font-bold text-amber-800 bg-amber-100 border border-amber-300 px-3 py-1.5 rounded-lg hover:bg-amber-200 transition-colors whitespace-nowrap"
+                  data-testid="complete-kyc-btn"
+                >
+                  Complete KYC →
+                </button>
+              </div>
             </div>
           )}
 
@@ -884,6 +957,10 @@ export default function ClientDetail() {
           />
         );
       })()}
+
+      {showAddAadhaar && (
+        <AddAadhaarModal kycId={id} onClose={() => setShowAddAadhaar(false)} onSaved={(k) => setKyc(k)} />
+      )}
 
       {/* ── CRIF Tab ── */}
       {activeTab === "crif" && (

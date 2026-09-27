@@ -466,7 +466,7 @@ export default function CollectionSheetPrint() {
                         {(row.emi_year_data||fyMonths.map(()=>({status:"na",paid_amount:0}))).map((yd,mi)=>{
                           const ym = fyMonths[mi];
                           if (isGyal) return <td key={ym} className="mo-gyal c"><span className="dot">·</span></td>;
-                          if (yd.status==="na")      return <td key={ym} className="mo-na"/>;
+                          if (yd.status==="na" && !yd.note) return <td key={ym} className="mo-na"/>;
                           if (yd.status==="paid")    return (
                             <td key={ym} className="mo-paid c">
                               <span className="tick">✓</span>
@@ -475,7 +475,7 @@ export default function CollectionSheetPrint() {
                             </td>
                           );
                           if (yd.status==="netoff"||yd.status==="chain_start")
-                            return <td key={ym} className="mo-netoff c"><span className="arrow">↩</span></td>;
+                            return <td key={ym} className="mo-netoff c"><span className="arrow">↩</span>{yd.note && <span style={{fontSize:"5pt",display:"block"}}>*</span>}</td>;
                           if (yd.note)
                             return <td key={ym} className="mo-note c" style={{fontSize:"5.5pt"}}>{yd.note.substring(0,10)}{yd.note.length>10?"…":""}</td>;
                           if (yd.status==="overdue") return <td key={ym} className="mo-overdue c"><span className="bang">!</span></td>;

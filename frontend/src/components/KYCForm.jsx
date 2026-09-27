@@ -48,7 +48,8 @@ export default function KYCForm() {
       setIllakas(r.data);
       // Pre-populate from global context in create mode (only specific illaka, not "All")
       if (!id && contextIllaka) {
-        setSelectedIllaka(contextIllaka);
+        // The listed copy carries the Illaka's settings (e.g. whether Aadhaar is required).
+        setSelectedIllaka(r.data.find(i => i.id === contextIllaka.id) || contextIllaka);
       }
     }).catch(() => {});
   }, []);
@@ -82,10 +83,19 @@ export default function KYCForm() {
       });
       if (k.co_borrower) setIncludeCoBorrower(true);
       if (k.guarantor) setIncludeGuarantor(true);
-      if (k.illaka_id) setSelectedIllaka({ id: k.illaka_id, name: k.illaka_name });
+      if (k.illaka_id) setSelectedIllaka(prev => ({ ...(prev?.id === k.illaka_id ? prev : {}), id: k.illaka_id, name: k.illaka_name }));
       if (k.misal_id) setSelectedMisal({ id: k.misal_id, name: k.misal_name });
     }).catch(() => toast.error("Failed to load KYC"));
   }, [id]);
+
+  // Keep the chosen Illaka's settings in step with the loaded list.
+  useEffect(() => {
+    if (!selectedIllaka || !illakas.length) return;
+    const listed = illakas.find(i => i.id === selectedIllaka.id);
+    if (listed && listed.aadhaar_required !== selectedIllaka.aadhaar_required) {
+      setSelectedIllaka({ ...selectedIllaka, aadhaar_required: listed.aadhaar_required });
+    }
+  }, [illakas, selectedIllaka]);
 
   const updatePerson = (key) => (field, value) => setFormData(p => ({ ...p, [key]: { ...p[key], [field]: value } }));
   const updatePersonBatch = (key) => (updates) => setFormData(p => ({ ...p, [key]: { ...p[key], ...updates } }));
@@ -103,9 +113,12 @@ export default function KYCForm() {
       if (!p.dob) { toast.error("Date of birth required"); return false; }
       if (!p.relative_name) { toast.error("Husband's / Father's name required / पति/पिता का नाम अनिवार्य है"); return false; }
       if (!p.address) { toast.error("Address required"); return false; }
-      if (!p.aadhaar_number) { toast.error("Aadhaar number required"); return false; }
-      if (!p.aadhaar_front_path) { toast.error("Aadhaar front photo required"); return false; }
-      if (!p.aadhaar_back_path) { toast.error("Aadhaar back photo required"); return false; }
+      // An admin can switch Aadhaar off for an Illaka.
+      if (selectedIllaka?.aadhaar_required !== false) {
+        if (!p.aadhaar_number) { toast.error("Aadhaar number required"); return false; }
+        if (!p.aadhaar_front_path) { toast.error("Aadhaar front photo required"); return false; }
+        if (!p.aadhaar_back_path) { toast.error("Aadhaar back photo required"); return false; }
+      }
       return true;
     }
     if (step === 4 && includeGuarantor) {
@@ -326,6 +339,7 @@ export default function KYCForm() {
             isMandatory={true}
             userRole={user?.role}
             selectedIllakaId={selectedIllaka?.id}
+                aadhaarOptional={selectedIllaka?.aadhaar_required === false}
           />
         )}
 
@@ -352,6 +366,7 @@ export default function KYCForm() {
                 phoneRequired={false}
                 userRole={user?.role}
                 selectedIllakaId={selectedIllaka?.id}
+                aadhaarOptional={selectedIllaka?.aadhaar_required === false}
               />
             ) : (
               <div className="py-8 text-center text-muted-foreground space-y-3">
@@ -386,6 +401,7 @@ export default function KYCForm() {
                 phoneRequired={true}
                 userRole={user?.role}
                 selectedIllakaId={selectedIllaka?.id}
+                aadhaarOptional={selectedIllaka?.aadhaar_required === false}
               />
             ) : (
               <div className="py-8 text-center text-muted-foreground space-y-3">

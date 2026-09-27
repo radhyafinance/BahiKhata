@@ -409,6 +409,21 @@ export default function IllakaManagement() {
     }
   };
 
+  const toggleAadhaar = async (illaka) => {
+    const makeRequired = illaka.aadhaar_required === false;
+    const msg = makeRequired
+      ? `Make Aadhaar REQUIRED in "${illaka.name}"?\n\nClients here without an Aadhaar number will not get a new loan or re-loan until it is added (use "Add Aadhaar" on the client page).`
+      : `Make Aadhaar OPTIONAL in "${illaka.name}"?\n\nKYCs and loans here can then be made without Aadhaar. Written-off (Gyal) clients who come back without Aadhaar can then only be recognised by phone number.`;
+    if (!window.confirm(msg)) return;
+    try {
+      const res = await axios.patch(`${API}/illakas/${illaka.id}/aadhaar-required`, { required: makeRequired }, { withCredentials: true });
+      setIllakas(p => p.map(i => i.id === illaka.id ? { ...i, ...res.data } : i));
+      toast.success(makeRequired ? "Aadhaar is now required" : "Aadhaar is now optional");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not change the setting");
+    }
+  };
+
   const deleteIllaka = async (illaka) => {
     if (!window.confirm(`Delete Illaka "${illaka.name}"? This cannot be undone.`)) return;
     await axios.delete(`${API}/illakas/${illaka.id}`, { withCredentials: true });
@@ -469,6 +484,9 @@ export default function IllakaManagement() {
                   <div>
                     <h3 className="font-bold text-foreground">{illaka.name}</h3>
                     {illaka.description && <p className="text-xs text-muted-foreground">{illaka.description}</p>}
+                    {illaka.aadhaar_required === false && (
+                      <p className="text-xs font-semibold text-amber-700">Aadhaar not required / आधार ज़रूरी नहीं</p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       {misals[illaka.id] ? `${misals[illaka.id].length} Misals` : "Click to view Misals"}
                     </p>
@@ -492,6 +510,17 @@ export default function IllakaManagement() {
                   <button onClick={() => setIllakaModal(illaka)} className="p-2 rounded-lg hover:bg-muted text-muted-foreground" data-testid={`edit-illaka-${illaka.id}`}>
                     <Edit size={15} />
                   </button>
+                  {user?.role === "admin" && (
+                    <button
+                      onClick={() => toggleAadhaar(illaka)}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-semibold border ${illaka.aadhaar_required === false
+                        ? "border-amber-300 bg-amber-50 text-amber-800" : "border-green-300 bg-green-50 text-green-800"}`}
+                      title="Is the borrower's Aadhaar required for KYC and loans in this Illaka?"
+                      data-testid={`aadhaar-toggle-${illaka.id}`}
+                    >
+                      Aadhaar: {illaka.aadhaar_required === false ? "Optional" : "Required"}
+                    </button>
+                  )}
                   {user?.role === "admin" && (
                     <button onClick={() => deleteIllaka(illaka)} className="p-2 rounded-lg hover:bg-destructive/10 text-destructive" data-testid={`delete-illaka-${illaka.id}`}>
                       <Trash2 size={15} />

@@ -4,6 +4,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { useAuth } from "./AuthContext";
 import { useIllaka } from "./IllakaContext";
+import ReLoanModal from "./ReLoanModal";
 import {
   ChevronDown, ChevronRight, CheckCircle, AlertCircle, Clock,
   X, Loader2, ExternalLink, IndianRupee, Pencil, Lock, Edit3, Printer, Trash2,
@@ -433,7 +434,7 @@ function EditEmiModal({ row, onClose, onEdited, onDeleted }) {
 }
 
 
-function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, fyMonths, onCollect, onNote, onEdit, collectDate, onCollected, onOptimisticCollect }) {
+function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestClosingYm, fyMonths, onCollect, onNote, onEdit, onNetoff, collectDate, onCollected, onOptimisticCollect }) {
   const [expanded, setExpanded] = useState(true);
   const navigate = useNavigate();
 
@@ -449,6 +450,20 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
     const isPaid = row.emi_status === "paid" || row.emi_status === "netoff" || row.emi_status === "closed";
     const clientName = row.client_name_hindi || row.client_name || "—";
     const husbandName = row.relative_name_hindi || row.relative_name || "";
+    // Net-off re-loan straight from the sheet — for a client who still owes.
+    const canNetoff = !isGyal && !isFrozen && userRole !== "sadar_muneem"
+      && row.emi_status !== "netoff" && row.emi_status !== "closed" && !row.netoff_closed
+      && (row.owed_now ?? 0) >= 1;
+    const netoffBtn = canNetoff ? (
+      <button
+        onClick={() => onNetoff(row)}
+        className="flex items-center justify-center text-[10px] w-full py-1 rounded border border-dashed border-blue-400/60 text-blue-700 hover:bg-blue-50 transition-colors"
+        title="Re-loan with net-off / नेट-ऑफ"
+        data-testid={`netoff-btn-${row.loan_db_id}`}
+      >
+        ↩ Net-off
+      </button>
+    ) : null;
     const guarantorName = row.guarantor_name_hindi || row.guarantor_name || "";
 
     // Edit permission: paid rows only (not netoff — those were closed via re-loan)
@@ -599,7 +614,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
               const visited = yd.visited && yd.status !== "paid";
               const visitTitle = "Visited — nothing collected (₹0)";
 
-              if (yd.status === "na") {
+              if (yd.status === "na" && !yd.note) {
                 return (
                   <div
                     key={yd.month}
@@ -636,10 +651,11 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                 return (
                   <div
                     key={yd.month}
-                    title={yd.status === "chain_start" ? "Net-off — new loan starts here" : "Net-off (closed via re-loan)"}
+                    title={(yd.status === "chain_start" ? "Net-off — new loan starts here" : "Net-off (closed via re-loan)") + (yd.note ? ` — ${yd.note}` : "")}
                     className={`flex-1 flex flex-col items-center justify-center gap-0.5 ${isCurr ? "bg-blue-100" : "bg-blue-50/60"}`}
                   >
                     <span className="text-blue-600 text-xs font-bold leading-none">↩</span>
+                    {yd.note && <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />}
                   </div>
                 );
               }
@@ -708,6 +724,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                     Edit
                   </button>
                 ) : null}
+                {netoffBtn}
                 <button
                   onClick={() => navigate(`/loans/${row.loan_db_id}`)}
                   className="p-1 rounded hover:bg-muted text-muted-foreground"
@@ -849,6 +866,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                   <Pencil size={9} />
                   {row.emi_note ? "Edit" : "Note"}
                 </button>
+                {netoffBtn}
                 <button
                   onClick={() => navigate(`/loans/${row.loan_db_id}`)}
                   className="p-1 rounded hover:bg-muted text-muted-foreground"
@@ -976,6 +994,16 @@ export default function CollectionSheet() {
   const [collectingRow, setCollectingRow] = useState(null);
   const [notingRow, setNotingRow] = useState(null);
   const [editingRow, setEditingRow] = useState(null);
+  const [netoffLoan, setNetoffLoan] = useState(null);   // { loan, row }
+
+  const openNetoff = useCallback(async (row) => {
+    try {
+      const res = await axios.get(`${API}/loans/${row.loan_db_id}`, { withCredentials: true });
+      setNetoffLoan({ loan: res.data, row });
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Could not open the loan");
+    }
+  }, []);
   const [selectedMisalId, setSelectedMisalId] = useState("all");
   const [printModalOpen, setPrintModalOpen] = useState(false);
   // Per-misal blank rows map: { [misalId]: count }
@@ -1092,6 +1120,10 @@ export default function CollectionSheet() {
       }
       return updated;
     });
+    // The month's box in the year strip shows the note too; it used to stay blank
+    // until the sheet was reloaded, so the note looked unsaved. A box can hold
+    // several notes, so it is re-read rather than overwritten here.
+    silentFetch();
   };
 
   const handleEdited = (_loanDbId, _emiMonth, _newAmount, _newDate) => {
@@ -1347,6 +1379,7 @@ export default function CollectionSheet() {
                     onCollect={setCollectingRow}
                     onNote={setNotingRow}
                     onEdit={setEditingRow}
+                    onNetoff={openNetoff}
                     collectDate={collectDate}
                     onCollected={handleCollected}
                     onOptimisticCollect={applyCollectLocally}
@@ -1468,6 +1501,21 @@ export default function CollectionSheet() {
           row={notingRow}
           onClose={() => setNotingRow(null)}
           onSaved={handleNoteSaved}
+        />
+      )}
+
+      {netoffLoan && (
+        <ReLoanModal
+          loanId={netoffLoan.loan.id}
+          kycId={netoffLoan.loan.kyc_id}
+          clientName={netoffLoan.row.client_name}
+          currentLoan={netoffLoan.loan}
+          defaultNetOff
+          onClose={() => setNetoffLoan(null)}
+          onSuccess={() => {
+            setNetoffLoan(null);
+            silentFetch();   // the modal shows its own success message
+          }}
         />
       )}
 
