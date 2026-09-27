@@ -109,13 +109,26 @@ def _build_emi_year_strip(
                 and (e.get("paid_date") or "")[:7] == fy_m
             ]
             if paid_this_month:
+                # Each note shows once, in its own month's box. This box carries its
+                # own month's note (paid or not) and the notes of arrears from
+                # before this year, whose months have no box on this strip. A note
+                # of another month in this year shows in that month's box. Net-off
+                # rows carry only the system's net-off text, so they are left out.
+                note_rows = [e for e in paid_this_month
+                             if e.get("due_month") == fy_m or e.get("due_month") not in fy_months]
+                if (sched_item and sched_item not in paid_this_month
+                        and sched_item.get("status") != "netoff"):
+                    note_rows.append(sched_item)
+                notes = []
+                for e in note_rows:
+                    n = str(e.get("note") or "").strip()
+                    if n and n not in notes:
+                        notes.append(n)
                 cell = {
                     "month": fy_m,
                     "status": "paid",
                     "paid_amount": sum(float(e.get("paid_amount") or 0) for e in paid_this_month),
-                    "note": " · ".join(
-                        n for n in (e.get("note") or "" for e in paid_this_month) if n
-                    ),
+                    "note": " · ".join(notes),
                 }
                 if len(paid_this_month) > 1:
                     # Flagged so the cell can say "2 किस्त" instead of reading as
@@ -143,7 +156,9 @@ def _build_emi_year_strip(
                 if (sched_item.get("status") == "paid"
                         and paid_m
                         and paid_m != fy_m):
-                    result.append({"month": fy_m, "status": "na", "paid_amount": 0.0, "note": ""})
+                    # No money this month, but a note written for this month stays here.
+                    result.append({"month": fy_m, "status": "na", "paid_amount": 0.0,
+                                   "note": sched_item.get("note") or ""})
                 else:
                     result.append({
                         "month": fy_m,
@@ -287,7 +302,7 @@ def _merge_netoff_rows(rows: list, all_loans_by_id: dict, fy_months: list) -> li
         # "chain_start" is NOT skipped in further merges, unlike "netoff".
         row_start_ym = (row.get("loan_date") or "")[:7]
         row["emi_year_data"] = [
-            {"month": e["month"], "status": "chain_start", "paid_amount": 0.0, "note": ""}
+            {"month": e["month"], "status": "chain_start", "paid_amount": 0.0, "note": e.get("note") or ""}
             if (e["month"] == row_start_ym and e["status"] == "na")
             else e
             for e in merged_strip
@@ -594,6 +609,11 @@ async def get_collection_sheet(
             "opening_balance":      opening_balance,
             "loan_date":            loan.get("loan_date") or "",
             "total_repayable":      total_repayable,
+            # What the loan still owes today (the balance columns are year-end
+            # figures); the sheet offers a net-off only while this is a rupee or more.
+            "owed_now":             round(float(loan.get("total_repayable") or 0) - paid_so_far(loan), 2)
+                                    if loan.get("total_repayable") is not None else 0.0,
+            "netoff_closed":        bool(loan.get("netoff_closed")),
             "netoff_amount":        float(loan.get("netoff_amount") or 0),
             "is_gyal":              loan.get("is_gyal", False),
             "gyal_since":           loan.get("gyal_since") or "",

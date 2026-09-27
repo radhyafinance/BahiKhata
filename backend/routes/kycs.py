@@ -4,6 +4,7 @@ from pymongo.errors import DuplicateKeyError
 from datetime import datetime, timezone, date as date_type
 from typing import Optional
 import re
+import contextlib
 from core.database import db
 from core.auth import get_current_user
 from helpers import (
@@ -13,8 +14,10 @@ from helpers import (
     assert_people_not_gyal, permitted_illaka_ids, normalize_aadhaar, normalize_phone,
     clean_person, validate_phone, loan_people, prepare_loan_people, person_is_gyal_linked,
     apply_identity_correction, loan_lock, _person_snapshot, same_person, _snapshot_keys,
-    insert_kyc, kyc_lock, assert_open_period, assert_no_old_debt,
+    insert_kyc, kyc_lock, assert_open_period, assert_no_old_debt, illaka_requires_aadhaar,
+    validate_aadhaar, assert_misal_in_illaka, BORROWER_IDENTITY_REQUIRED,
 )
+from pydantic import BaseModel
 from models import KYCCreate, KYCStatusUpdate, QuickLoanCreate
 
 router = APIRouter()
@@ -110,6 +113,7 @@ async def create_kyc(data: KYCCreate, request: Request):
     allowed = await permitted_illaka_ids(current_user)
     if allowed is not None and data.illaka_id not in allowed:
         raise HTTPException(status_code=403, detail="This Illaka is not assigned to you")
+    await assert_misal_in_illaka(data.misal_id, data.illaka_id)
 
     # Phones and Aadhaar numbers are checked and stored in one form. Nothing
     # checked them before, so "9300000101/9876500001", an extra digit or a
@@ -144,7 +148,9 @@ async def create_kyc(data: KYCCreate, request: Request):
     # above, which compare exact strings.
     people = loan_people({"primary_borrower": pb_clean, "co_borrower": cb_clean, "guarantor": gt_clean})
     if data.disbursement_amount and data.disbursement_amount > 0:
-        if not people["borrower"]["aadhaar"]:
+        if not people["borrower"]["aadhaar"] and not people["borrower"]["phones"]:
+            raise HTTPException(status_code=400, detail=BORROWER_IDENTITY_REQUIRED)
+        if not people["borrower"]["aadhaar"] and await illaka_requires_aadhaar(data.illaka_id):
             raise HTTPException(
                 status_code=400,
                 detail="The borrower's Aadhaar number is required for a loan. / कर्ज़ के लिए आधार नंबर ज़रूरी है।",
@@ -503,7 +509,7 @@ async def update_kyc(kyc_id: str, data: KYCCreate, request: Request):
 async def _update_kyc(kyc_oid, kyc_id: str, data: KYCCreate, current_user: dict):
     existing = await db.kycs.find_one(
         {"_id": kyc_oid},
-        {"_id": 0, "primary_borrower": 1, "co_borrower": 1, "guarantor": 1, "illaka_id": 1},
+        {"_id": 0, "primary_borrower": 1, "co_borrower": 1, "guarantor": 1, "illaka_id": 1, "misal_id": 1},
     )
     if not existing:
         # A missing KYC crashed below with a 500
@@ -516,6 +522,19 @@ async def _update_kyc(kyc_oid, kyc_id: str, data: KYCCreate, current_user: dict)
     if allowed is not None and (existing.get("illaka_id") not in allowed
                                 or data.illaka_id not in allowed):
         raise HTTPException(status_code=403, detail="This client is not in your assigned Illaka")
+    if data.illaka_id != existing.get("illaka_id") or data.misal_id != existing.get("misal_id"):
+        await assert_misal_in_illaka(data.misal_id, data.illaka_id)
+    # Moving a client who has loans to another Illaka is for an admin or maalik:
+    # a field agent could move a client into an Illaka where Aadhaar is not
+    # required, lend, and move them back.
+    if (existing.get("illaka_id") and data.illaka_id != existing.get("illaka_id")
+            and current_user["role"] not in ("admin", "maalik")
+            and await db.loans.find_one({"$or": [{"kyc_id": kyc_id}, {"kyc_id_canon": kyc_id}]}, {"_id": 1})):
+        raise HTTPException(
+            status_code=403,
+            detail=("This client has loans. Only an admin or maalik can move them to another Illaka. "
+                    "/ कर्ज़ वाले ग्राहक का इलाका केवल एडमिन या मालिक बदल सकते हैं।"),
+        )
 
     def _prev(role):
         prev = existing.get(role)
@@ -643,6 +662,102 @@ async def _update_kyc(kyc_oid, kyc_id: str, data: KYCCreate, current_user: dict)
     )
 
     return _doc(await db.kycs.find_one({"_id": ObjectId(kyc_id)}))
+
+
+class AddAadhaarRequest(BaseModel):
+    aadhaar_number: str
+    aadhaar_front_path: Optional[str] = None
+    aadhaar_back_path: Optional[str] = None
+
+
+@router.patch("/kycs/{kyc_id}/aadhaar")
+async def add_borrower_aadhaar(kyc_id: str, data: AddAadhaarRequest, request: Request):
+    """Add the borrower's Aadhaar to a client who has none — photos optional.
+
+    Clients added without Aadhaar (quick-add, imports, or an Illaka where it was
+    switched off) could not be given a loan once Aadhaar was required, and the
+    KYC form could not add the number without the photos.
+    """
+    current_user = await get_current_user(request)
+    try:
+        kyc_oid = ObjectId(str(kyc_id).strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid KYC id")
+    kyc_id = str(kyc_oid)
+    async with kyc_lock(kyc_oid):
+        kyc = await db.kycs.find_one({"_id": kyc_oid})
+        if not kyc:
+            raise HTTPException(status_code=404, detail="KYC not found")
+        allowed = await permitted_illaka_ids(current_user)
+        if allowed is not None and kyc.get("illaka_id") not in allowed:
+            raise HTTPException(status_code=403, detail="This client is not in your assigned Illaka")
+        pb = kyc.get("primary_borrower") if isinstance(kyc.get("primary_borrower"), dict) else {}
+        if normalize_aadhaar(pb.get("aadhaar_number")):
+            raise HTTPException(status_code=400,
+                                detail="This client already has an Aadhaar number. Use Edit KYC to change it.")
+        aadhaar = validate_aadhaar(data.aadhaar_number, "Borrower Aadhaar")
+        if not aadhaar:
+            raise HTTPException(status_code=400, detail="Enter the Aadhaar number / आधार नंबर डालें")
+        digits = normalize_aadhaar(aadhaar)
+        if await db.kycs.find_one({"_id": {"$ne": kyc_oid},
+                                   "primary_borrower.aadhaar_number": {"$regex": "^\\D*" + "\\D*".join(digits) + "\\D*$"}}):
+            raise HTTPException(status_code=400,
+                                detail="This Aadhaar is already registered to another KYC. / यह आधार पहले से दर्ज है।")
+        # On a client with a written-off (Gyal) loan — or one linked to a Gyal loan
+        # by phone — identity is changed only by an admin or maalik.
+        gyal_loans = [gl async for gl in db.loans.find(
+            {"$or": [{"kyc_id": {"$regex": "^\\s*" + kyc_id + "\\s*$", "$options": "i"}},
+                     {"kyc_id": kyc_oid}, {"kyc_id_canon": kyc_id}],
+             "is_gyal": {"$in": [True, 1]}}, {"_id": 1})]
+        if ((gyal_loans or await person_is_gyal_linked(pb, kyc_id))
+                and current_user["role"] not in ("admin", "maalik")):
+            raise HTTPException(
+                status_code=403,
+                detail=("This client is linked to a written-off (Gyal) loan. Only an admin or maalik can add "
+                        "their Aadhaar. / गयाल ग्राहक का आधार केवल एडमिन या मालिक जोड़ सकते हैं।"),
+            )
+        now = datetime.now(timezone.utc).isoformat()
+        if isinstance(kyc.get("primary_borrower"), dict):
+            sets = {"primary_borrower.aadhaar_number": aadhaar, "updated_at": now}
+            if data.aadhaar_front_path:
+                sets["primary_borrower.aadhaar_front_path"] = data.aadhaar_front_path
+            if data.aadhaar_back_path:
+                sets["primary_borrower.aadhaar_back_path"] = data.aadhaar_back_path
+        else:
+            # An older record stored the borrower as text or nothing; it becomes a
+            # proper record (setting a field inside it failed with a server error).
+            sets = {"primary_borrower": {"aadhaar_number": aadhaar,
+                                         "aadhaar_front_path": data.aadhaar_front_path,
+                                         "aadhaar_back_path": data.aadhaar_back_path},
+                    "updated_at": now}
+        # The written-off loans are locked first, the client's record is saved next,
+        # and the loans' recorded borrower is updated last. Updating the loans first
+        # left an innocent person blocked for good when the save then failed because
+        # another client had just taken the same Aadhaar.
+        async with contextlib.AsyncExitStack() as stack:
+            for gl_ref in gyal_loans:
+                await stack.enter_async_context(loan_lock(str(gl_ref["_id"])))
+            try:
+                await db.kycs.update_one({"_id": kyc_oid}, {"$set": sets})
+            except DuplicateKeyError:
+                raise HTTPException(status_code=400,
+                                    detail="This Aadhaar is already registered to another KYC. / यह आधार पहले से दर्ज है।")
+            # This is the borrower of the client's own written-off loans, so the
+            # number is added to what those loans recorded whatever the name now
+            # reads — renaming first used to keep it off the record.
+            for gl_ref in gyal_loans:
+                gl = await db.loans.find_one({"_id": gl_ref["_id"]}, {"people": 1, "is_gyal": 1})
+                if not gl or not gl.get("is_gyal"):
+                    continue
+                people = dict(gl.get("people") or {})
+                rec = dict(people.get("borrower") or {"name": "", "aadhaar": "", "phones": []})
+                if not rec.get("aadhaar"):
+                    rec["aadhaar"] = digits
+                elif rec["aadhaar"] != digits and digits not in (rec.get("other_aadhaars") or []):
+                    rec["other_aadhaars"] = list(rec.get("other_aadhaars") or []) + [digits]
+                people["borrower"] = rec
+                await db.loans.update_one({"_id": gl_ref["_id"]}, {"$set": {"people": people}})
+        return _doc(await db.kycs.find_one({"_id": kyc_oid}))
 
 
 @router.patch("/kycs/{kyc_id}/status")

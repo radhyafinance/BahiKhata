@@ -5,6 +5,7 @@ from typing import Optional
 from core.database import db
 from core.auth import get_current_user
 from helpers import _doc
+from pydantic import BaseModel, StrictBool
 from models import IllakaCreate, MisalCreate
 
 router = APIRouter()
@@ -82,6 +83,33 @@ async def update_illaka(illaka_id: str, data: IllakaCreate, request: Request):
     await db.kycs.update_many({"illaka_id": illaka_id}, name_update)
     await db.expense_templates.update_many({"illaka_id": illaka_id}, name_update)
     return _doc(doc)
+
+
+class AadhaarRequiredUpdate(BaseModel):
+    required: StrictBool
+
+
+@router.patch("/illakas/{illaka_id}/aadhaar-required")
+async def set_aadhaar_required(illaka_id: str, data: AadhaarRequiredUpdate, request: Request):
+    """Switch whether loans in this Illaka need the borrower's Aadhaar. Admin only;
+    every change is recorded with who made it and when."""
+    user = await get_current_user(request)
+    if user["role"] != "admin":
+        raise HTTPException(status_code=403, detail="Only an admin can change this")
+    try:
+        oid = ObjectId(str(illaka_id).strip())
+    except Exception:
+        raise HTTPException(status_code=400, detail="Invalid Illaka id")
+    now = datetime.now(timezone.utc).isoformat()
+    res = await db.illakas.update_one(
+        {"_id": oid},
+        {"$set": {"aadhaar_required": data.required, "updated_at": now},
+         "$push": {"aadhaar_required_history": {"required": data.required, "by_id": user["id"],
+                                                "by_name": user.get("name", ""), "at": now}}},
+    )
+    if not res.matched_count:
+        raise HTTPException(status_code=404, detail="Illaka not found")
+    return _doc(await db.illakas.find_one({"_id": oid}))
 
 
 @router.delete("/illakas/{illaka_id}")

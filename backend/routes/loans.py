@@ -18,7 +18,7 @@ from helpers import (
     loan_lock, kyc_lock, entity_lock, prepare_loan_people, assert_people_not_gyal,
     assert_client_not_gyal, validate_phone, clean_person, person_is_gyal_linked,
     assert_open_period, latest_closing_date, loan_status, valid_date, OWED_TOLERANCE, _day,
-    assert_no_old_debt, client_loans, paid_so_far,
+    assert_no_old_debt, client_loans, paid_so_far, illaka_requires_aadhaar, assert_misal_in_illaka,
 )
 from models import LoanCreate, LoanStatusUpdate, PaymentCreate, PaymentEdit, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest, YearEndUndoRequest
 
@@ -283,9 +283,17 @@ async def create_loan(data: LoanCreate, request: Request):
 
 async def _create_loan(data: LoanCreate, current_user: dict):
     try:
-        _kyc_now = await db.kycs.find_one({"_id": ObjectId(str(data.kyc_id).strip())}, {"primary_borrower.phone": 1})
+        _kyc_now = await db.kycs.find_one({"_id": ObjectId(str(data.kyc_id).strip())},
+                                          {"primary_borrower.phone": 1, "illaka_id": 1})
     except Exception:
         _kyc_now = None
+    # A loan is made in the client's own Illaka. Naming another one let a loan
+    # dodge that Illaka's rules — its Aadhaar requirement among them.
+    if (_kyc_now or {}).get("illaka_id") and _kyc_now["illaka_id"] != data.illaka_id:
+        raise HTTPException(status_code=400,
+                            detail="A loan must be in the client's own Illaka. / कर्ज़ ग्राहक के अपने इलाके में ही दें।")
+    await assert_misal_in_illaka(data.misal_id, data.illaka_id)
+    _needs_aadhaar = await illaka_requires_aadhaar(data.illaka_id)
     _pb_now = (_kyc_now or {}).get("primary_borrower")
     phone = _typed_phone(data.client_phone, _pb_now.get("phone") if isinstance(_pb_now, dict) else "",
                          "Client phone")
@@ -295,7 +303,7 @@ async def _create_loan(data: LoanCreate, current_user: dict):
     kyc, people = await prepare_loan_people(
         data.kyc_id,
         overrides={"borrower": {"phone": phone}} if phone else None,
-        require_kyc=True, require_aadhaar=True,
+        require_kyc=True, require_aadhaar=_needs_aadhaar, require_identity=True,
     )
     kyc_id = str(kyc["_id"])
     await assert_no_old_debt(kyc_id, people=people)
@@ -1449,7 +1457,7 @@ async def _create_reloan(oid, loan_id, new_oid, data, phone, co_borrower, guaran
             "co_borrower": co_borrower if co_borrower and any(co_borrower.values()) else None,
             "guarantor": guarantor if guarantor and any(guarantor.values()) else None,
         },
-        require_kyc=False, require_aadhaar=True,
+        require_kyc=False, require_aadhaar=await illaka_requires_aadhaar(loan.get("illaka_id")), require_identity=True,
     )
     # Replacing or blanking a co-borrower who is linked to a Gyal loan changes
     # that person's identity on the client's record — the same change PUT /kycs

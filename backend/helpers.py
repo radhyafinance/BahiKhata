@@ -539,6 +539,32 @@ def paid_so_far(loan: dict) -> float:
     return float(loan.get("total_paid") or 0)
 
 
+BORROWER_IDENTITY_REQUIRED = ("A loan needs the borrower's Aadhaar or mobile number. / कर्ज़ के लिए उधारकर्ता का "
+                              "आधार या मोबाइल नंबर ज़रूरी है।")
+
+
+async def assert_misal_in_illaka(misal_id, illaka_id) -> None:
+    """A misal must belong to the Illaka it is used with. Nothing checked it, so a
+    loan could be put in one Illaka with another Illaka's misal and then vanish
+    from that Illaka's lists."""
+    try:
+        misal = await db.misals.find_one({"_id": ObjectId(str(misal_id).strip())}, {"illaka_id": 1})
+    except Exception:
+        return
+    if misal and misal.get("illaka_id") and str(misal["illaka_id"]) != str(illaka_id):
+        raise HTTPException(status_code=400, detail="This Misal belongs to a different Illaka. / यह मिसल दूसरे इलाके की है।")
+
+
+async def illaka_requires_aadhaar(illaka_id) -> bool:
+    """Whether loans in this Illaka need the borrower's Aadhaar. On unless an admin
+    has switched it off for the Illaka."""
+    try:
+        ill = await db.illakas.find_one({"_id": ObjectId(str(illaka_id).strip())}, {"aadhaar_required": 1})
+    except Exception:
+        return True
+    return (ill or {}).get("aadhaar_required") is not False
+
+
 async def client_loans(kyc_id, projection: dict) -> list:
     """Every loan of one client, however older records stored its KYC id."""
     kid = _canon_id(kyc_id)
@@ -711,11 +737,13 @@ async def assert_people_not_gyal(people: dict, own_kyc_id: str = None) -> None:
 
 
 async def prepare_loan_people(kyc_id, overrides: dict = None, require_kyc: bool = True,
-                              require_aadhaar: bool = True) -> tuple:
+                              require_aadhaar: bool = True, require_identity: bool = False) -> tuple:
     """Resolve the client, apply the lending rules, and return (kyc, people).
 
     - `require_kyc`: a brand-new loan must name a KYC that exists.
     - `require_aadhaar`: a loan needs the borrower's Aadhaar.
+    - `require_identity`: without Aadhaar, at least a phone — a borrower with
+      neither could never be recognised again if the loan went bad.
     - everyone on the loan is checked against the Gyal loans.
     """
     kid = _canon_id(kyc_id)
@@ -731,6 +759,8 @@ async def prepare_loan_people(kyc_id, overrides: dict = None, require_kyc: bool 
             detail=("The borrower's Aadhaar number is required for a loan. Add it to the client's "
                     "KYC first. / कर्ज़ के लिए उधारकर्ता का आधार नंबर ज़रूरी है।"),
         )
+    if require_identity and not people["borrower"]["aadhaar"] and not people["borrower"]["phones"]:
+        raise HTTPException(status_code=400, detail=BORROWER_IDENTITY_REQUIRED)
     await assert_people_not_gyal(people, own_kyc_id=kid or None)
     return kyc, people
 
