@@ -6,7 +6,7 @@ import { Loader2, Sparkles, Lock, LockOpen, Info } from "lucide-react";
 import { API } from "./utils";
 import { DocUpload } from "./DocUpload";
 
-export function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandatory, phoneRequired, userRole, selectedIllakaId }) {
+export function PersonSection({ title, titleHi, data, onChange, onBatchChange, isMandatory, phoneRequired, userRole, selectedIllakaId, aadhaarOptional }) {
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrDone, setOcrDone] = useState(false);
   const [backOcrLoading, setBackOcrLoading] = useState(false);
@@ -22,6 +22,14 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
   const [duplicateError, setDuplicateError] = useState(null); // { illaka_name, kyc_id, client_name }
   const [existingClientInfo, setExistingClientInfo] = useState(null); // { kyc_id, customer_id, client_name }
   const [dbPrefilled, setDbPrefilled] = useState(false);
+  // In an Illaka where Aadhaar is not required, details can be typed in without
+  // uploading the card.
+  // Remembered across steps and when editing: details already typed without a
+  // card open straight to the typed fields.
+  const [noAadhaar, setNoAadhaar] = useState(
+    () => !data.aadhaar_front_path && !!(data.name || data.dob || data.address || data.relative_name)
+  );
+  const typingByHand = aadhaarOptional && noAadhaar && !data.aadhaar_front_path;
 
   const navigate = useNavigate();
 
@@ -31,7 +39,7 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
   const backLocked = isRestricted && backOcrDone && !backOcrFailed && !backOverride;
 
   // Sequential reveal flags
-  const showFrontFields = !!data.aadhaar_front_path || frontOcrFailed;
+  const showFrontFields = !!data.aadhaar_front_path || frontOcrFailed || typingByHand;
   const showBackSection = !!data.aadhaar_front_path && !dbPrefilled;
   const showBackFields = !!data.aadhaar_back_path || backOcrFailed || dbPrefilled;
 
@@ -327,8 +335,20 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
         <DocUpload
           label="Aadhaar Card (Front)" labelHi="आधार कार्ड (सामने) — OCR: Name, DOB, Gender"
           value={data.aadhaar_front_path} onChange={handleAadhaarFront}
-          required={isMandatory} testId={`aadhaar-front-${slug}`}
+          required={isMandatory && !aadhaarOptional} testId={`aadhaar-front-${slug}`}
         />
+        {aadhaarOptional && !data.aadhaar_front_path && (
+          <button
+            type="button"
+            onClick={() => setNoAadhaar(v => !v)}
+            className="mt-2 text-xs font-semibold text-primary underline"
+            data-testid={`no-aadhaar-${slug}`}
+          >
+            {noAadhaar
+              ? "Upload Aadhaar instead / आधार अपलोड करें"
+              : "No Aadhaar card — type details by hand / बिना आधार के विवरण भरें"}
+          </button>
+        )}
 
         {wrongSideWarning && (
           <div className="p-3 rounded-lg bg-red-50 border border-red-200 text-red-700 text-sm flex items-start gap-2 mt-2" data-testid="wrong-side-warning">
@@ -484,7 +504,9 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
             {/* Aadhaar Number */}
             <div>
               <label className="bk-label">
-                <span className="bk-label-en">Aadhaar Number <span className="text-destructive">*</span></span>
+                <span className="bk-label-en">Aadhaar Number {aadhaarOptional
+                  ? <span className="text-muted-foreground text-xs">(optional)</span>
+                  : <span className="text-destructive">*</span>}</span>
                 <span className="bk-label-hi">आधार संख्या</span>
               </label>
               <div className="relative">
@@ -580,7 +602,7 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
       )}
 
       {/* Back OCR fields — revealed after back upload or DB prefill */}
-      {(dbPrefilled || (showBackSection && showBackFields)) && (
+      {(dbPrefilled || typingByHand || (showBackSection && showBackFields)) && (
         <div className={`space-y-4 transition-opacity duration-200 ${backOcrLoading ? "opacity-40 pointer-events-none" : ""}`}>
           {/* DB prefilled notice */}
           {dbPrefilled && (
@@ -669,8 +691,8 @@ export function PersonSection({ title, titleHi, data, onChange, onBatchChange, i
         </div>
       )}
 
-      {/* Additional Doc — shown after back section is revealed */}
-      {showBackSection && (
+      {/* Additional Doc — shown after back section is revealed, or when typing by hand */}
+      {(showBackSection || typingByHand) && (
         <div className="pt-3 border-t border-dashed border-border">
           <p className="text-sm font-semibold text-muted-foreground mb-3">
             Additional Document <span className="font-normal">(Optional / वैकल्पिक)</span>

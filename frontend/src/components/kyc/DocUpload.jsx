@@ -4,8 +4,9 @@ import { toast } from "sonner";
 import { Camera, Loader2, X, ImageIcon } from "lucide-react";
 import { API, compressImage } from "./utils";
 
-export function DocUpload({ label, labelHi, value, onChange, required, testId }) {
-  const [uploading, setUploading] = useState(false);
+export function DocUpload({ label, labelHi, value, onChange, required, testId, onUploadingChange }) {
+  const [uploading, setUploadingState] = useState(false);
+  const setUploading = (v) => { setUploadingState(v); if (onUploadingChange) onUploadingChange(v); };
   const [preview, setPreview] = useState(null);
   const galleryRef = useRef();
   const cameraRef = useRef();

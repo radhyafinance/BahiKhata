@@ -10,7 +10,7 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const fmt = (n) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n || 0);
 
-export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, onClose, onSuccess }) {
+export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, onClose, onSuccess, defaultNetOff }) {
   const today = new Date().toISOString().split("T")[0];
   const [kycLoading, setKycLoading] = useState(!!kycId);
   const [submitting, setSubmitting] = useState(false);
@@ -18,7 +18,7 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
   // Core fields
   const [newAmount, setNewAmount] = useState("");
   const [loanDate, setLoanDate] = useState(today);
-  const [netOff, setNetOff] = useState(false);
+  const [netOff, setNetOff] = useState(!!defaultNetOff);
   const [phone, setPhone] = useState(currentLoan?.client_phone || "");
 
   // Co-borrower / guarantor — full KYC person objects
@@ -88,9 +88,11 @@ export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, on
       const payload = {
         new_disbursement_amount: newAmountNum,
         loan_date: loanDate,
-        net_off: netOff,
+        // Only when a net-off is possible — opened from the sheet it starts ticked,
+        // and on a repaid loan it was sent anyway as a "net-off of ₹0".
+        net_off: netOff && canNetOff,
         phone: phone || undefined,
-        notes: netOff
+        notes: netOff && canNetOff
           ? `Re-loan with net-off of ${fmt(outstanding)} from ${currentLoan?.loan_number || "previous loan"}`
           : "Re-loan",
       };
