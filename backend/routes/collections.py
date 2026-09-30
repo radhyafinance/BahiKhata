@@ -396,6 +396,11 @@ async def get_collection_sheet(
     loans = await db.loans.find(query).sort(
         [("illaka_id", 1), ("misal_id", 1), ("loan_date", 1)]
     ).to_list(None)
+    latest_by_client: dict = {}
+    # By when the loan was entered: a re-loan can carry an earlier loan date than
+    # its parent, and was then taken for the older loan.
+    for _l in sorted(loans, key=lambda x: (str(x.get("created_at") or ""), str(x.get("loan_date") or ""))):
+        latest_by_client[str(_l.get("kyc_id") or _l["_id"]).strip().lower()] = str(_l["_id"])
 
     # ── Bulk lookups ──────────────────────────────────────────────────────────
     unique_illaka_ids = list({ln.get("illaka_id") for ln in loans if ln.get("illaka_id")})
@@ -565,8 +570,9 @@ async def get_collection_sheet(
         # money, but its remaining instalment rows still read pending and the sheet
         # offered Collect, which the server then refused every month.
         if (not loan.get("is_gyal") and emi.get("status") not in ("paid", "netoff")
-                and loan.get("total_repayable") is not None
-                and float(loan.get("total_repayable") or 0) - paid_so_far(loan) < OWED_TOLERANCE):
+                and (loan.get("closed_by_admin")
+                     or (loan.get("total_repayable") is not None
+                         and float(loan.get("total_repayable") or 0) - paid_so_far(loan) < OWED_TOLERANCE))):
             emi = dict(emi, status="closed")
 
         loan_illaka_id = loan.get("illaka_id", "unknown")
@@ -611,8 +617,12 @@ async def get_collection_sheet(
             "total_repayable":      total_repayable,
             # What the loan still owes today (the balance columns are year-end
             # figures); the sheet offers a net-off only while this is a rupee or more.
-            "owed_now":             round(float(loan.get("total_repayable") or 0) - paid_so_far(loan), 2)
-                                    if loan.get("total_repayable") is not None else 0.0,
+            "owed_now":             (0.0 if loan.get("closed_by_admin")
+                                     else round(float(loan.get("total_repayable") or 0) - paid_so_far(loan), 2)
+                                     if loan.get("total_repayable") is not None else None),
+            # Only the client's most recent loan offers a re-loan on the sheet; an
+            # older repaid loan offered one beside a loan already running.
+            "is_latest_loan":       latest_by_client.get(str(loan.get("kyc_id") or loan_id_str).strip().lower()) == loan_id_str,
             "netoff_closed":        bool(loan.get("netoff_closed")),
             "netoff_amount":        float(loan.get("netoff_amount") or 0),
             "is_gyal":              loan.get("is_gyal", False),
@@ -753,8 +763,15 @@ async def monthly_summary(request: Request, illaka_id: str, month: str):
     # so a month's takings shrank as loans closed.
     loans = await db.loans.find(
         {"illaka_id": illaka_id},
-        {"misal_id": 1, "misal_name": 1, "emi_amount": 1, "emi_schedule": 1}
+        {"misal_id": 1, "misal_name": 1, "emi_amount": 1, "emi_schedule": 1, "netoff_amount": 1, "loan_date": 1,
+         "kyc_id": 1, "closed_by_admin": 1, "closed_by_admin_at": 1}
     ).to_list(None)
+
+    # Net-offs count only when their settlement is in the books (as in the Bid).
+    _netoff_ids = [str(l["_id"]) for l in loans if float(l.get("netoff_amount") or 0) > 0]
+    settled_netoffs = {str(j.get("reference_id")) for j in await db.journal_entries.find(
+        {"entry_type": "netoff_settlement", "reference_id": {"$in": _netoff_ids}}, {"reference_id": 1}
+    ).to_list(None)} if _netoff_ids else set()
 
     misal_map = {}
     for loan in loans:
@@ -766,7 +783,10 @@ async def monthly_summary(request: Request, illaka_id: str, month: str):
         # a re-loan rather than falling due, so it is not counted; nor is a Gyal
         # recovery row, which only exists because money was recovered (it was
         # counted as a full EMI due).
-        due_entry = next(
+        # A loan closed by hand is settled: nothing more falls due on it.
+        # (only from the month it was closed; earlier months stay as they were)
+        due_entry = None if (loan.get("closed_by_admin")
+                             and month >= str(loan.get("closed_by_admin_at") or "")[:7]) else next(
             (e for e in schedule
              if e.get("due_month") == month and e.get("status") != "netoff"
              and not e.get("is_gyal_entry")),
@@ -780,19 +800,39 @@ async def monthly_summary(request: Request, illaka_id: str, month: str):
             e for e in schedule
             if e.get("status") == "paid" and (e.get("paid_date") or "")[:7] == month
         ]
-        if not due_entry and not paid_entries:
+        # A net-off re-loan made this month: the balance it settled counts as
+        # collected (owner's rule), under the re-loan's misal.
+        netoff_amt = float(loan.get("netoff_amount") or 0) if str(loan["_id"]) in settled_netoffs else 0.0
+        netoff_now = netoff_amt > 0 and (loan.get("loan_date") or "")[:7] == month
+        if not due_entry and not paid_entries and not netoff_now:
             continue
 
         if mid not in misal_map:
             misal_map[mid] = {"misal_id": mid, "misal_name": mname, "utaar": 0.0,
-                              "vayda": 0.0, "clients": 0, "clients_paid": 0}
+                              "vayda": 0.0, "clients": 0, "clients_paid": 0, "_paid_clients": set(),
+                              "_due_clients": set()}
         if due_entry:
-            misal_map[mid]["clients"] += 1
+            # Clients, not loans — the same person with two loans was two clients
+            # due but one client paid.
+            who_due = str(loan.get("kyc_id") or loan["_id"]).strip().lower()
+            if who_due not in misal_map[mid]["_due_clients"]:
+                misal_map[mid]["_due_clients"].add(who_due)
+                misal_map[mid]["clients"] += 1
             misal_map[mid]["utaar"]   += float(loan.get("emi_amount") or 0)
-        if paid_entries:
+        if paid_entries or netoff_now:
             misal_map[mid]["vayda"] += sum(float(e.get("paid_amount") or 0) for e in paid_entries)
-            misal_map[mid]["clients_paid"] += 1
+            if netoff_now:
+                misal_map[mid]["vayda"] += netoff_amt
+            # Each client once — paying an EMI and netting off in the same month
+            # counted the same person twice.
+            who = str(loan.get("kyc_id") or loan["_id"]).strip().lower()
+            if who not in misal_map[mid]["_paid_clients"]:
+                misal_map[mid]["_paid_clients"].add(who)
+                misal_map[mid]["clients_paid"] += 1
 
+    for m in misal_map.values():
+        m.pop("_paid_clients", None)
+        m.pop("_due_clients", None)
     misals = sorted(misal_map.values(), key=lambda m: m["misal_name"])
     total  = {
         "utaar":        sum(m["utaar"]        for m in misals),

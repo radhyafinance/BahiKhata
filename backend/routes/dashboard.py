@@ -79,6 +79,13 @@ async def dashboard_overview(
 
     # Fetch all relevant loans
     loans = await db.loans.find(loan_query).to_list(None)
+    # Net-offs count as collected only when their settlement is in the books, so
+    # the dashboard agrees with the Bid. Re-loans made before settlements were
+    # booked have none.
+    _netoff_ids = [str(l["_id"]) for l in loans if float(l.get("netoff_amount") or 0) > 0]
+    settled_netoffs = {str(j.get("reference_id")) for j in await db.journal_entries.find(
+        {"entry_type": "netoff_settlement", "reference_id": {"$in": _netoff_ids}}, {"reference_id": 1}
+    ).to_list(None)} if _netoff_ids else set()
 
     # Fetch illaka names
     illaka_ids_in_data = list({l["illaka_id"] for l in loans if l.get("illaka_id")})
@@ -153,7 +160,9 @@ async def dashboard_overview(
             # already excluded it, and the dashboard reported it on top.
             is_netoff = emi.get("status") == "netoff"
 
-            # Utaar — EMIs scheduled this month
+            # Utaar — EMIs scheduled this month (none on a loan closed by hand)
+            if loan.get("closed_by_admin") and due_ym >= str(loan.get("closed_by_admin_at") or "")[:7]:
+                is_netoff = True
             if due_ym == current_ym and not is_netoff:
                 ia["utaar"] += amt
                 ia["utaar_count"] += 1
@@ -176,6 +185,21 @@ async def dashboard_overview(
             if paid_ym in total_fy and emi.get("status") == "paid":
                 ia["fy"][paid_ym]["vayda"] += paid_amt
                 total_fy[paid_ym]["vayda"] += paid_amt
+
+        # ── Net-off counted as collected (owner's rule) ──
+        # The balance a net-off re-loan settled is money received, in the month
+        # of the re-loan.
+        netoff_amt = float(loan.get("netoff_amount") or 0) if str(loan["_id"]) in settled_netoffs else 0.0
+        netoff_ym = (loan.get("loan_date") or "")[:7]
+        if netoff_amt > 0:
+            if netoff_ym == current_ym:
+                ia["vayda"] += netoff_amt
+                ia["vayda_count"] += 1
+                total_vayda += netoff_amt
+                total_vayda_count += 1
+            if netoff_ym in total_fy:
+                ia["fy"][netoff_ym]["vayda"] += netoff_amt
+                total_fy[netoff_ym]["vayda"] += netoff_amt
 
         # ── देन (Disbursements this month) ──
         loan_date = loan.get("loan_date") or ""

@@ -686,6 +686,25 @@ async def get_bid(
 
     emi_misal_map: dict = {}
     emi_misal_order: list = []
+
+    def _add_emi(mid, mname, amount):
+        if mid not in emi_misal_map:
+            emi_misal_map[mid] = {"misal_id": mid, "misal_name": mname, "total": 0.0}
+            emi_misal_order.append(mid)
+        emi_misal_map[mid]["total"] = round(emi_misal_map[mid]["total"] + amount, 2)
+
+    # A net-off settles the old loan's balance out of the new loan: the owner counts
+    # it as money collected, so it goes into EMI Collections under the client's
+    # misal. Its entry carries no misal, so the misal comes from the re-loan.
+    _netoff_refs = [e.get("reference_id") for e in entries if e.get("entry_type") == "netoff_settlement"]
+    _netoff_loans: dict = {}
+    if _netoff_refs:
+        try:
+            _oids = [ObjectId(str(r)) for r in _netoff_refs if r]
+            async for ln in db.loans.find({"_id": {"$in": _oids}}, {"misal_id": 1, "misal_name": 1}):
+                _netoff_loans[str(ln["_id"])] = ln
+        except Exception:
+            pass
     dr_head_map: dict = {}   # non-EMI dr items (interest income, other receipts)
     cr_head_map: dict = {}   # loans portfolio + expenses
 
@@ -702,10 +721,20 @@ async def get_bid(
             if cash_dr > 0:
                 mid = entry.get("misal_id") or "no_misal"
                 mname = _misal_name_map_bid.get(mid) or entry.get("misal_name") or "Unknown Misal"
-                if mid not in emi_misal_map:
-                    emi_misal_map[mid] = {"misal_id": mid, "misal_name": mname, "total": 0.0}
-                    emi_misal_order.append(mid)
-                emi_misal_map[mid]["total"] = round(emi_misal_map[mid]["total"] + cash_dr, 2)
+                _add_emi(mid, mname, cash_dr)
+
+        # ── Net-off settlements: counted as EMI collected ────────────────────
+        elif entry_type == "netoff_settlement":
+            cash_dr = sum(
+                float(l.get("debit", 0))
+                for l in lines if l.get("account_head_id") == cash_head_id
+            )
+            if cash_dr > 0:
+                ln = _netoff_loans.get(str(entry.get("reference_id") or ""), {})
+                mid = ln.get("misal_id") or entry.get("misal_id") or "no_misal"
+                mname = (_misal_name_map_bid.get(mid) or ln.get("misal_name")
+                         or entry.get("misal_name") or "Unknown Misal")
+                _add_emi(mid, mname, cash_dr)
 
         # ── Loan Disbursements ───────────────────────────────────────────────
         elif entry_type == "loan_disbursement":

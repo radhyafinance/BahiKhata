@@ -19,6 +19,7 @@ from helpers import (
     assert_client_not_gyal, validate_phone, clean_person, person_is_gyal_linked,
     assert_open_period, latest_closing_date, loan_status, valid_date, OWED_TOLERANCE, _day,
     assert_no_old_debt, client_loans, paid_so_far, illaka_requires_aadhaar, assert_misal_in_illaka,
+    assert_field_loan_date, today_local,
 )
 from models import LoanCreate, LoanStatusUpdate, PaymentCreate, PaymentEdit, EmiNoteUpdate, ReLoanRequest, YearEndClosingRequest, YearEndUndoRequest
 
@@ -273,6 +274,7 @@ async def create_loan(data: LoanCreate, request: Request):
         raise HTTPException(status_code=403, detail="Only field agents can create loans")
     _positive_amount(data.principal_amount, "Principal amount")
     data.loan_date = valid_date(data.loan_date, "Loan date")
+    assert_field_loan_date(current_user, data.loan_date)
     # Lending is limited to the agent's own illakas; a sipahi with none lent
     # into another illaka.
     await _assert_illaka_permitted(current_user, data.illaka_id)
@@ -447,6 +449,14 @@ async def _update_loan(loan_id: str, data: LoanCreate, request: Request):
                 detail=("This loan was closed by a net-off. Delete the re-loan first to change its "
                         "amount or date. / पहले नया कर्ज़ हटाएँ।"),
             )
+        # A loan closed by hand is settled; changing its amount paid out money
+        # that would never fall due. Reopen it first.
+        if loan.get("closed_by_admin"):
+            raise HTTPException(
+                status_code=400,
+                detail=("This loan was closed by hand. Reopen it first to change its amount or date. "
+                        "/ हाथ से बंद कर्ज़ की राशि बदलने से पहले उसे फिर से खोलें।"),
+            )
         # A net-off re-loan's settlement was booked at its amount and date. Changing
         # either left the settlement behind — the rolled-over balance vanished from
         # the books for the months in between. Delete the re-loan and create it again.
@@ -460,8 +470,11 @@ async def _update_loan(loan_id: str, data: LoanCreate, request: Request):
         # A field agent may correct a loan's date only while the loan is new — within
         # 30 days of entering it. Re-dating an old unpaid loan to today reset its
         # age, and the year-end closing never wrote it off.
+        # The same for its amount: cutting an old unpaid loan's amount made the
+        # debt vanish before the year-end closing.
         if (current_user["role"] not in ("admin", "maalik")
-                and (data.loan_date or "") != (loan.get("loan_date") or "")):
+                and ((data.loan_date or "") != (loan.get("loan_date") or "")
+                     or float(data.principal_amount) != float(loan.get("principal_amount") or 0))):
             try:
                 entered = datetime.fromisoformat(str(loan.get("created_at") or "").replace("Z", "+00:00"))
                 if entered.tzinfo is None:
@@ -472,9 +485,12 @@ async def _update_loan(loan_id: str, data: LoanCreate, request: Request):
             if not recent:
                 raise HTTPException(
                     status_code=403,
-                    detail=("A loan's date can be changed by field staff only within 30 days of entering it. "
-                            "Ask an admin or maalik. / 30 दिन बाद कर्ज़ की तारीख केवल एडमिन या मालिक बदल सकते हैं।"),
+                    detail=("A loan's amount or date can be changed by field staff only within 30 days of entering "
+                            "it. Ask an admin or maalik. / 30 दिन बाद कर्ज़ की राशि या तारीख केवल एडमिन या मालिक "
+                            "बदल सकते हैं।"),
                 )
+            if (data.loan_date or "") != (loan.get("loan_date") or ""):
+                assert_field_loan_date(current_user, data.loan_date)
 
         # Changing the terms re-books the disbursement on the old and new dates.
         await assert_open_period(loan.get("illaka_id"), loan.get("loan_date"), data.loan_date,
@@ -517,6 +533,13 @@ async def _update_loan(loan_id: str, data: LoanCreate, request: Request):
                 data.principal_amount, date_type.fromisoformat(_day(data.loan_date) or date_type.today().isoformat()))
             await assert_no_old_debt(loan.get("kyc_id"), people=loan.get("people"),
                                      editing=(loan["_id"], _new_emi * 12))
+            # The client's KYC as it stands now, too: naming an old debtor on the KYC
+            # and then raising the amount paid them.
+            _kyc_now = await db.kycs.find_one({"_id": ObjectId(_canon_parent_id(loan.get("kyc_id")) or ObjectId())})
+            if _kyc_now:
+                from helpers import loan_people
+                await assert_no_old_debt(loan.get("kyc_id"), people=loan_people(_kyc_now),
+                                         editing=(loan["_id"], _new_emi * 12))
 
         loan_date_obj = date_type.fromisoformat(data.loan_date)
         emi_amount, schedule = _build_emi_schedule(data.principal_amount, loan_date_obj)
@@ -540,7 +563,8 @@ async def _update_loan(loan_id: str, data: LoanCreate, request: Request):
             "loan_date": data.loan_date,
             "due_date": _add_months(loan_date_obj, 12).isoformat(),
             "emi_schedule": schedule,
-            "status": _get_loan_status(schedule),
+            # A loan closed by hand stays closed when its terms are corrected.
+            "status": "closed" if loan.get("closed_by_admin") else _get_loan_status(schedule),
         })
 
     await db.loans.update_one({"_id": oid}, {"$set": updates})
@@ -601,9 +625,22 @@ async def _update_loan_status(loan_id: str, data: LoanStatusUpdate, request: Req
             detail="This loan was closed by a net-off or written off as Gyal; its status cannot be set by hand.",
         )
     updates = {"status": data.status, "updated_at": datetime.now(timezone.utc).isoformat()}
+    # Closing a loan by hand settles it (owner's rule): it no longer counts as old
+    # unpaid debt, is not written off, and is not reopened when viewed.
+    unsets = {}
+    if data.status == "closed":
+        updates.update({"closed_by_admin": True, "closed_by_admin_name": current_user.get("name", ""),
+                        "closed_by_admin_at": updates["updated_at"]})
+    else:
+        unsets = {"closed_by_admin": "", "closed_by_admin_name": "", "closed_by_admin_at": ""}
     if data.notes:
         updates["notes"] = data.notes
-    await db.loans.update_one({"_id": oid}, {"$set": updates})
+    # Every hand change of status is kept, with who and when: reopening a loan
+    # used to erase any trace that it had been closed.
+    history = {"status": data.status, "from": loan.get("status"), "by_id": current_user["id"],
+               "by_name": current_user.get("name", ""), "at": updates["updated_at"], "notes": data.notes or ""}
+    await db.loans.update_one({"_id": oid}, {"$set": updates, "$push": {"status_history": history},
+                                             **({"$unset": unsets} if unsets else {})})
     return _doc(await db.loans.find_one({"_id": oid}))
 
 
@@ -656,14 +693,19 @@ async def _collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     # was UI-only, so the same request could be replayed against the API.
     # Keyed on the PAYMENT date, not the EMI month, so collecting arrears
     # (an old EMI paid today) stays allowed.
-    if current_user["role"] in ("muneem", "sipahi"):
-        today = date_type.today()
+    # Everyone but admin and maalik (sadar muneem too) is limited to this month,
+    # by the Indian date.
+    if current_user["role"] not in ("admin", "maalik"):
+        today = today_local()
         this_month = f"{today.year}-{today.month:02d}"
         if (data.payment_date or "")[:7] < this_month:
             raise HTTPException(
                 status_code=403,
                 detail="Cannot record a collection for a past month / पिछले महीने की एंट्री नहीं कर सकते",
             )
+    # A collection cannot be dated before the loan was given — on any loan.
+    if _day(doc.get("loan_date")) and (data.payment_date or "")[:10] < _day(doc.get("loan_date")):
+        raise HTTPException(status_code=400, detail="A collection cannot be dated before the loan was given.")
     # Nothing may be collected into a year that has been closed.
     await assert_open_period(doc.get("illaka_id"), data.payment_date, what="This collection")
     # Validate the month before it can be written into the schedule. Junk values
@@ -676,8 +718,11 @@ async def _collect_emi(loan_id: str, data: PaymentCreate, request: Request):
         # A recovery is dated on or after the write-off it recovers. One dated
         # earlier was counted twice in that month's Balance Sheet — as a
         # reduction of the portfolio and as recovery income.
+        # Only for a write-off made by a year-end closing (dated YYYY-MM-DD). A loan
+        # imported as Gyal records only the month it was typed in; recoveries the
+        # client paid before that were refused.
         since = str(doc.get("gyal_since") or "")[:10]
-        if since and (data.payment_date or "")[:10] < since:
+        if len(since) == 10 and (data.payment_date or "")[:10] < since:
             raise HTTPException(
                 status_code=400,
                 detail=f"A Gyal recovery cannot be dated before the write-off ({since}).",
@@ -863,7 +908,8 @@ async def _collect_emi(loan_id: str, data: PaymentCreate, request: Request):
     total_paid = _baseline_paid + sum(
         float(e.get("paid_amount") or 0) for e in claimed_schedule if e["status"] == "paid"
     )
-    new_status = _get_loan_status(claimed_schedule, total_paid, doc.get("total_repayable"))
+    new_status = ("closed" if doc.get("closed_by_admin")
+                  else _get_loan_status(claimed_schedule, total_paid, doc.get("total_repayable")))
     await db.loans.update_one(
         {"_id": oid},
         {"$set": {"total_paid": total_paid, "status": new_status, "updated_at": now}}
@@ -1070,6 +1116,13 @@ async def _uncollect_emi(loan_id: str, emi_month: str, request: Request):
         raise HTTPException(status_code=404, detail="EMI month not found")
     if emi_item.get("status") != "paid":
         raise HTTPException(status_code=400, detail="This EMI has not been collected")
+    # Everyone but admin and maalik can undo only a collection made this month.
+    if current_user["role"] not in ("admin", "maalik"):
+        _now = today_local()
+        if _day(emi_item.get("paid_date"))[:7] != f"{_now.year}-{_now.month:02d}":
+            raise HTTPException(status_code=403,
+                                detail="Only a collection made this month can be undone. Ask an admin or maalik. "
+                                       "/ केवल इस महीने की वसूली वापस ली जा सकती है।")
     await assert_open_period(doc.get("illaka_id"), emi_item.get("paid_date"), what="This collection",
                              undated_is_closed=True)
     await _assert_may_reduce_collection(current_user, doc, loan_id, emi_month, emi_item)
@@ -1149,7 +1202,8 @@ async def _uncollect_emi(loan_id: str, emi_month: str, request: Request):
     await db.loans.update_one(
         {"_id": oid},
         {"$set": {"total_paid": _new_total,
-                  "status": _get_loan_status(fresh_schedule, _new_total, fresh.get("total_repayable"))}},
+                  "status": "closed" if fresh.get("closed_by_admin")
+                  else _get_loan_status(fresh_schedule, _new_total, fresh.get("total_repayable"))}},
     )
 
     return {"message": f"EMI for {emi_month} uncollected"}
@@ -1181,7 +1235,7 @@ async def _edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, req
     if not is_valid_month(emi_month):
         raise HTTPException(status_code=400, detail="emi_month must be in YYYY-MM format")
 
-    today = date_type.today()
+    today = today_local()
     current_ym = f"{today.year}-{today.month:02d}"
 
     doc = await db.loans.find_one({"_id": oid})
@@ -1197,10 +1251,17 @@ async def _edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, req
                     "its collections. / पहले नया कर्ज़ हटाएँ।"),
         )
 
-    # Role-based time restriction
-    if current_user["role"] in ["muneem", "sipahi"]:
+    # Role-based time restriction — everyone but admin and maalik works only on
+    # this month's instalment, collected this month, and cannot move it to
+    # another month (changing the date to last month got round the freeze).
+    if current_user["role"] not in ("admin", "maalik"):
         if emi_month != current_ym:
             raise HTTPException(status_code=403, detail="Muneem/Sipahi can only edit entries for the current month")
+        _row = next((e for e in doc.get("emi_schedule", []) if e.get("due_month") == emi_month), {})
+        if (_day(_row.get("paid_date"))[:7] and _day(_row.get("paid_date"))[:7] != current_ym) or (
+                data.payment_date and _day(data.payment_date)[:7] != current_ym):
+            raise HTTPException(status_code=403,
+                                detail="Cannot record a collection for a past month / पिछले महीने की एंट्री नहीं कर सकते")
 
     schedule = doc.get("emi_schedule", [])
     _baseline = _import_baseline(doc)   # before any mutation below
@@ -1234,6 +1295,8 @@ async def _edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, req
     if new_amount < old_amount - 0.005:
         await _assert_may_reduce_collection(current_user, doc, loan_id, emi_month, emi_item)
     await assert_open_period(doc.get("illaka_id"), new_date, what="This collection")
+    if _day(doc.get("loan_date")) and _day(new_date) and _day(new_date) < _day(doc.get("loan_date")):
+        raise HTTPException(status_code=400, detail="A collection cannot be dated before the loan was given.")
 
     if doc.get("is_gyal"):
         # The same limits as collecting a recovery: not more than the client
@@ -1245,7 +1308,7 @@ async def _edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, req
                         f"(₹{max(0.0, _gyal_outstanding(doc)) + old_amount:,.2f} for this entry)."),
             )
         since = str(doc.get("gyal_since") or "")[:10]
-        if since and (new_date or "")[:10] < since:
+        if len(since) == 10 and (new_date or "")[:10] < since:
             raise HTTPException(
                 status_code=400,
                 detail=f"A Gyal recovery cannot be dated before the write-off ({since}).",
@@ -1296,7 +1359,8 @@ async def _edit_emi_payment(loan_id: str, emi_month: str, data: PaymentEdit, req
     await db.loans.update_one(
         {"_id": oid},
         {"$set": {"total_paid": _new_total,
-                  "status": _get_loan_status(fresh.get("emi_schedule", []), _new_total, fresh.get("total_repayable"))}},
+                  "status": "closed" if fresh.get("closed_by_admin")
+                  else _get_loan_status(fresh.get("emi_schedule", []), _new_total, fresh.get("total_repayable"))}},
     )
 
     # Update payments record
@@ -1397,9 +1461,13 @@ async def update_emi_note(loan_id: str, data: EmiNoteUpdate, request: Request):
 async def create_reloan(loan_id: str, data: ReLoanRequest, request: Request):
     """Create a re-loan for an existing client. Optionally net-off outstanding balance."""
     current_user = await get_current_user(request)
+    # The screens never offer sadar muneem a re-loan; the server did accept one.
+    if current_user["role"] == "sadar_muneem":
+        raise HTTPException(status_code=403, detail="Sadar muneem cannot give a re-loan")
     oid, loan_id = _loan_ref(loan_id)
     _positive_amount(data.new_disbursement_amount, "Re-loan amount")
     data.loan_date = valid_date(data.loan_date, "Loan date")
+    assert_field_loan_date(current_user, data.loan_date)
     existing = await db.loans.find_one({"_id": oid}, {"kyc_id": 1, "client_phone": 1, "illaka_id": 1})
     if existing:
         await assert_open_period(existing.get("illaka_id"), data.loan_date, what="This re-loan")
@@ -1494,6 +1562,10 @@ async def _create_reloan(oid, loan_id, new_oid, data, phone, co_borrower, guaran
     baseline = _import_baseline(loan)
     paid_rows = sum(float(e.get("paid_amount") or 0) for e in schedule if e.get("status") == "paid")
     outstanding = round(max(0.0, total_repayable - baseline - paid_rows), 2)
+    # A loan an admin or maalik closed by hand is settled: nothing is left to
+    # net off, and it is not old unpaid debt.
+    if loan.get("closed_by_admin"):
+        outstanding = 0.0
     netoff_amount = 0.0
 
     # A loan over three years old that still owes is due to be written off. A
@@ -1501,7 +1573,7 @@ async def _create_reloan(oid, loan_id, new_oid, data, phone, co_borrower, guaran
     # the new loan so the closing never wrote it off.
     if (outstanding >= OWED_TOLERANCE
             and _day(loan.get("loan_date"))
-            and _day(loan.get("loan_date")) <= _add_months(date_type.today(), -36).isoformat()):
+            and _day(loan.get("loan_date")) <= _add_months(today_local(), -36).isoformat()):
         raise HTTPException(
             status_code=403,
             detail=("This loan is over three years old and still owes money, so it is due to be written "
@@ -1677,6 +1749,8 @@ def _closing_query(illaka_id: str, cutoff_iso: str) -> dict:
         "illaka_id": illaka_id,
         "is_gyal": {"$ne": True},
         "netoff_closed": {"$ne": True},
+        # Closed by hand by an admin or maalik: settled, not written off.
+        "closed_by_admin": {"$ne": True},
     }
 
 
@@ -1754,7 +1828,8 @@ async def year_end_closing(data: YearEndClosingRequest, request: Request):
     closing_date = _normalise_closing_date(data.closing_date)
     # A closing dated in the future wrote loans off at once, and every recovery
     # was then refused as "dated before the write-off" until that date came.
-    if closing_date > date_type.today().isoformat():
+    from helpers import today_local
+    if closing_date > today_local().isoformat():
         raise HTTPException(status_code=400, detail="A year-end closing cannot be dated in the future.")
     # One closing or undo at a time per illaka. An undo overlapping a closing (of
     # the same date or a later one) left write-offs no closing record owned, or

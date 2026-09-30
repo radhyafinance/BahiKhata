@@ -399,8 +399,28 @@ def validate_phone(value, label: str = "Phone") -> str:
     return found[0]
 
 
+_VERHOEFF_D = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 2, 3, 4, 0, 6, 7, 8, 9, 5], [2, 3, 4, 0, 1, 7, 8, 9, 5, 6],
+               [3, 4, 0, 1, 2, 8, 9, 5, 6, 7], [4, 0, 1, 2, 3, 9, 5, 6, 7, 8], [5, 9, 8, 7, 6, 0, 4, 3, 2, 1],
+               [6, 5, 9, 8, 7, 1, 0, 4, 3, 2], [7, 6, 5, 9, 8, 2, 1, 0, 4, 3], [8, 7, 6, 5, 9, 3, 2, 1, 0, 4],
+               [9, 8, 7, 6, 5, 4, 3, 2, 1, 0]]
+_VERHOEFF_P = [[0, 1, 2, 3, 4, 5, 6, 7, 8, 9], [1, 5, 7, 6, 2, 8, 3, 0, 9, 4], [5, 8, 0, 3, 7, 9, 6, 1, 4, 2],
+               [8, 9, 1, 6, 0, 4, 3, 5, 2, 7], [9, 4, 5, 3, 1, 2, 6, 8, 7, 0], [4, 2, 8, 6, 5, 7, 3, 9, 0, 1],
+               [2, 7, 9, 3, 8, 0, 6, 4, 1, 5], [7, 0, 4, 6, 9, 1, 3, 2, 5, 8]]
+
+
+def aadhaar_checksum_ok(digits: str) -> bool:
+    """Every real Aadhaar ends in a Verhoeff check digit, so a made-up or mistyped
+    number (one digit wrong, two digits swapped) fails."""
+    c = 0
+    for i, ch in enumerate(reversed(digits)):
+        c = _VERHOEFF_D[c][_VERHOEFF_P[i % 8][int(ch)]]
+    return c == 0
+
+
 def validate_aadhaar(value, label: str = "Aadhaar") -> str:
-    """For saving: blank, or a valid 12-digit Aadhaar. Returns it as "XXXX XXXX XXXX"."""
+    """For saving: blank, or a valid 12-digit Aadhaar. Returns it as "XXXX XXXX XXXX".
+
+    Only numbers being entered or changed come here; ones already saved are kept."""
     s = _clean_number_text(value)
     if not re.sub(r"[^0-9]", "", s):
         return ""
@@ -409,6 +429,12 @@ def validate_aadhaar(value, label: str = "Aadhaar") -> str:
         raise HTTPException(
             status_code=400,
             detail=f"{label} must be a 12-digit Aadhaar number. / {label}: 12 अंकों का आधार नंबर डालें।",
+        )
+    if not aadhaar_checksum_ok(digits):
+        raise HTTPException(
+            status_code=400,
+            detail=(f"{label} is not a valid Aadhaar number — please check it for a mistyped digit. "
+                    f"/ {label}: आधार नंबर सही नहीं है, एक-एक अंक जाँचें।"),
         )
     return f"{digits[0:4]} {digits[4:8]} {digits[8:12]}"
 
@@ -446,7 +472,11 @@ def clean_person(person, label: str, previous=None):
             continue
         new_raw = str(data.get(field) or "").strip()
         old_raw = str(prev.get(field) or "").strip()
-        if new_raw and new_raw == old_raw:
+        same = new_raw == old_raw
+        if not same and new_raw and field == "aadhaar_number":
+            # The same number retyped in another layout is not a change.
+            same = bool(normalize_aadhaar(new_raw)) and normalize_aadhaar(new_raw) == normalize_aadhaar(old_raw)
+        if new_raw and same:
             data[field] = prev.get(field)
             continue
         data[field] = check(data.get(field), f"{label} {'phone' if field == 'phone' else 'Aadhaar'}")
@@ -539,6 +569,32 @@ def paid_so_far(loan: dict) -> float:
     return float(loan.get("total_paid") or 0)
 
 
+def today_local() -> date_type:
+    """Today in India. The server clock runs on UTC, so between midnight and 5:30
+    in the morning its "today" was still yesterday and a loan dated today was
+    refused as a future date."""
+    from zoneinfo import ZoneInfo
+    return datetime.now(ZoneInfo("Asia/Kolkata")).date()
+
+
+def assert_field_loan_date(user: dict, loan_date: str) -> None:
+    """Field staff date a new loan or re-loan from the first of last month up to
+    today. Any date was accepted, years ahead (nothing fell due) or years back (the
+    loan was written off within months). Admin and maalik may use any date."""
+    if user.get("role") in ("admin", "maalik"):
+        return
+    today = today_local()
+    first_last_month = _add_months(today.replace(day=1), -1).isoformat()
+    day = _day(loan_date)
+    if not day or day < first_last_month or day > today.isoformat():
+        raise HTTPException(
+            status_code=403,
+            detail=(f"A loan can be dated from {first_last_month} to today. For another date, save it dated "
+                    f"today and ask an admin or maalik to correct the date. / कर्ज़ की तारीख पिछले महीने की 1 "
+                    f"तारीख से आज तक ही हो सकती है।"),
+        )
+
+
 BORROWER_IDENTITY_REQUIRED = ("A loan needs the borrower's Aadhaar or mobile number. / कर्ज़ के लिए उधारकर्ता का "
                               "आधार या मोबाइल नंबर ज़रूरी है।")
 
@@ -590,33 +646,120 @@ async def assert_no_old_debt(kyc_id, people: dict = None, editing: tuple = None)
     raised, judged at the new amount — shrinking an old loan to nothing, lending,
     then restoring it used to pass.
     """
-    cutoff = _add_months(date_type.today(), -36).isoformat()
-    fields = {"loan_number": 1, "loan_date": 1, "total_paid": 1, "total_repayable": 1,
-              "is_gyal": 1, "netoff_closed": 1, "emi_schedule": 1}
-    loans = {str(ln["_id"]): ln for ln in await client_loans(kyc_id, fields)}
-    aadhaars, phones = _snapshot_keys((people or {}).get("borrower"))
-    ors = []
-    if aadhaars:
-        ors += [{f"people.{r}.{f}": {"$in": sorted(aadhaars)}}
-                for r in ("borrower", "co_borrower") for f in ("aadhaar", "other_aadhaars")]
-    if phones:
-        ors += [{f"people.{r}.phones": {"$in": sorted(phones)}} for r in ("borrower", "co_borrower")]
-    if ors:
-        for ln in await db.loans.find({"$or": ors, "is_gyal": {"$ne": True}}, fields).to_list(None):
-            loans.setdefault(str(ln["_id"]), ln)
-    for lid, ln in loans.items():
+    cutoff = _add_months(today_local(), -36).isoformat()
+    fields = {"loan_number": 1, "loan_date": 1, "total_paid": 1, "total_repayable": 1, "client_name": 1,
+              "is_gyal": 1, "netoff_closed": 1, "emi_schedule": 1, "closed_by_admin": 1}
+    # The borrower's own loans (by KYC), then — for the borrower, co-borrower and
+    # guarantor alike — any loan on which that person is recorded as borrower or
+    # co-borrower. A client with old unpaid debt could otherwise still stand as
+    # someone else's co-borrower or guarantor.
+    own_ids = set()
+    loans = {}
+    for ln in await client_loans(kyc_id, fields):
+        loans[str(ln["_id"])] = (ln, "borrower")
+        own_ids.add(str(ln["_id"]))
+    matched_kycs: dict = {}   # kyc id -> role, looked up in one go below
+
+    def _other_person(person: dict, given: set) -> bool:
+        """The person on record has an Aadhaar and it is not the one given: a
+        different person who happens to share the phone (a spouse, a family
+        phone) — not a match."""
+        rec = {normalize_aadhaar(person.get("aadhaar") or person.get("aadhaar_number"))}
+        rec |= set(person.get("other_aadhaars") or [])
+        rec.discard("")
+        return bool(given) and bool(rec) and not (rec & given)
+
+    for role in ("borrower", "co_borrower", "guarantor"):
+        aadhaars, phones = _snapshot_keys((people or {}).get(role))
+        # Anyone with an Aadhaar (borrower, co-borrower or guarantor) is matched by
+        # it, and by phone only against people on record with no Aadhaar or the
+        # same one: a spouse or husband sharing the family phone was blocked over
+        # someone else's old debt. (Ignoring the phone altogether let an old
+        # debtor through by typing any Aadhaar.)
+        aadhaar_first = bool(aadhaars)
+        if aadhaars:
+            q = [{f"people.{r}.{f}": {"$in": sorted(aadhaars)}}
+                 for r in ("borrower", "co_borrower") for f in ("aadhaar", "other_aadhaars")]
+            for ln in await db.loans.find({"$or": q, "is_gyal": {"$ne": True}}, dict(fields, people=1)).to_list(None):
+                loans.setdefault(str(ln["_id"]), (ln, role))
+        if phones:
+            q = [{f"people.{r}.phones": {"$in": sorted(phones)}} for r in ("borrower", "co_borrower")]
+            for ln in await db.loans.find({"$or": q, "is_gyal": {"$ne": True}}, dict(fields, people=1)).to_list(None):
+                if aadhaar_first:
+                    holders = [p for p in ((ln.get("people") or {}).get(r) or {} for r in ("borrower", "co_borrower"))
+                               if set(p.get("phones") or []) & phones]
+                    if holders and all(_other_person(p, aadhaars) for p in holders):
+                        continue
+                loans.setdefault(str(ln["_id"]), (ln, role))
+        # The person's own client records as they stand now. A number added to a
+        # KYC afterwards — Add Aadhaar, a changed phone — never reaches the people
+        # recorded on the client's old loans, so they were matched only by the
+        # numbers typed back then.
+        kyc_ors = []
+        for a in aadhaars:
+            pat = "^\\D*" + "\\D*".join(a) + "\\D*$"
+            kyc_ors += [{f"{f}.aadhaar_number": {"$regex": pat}} for f in ("primary_borrower", "co_borrower")]
+        for ph in phones:
+            # Anywhere in the field, as a whole number: older records hold two
+            # numbers in one phone field.
+            pat = "(?<![0-9])(?:(?:00)?91|0)?\\D*" + "\\D*".join(ph[-10:]) + "(?![0-9])"
+            kyc_ors += [{f"{f}.{k}": {"$regex": pat}} for f in ("primary_borrower", "co_borrower")
+                        for k in ("phone", "phone_history")]
+        if kyc_ors:
+            async for k in db.kycs.find({"$or": kyc_ors}, {"primary_borrower": 1, "co_borrower": 1}):
+                if kyc_id and str(k["_id"]) == _canon_id(kyc_id):
+                    continue
+                if aadhaar_first:
+                    ids = []
+                    for f in ("primary_borrower", "co_borrower"):
+                        snap = _person_snapshot(k.get(f))
+                        # A number the person used before counts as theirs too.
+                        for old in (_as_person_dict(k.get(f)).get("phone_history") or []):
+                            for ph in phone_candidates(old):
+                                if ph not in snap["phones"]:
+                                    snap["phones"].append(ph)
+                        ids.append(snap)
+                    by_aadhaar = any(p["aadhaar"] in aadhaars for p in ids if p["aadhaar"])
+                    holders = [p for p in ids if set(p["phones"]) & phones]
+                    if not by_aadhaar and holders and all(_other_person(p, aadhaars) for p in holders):
+                        continue
+                matched_kycs.setdefault(str(k["_id"]), role)
+    if matched_kycs:
+        # One query for every matched client (looked up one by one, a phone
+        # shared by thousands of records took minutes).
+        variants = [v for kid in matched_kycs for v in _id_variants(kid)]
+        ors = [{"kyc_id": {"$in": variants}}, {"kyc_id_canon": {"$in": list(matched_kycs)}}]
+        # Older loans stored the id padded with spaces or in capitals.
+        ids = list(matched_kycs)
+        for i in range(0, len(ids), 300):
+            ors.append({"kyc_id": {"$regex": "^\\s*(" + "|".join(ids[i:i + 300]) + ")\\s*$", "$options": "i"}})
+        async for ln in db.loans.find({"$or": ors, "is_gyal": {"$ne": True}}, fields):
+            kid = _canon_id(ln.get("kyc_id")) or str(ln.get("kyc_id_canon") or "")
+            loans.setdefault(str(ln["_id"]), (ln, matched_kycs.get(kid, "borrower")))
+    for lid, (ln, role) in loans.items():
         if editing and lid == str(editing[0]):
             ln = dict(ln, total_repayable=editing[1])
-        if ln.get("is_gyal") or ln.get("netoff_closed") or ln.get("total_repayable") is None:
+        # A loan an admin or maalik closed by hand is settled (owner's rule).
+        if (ln.get("is_gyal") or ln.get("netoff_closed") or ln.get("closed_by_admin")
+                or ln.get("total_repayable") is None):
             continue
         day = _day(ln.get("loan_date"))
         owed = float(ln.get("total_repayable") or 0) - paid_so_far(ln)
         if day and day <= cutoff and owed >= OWED_TOLERANCE:
+            if lid in own_ids:
+                whose = f"This client's loan {ln.get('loan_number') or ''} from {day}"
+            else:
+                person = {"borrower": "The borrower", "co_borrower": "The co-borrower",
+                          "guarantor": "The guarantor"}[role]
+                whose = (f"{person} is on another client's loan: {ln.get('loan_number') or ''} of "
+                         f"{ln.get('client_name') or 'another client'} from {day}. That loan")
             raise HTTPException(
                 status_code=403,
-                detail=(f"This client's loan {ln.get('loan_number') or ''} from {day} is over three years old and "
-                        f"still owes ₹{owed:,.2f}. It is due to be written off, so the client cannot be given any "
-                        f"new money. / तीन साल पुराने बकाया वाले ग्राहक को नया पैसा नहीं दिया जा सकता।"),
+                detail=(f"{whose} is over three years old and still owes ₹{owed:,.2f}. It is due to be "
+                        f"written off, so no new money can be given with them on the loan."
+                        + (" If this is a different person who shares the phone, enter their own Aadhaar."
+                           if lid not in own_ids else "") + " "
+                        "/ तीन साल पुराने बकाया वाले व्यक्ति के साथ नया कर्ज़ नहीं दिया जा सकता।"),
             )
 
 
@@ -920,6 +1063,9 @@ def _get_loan_status(schedule: list, total_paid=None, total_repayable=None, neto
 
 def loan_status(loan: dict) -> str:
     """_get_loan_status for a whole loan document."""
+    # Closed by hand by an admin or maalik: settled, whatever the figures say.
+    if loan.get("closed_by_admin"):
+        return "closed"
     # An older record with no total_paid keeps the status its schedule gives.
     return _get_loan_status(loan.get("emi_schedule") or [],
                             loan.get("total_paid") if "total_paid" in loan else None,
