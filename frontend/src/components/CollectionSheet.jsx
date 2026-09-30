@@ -464,6 +464,20 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
         ↩ Net-off
       </button>
     ) : null;
+    // A client who has repaid in full can be given the next loan from here too.
+    const canReloan = !isGyal && !isFrozen && userRole !== "sadar_muneem"
+      && row.emi_status !== "netoff" && !row.netoff_closed && row.is_latest_loan !== false
+      && typeof row.owed_now === "number" && row.owed_now < 1;
+    const reloanBtn = canReloan ? (
+      <button
+        onClick={() => onNetoff(row, false)}
+        className="flex items-center justify-center text-[10px] w-full py-1 rounded border border-dashed border-green-500/60 text-green-700 hover:bg-green-50 transition-colors"
+        title="Re-loan / नया कर्ज़"
+        data-testid={`reloan-btn-${row.loan_db_id}`}
+      >
+        ↻ Re-loan
+      </button>
+    ) : null;
     const guarantorName = row.guarantor_name_hindi || row.guarantor_name || "";
 
     // Edit permission: paid rows only (not netoff — those were closed via re-loan)
@@ -725,6 +739,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                   </button>
                 ) : null}
                 {netoffBtn}
+                {reloanBtn}
                 <button
                   onClick={() => navigate(`/loans/${row.loan_db_id}`)}
                   className="p-1 rounded hover:bg-muted text-muted-foreground"
@@ -867,6 +882,7 @@ function MisalSection({ misal, month, isFrozen, userRole, currentMonth, latestCl
                   {row.emi_note ? "Edit" : "Note"}
                 </button>
                 {netoffBtn}
+                {reloanBtn}
                 <button
                   onClick={() => navigate(`/loans/${row.loan_db_id}`)}
                   className="p-1 rounded hover:bg-muted text-muted-foreground"
@@ -969,8 +985,30 @@ export default function CollectionSheet() {
   const today = new Date();
   const defaultMonth = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}`;
 
-  // Single source of truth: collectDate drives both payment_date AND emi_month
-  const [collectDate, setCollectDate] = useState(() => new Date().toISOString().split("T")[0]);
+  // Single source of truth: collectDate drives both payment_date AND emi_month.
+  // The date is asked for once a day when the sheet opens, and remembered for the
+  // rest of that day (sadar muneem only view the sheet, so they are not asked).
+  // The local (India) date — toISOString gave the UTC date, which is still
+  // yesterday until 5:30 in the morning.
+  const todayStr = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  })();
+  const dateKey = `vasuli_date_${user?.id || ""}`;
+  const readSavedDate = () => {
+    try {
+      const saved = JSON.parse(localStorage.getItem(dateKey) || "null");
+      return saved && saved.day === todayStr ? saved.date : null;
+    } catch { return null; }
+  };
+  const [collectDate, setCollectDate] = useState(() => readSavedDate() || todayStr);
+  const [askDate, setAskDate] = useState(() => user?.role !== "sadar_muneem" && !readSavedDate());
+  const [askDateValue, setAskDateValue] = useState(todayStr);
+  // Only the date chosen in the window is remembered for the day. Browsing to
+  // another month or year used to be remembered too, so the sheet reopened on it.
+  const rememberDate = (d) => {
+    try { localStorage.setItem(dateKey, JSON.stringify({ day: todayStr, date: d })); } catch {}
+  };
   // Derive the active EMI month and FY from the selected date — no separate state needed
   const month = collectDate.slice(0, 7);                  // "YYYY-MM" → emi_month for API
   const selectedFyStart = getFyStartFromDate(collectDate); // FY derived from date
@@ -983,7 +1021,8 @@ export default function CollectionSheet() {
   // Jump to a specific FY — updates collectDate to the right default date in that FY
   const handleFyJump = useCallback((newFy) => {
     if (newFy === getCurrentFyStart()) {
-      setCollectDate(new Date().toISOString().split("T")[0]);
+      const d = new Date();
+      setCollectDate(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`);
     } else {
       setCollectDate(`${newFy + 1}-03-31`);
     }
@@ -996,10 +1035,10 @@ export default function CollectionSheet() {
   const [editingRow, setEditingRow] = useState(null);
   const [netoffLoan, setNetoffLoan] = useState(null);   // { loan, row }
 
-  const openNetoff = useCallback(async (row) => {
+  const openNetoff = useCallback(async (row, netOff = true) => {
     try {
       const res = await axios.get(`${API}/loans/${row.loan_db_id}`, { withCredentials: true });
-      setNetoffLoan({ loan: res.data, row });
+      setNetoffLoan({ loan: res.data, row, netOff });
     } catch (e) {
       toast.error(e.response?.data?.detail || "Could not open the loan");
     }
@@ -1201,6 +1240,39 @@ export default function CollectionSheet() {
 
   return (
     <div>
+      {askDate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" data-testid="vasuli-date-modal">
+          <div className="absolute inset-0 bg-black/50" />
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (!/^\d{4}-\d{2}-\d{2}$/.test(askDateValue)) return;
+              setCollectDate(askDateValue);
+              rememberDate(askDateValue);
+              setAskDate(false);
+            }}
+            className="relative bg-card rounded-xl shadow-2xl w-full max-w-sm border border-border p-5 space-y-4"
+          >
+            <div>
+              <p className="font-bold text-base font-['Outfit']">Collection date / वसूली की तारीख</p>
+              <p className="text-xs text-muted-foreground">Entries on the sheet will use this date. You can change it at the top.</p>
+            </div>
+            <input
+              type="date"
+              value={askDateValue}
+              max={todayStr}
+              onChange={(e) => setAskDateValue(e.target.value)}
+              className="bk-input"
+              required
+              autoFocus
+              data-testid="vasuli-date-input"
+            />
+            <button type="submit" className="bk-btn-primary w-full" data-testid="vasuli-date-continue">
+              Continue / आगे बढ़ें
+            </button>
+          </form>
+        </div>
+      )}
       {/* ── STICKY CONTROLS BAR ── */}
       <div className="sticky top-0 z-30 bg-background/95 backdrop-blur-sm border-b border-border" data-testid="vasuli-sticky-header">
         {/* Row 1: Title + FY badge — always full width */}
@@ -1510,7 +1582,8 @@ export default function CollectionSheet() {
           kycId={netoffLoan.loan.kyc_id}
           clientName={netoffLoan.row.client_name}
           currentLoan={netoffLoan.loan}
-          defaultNetOff
+          defaultNetOff={netoffLoan.netOff}
+          defaultDate={collectDate}
           onClose={() => setNetoffLoan(null)}
           onSuccess={() => {
             setNetoffLoan(null);

@@ -10,8 +10,9 @@ const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 const fmt = (n) =>
   new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n || 0);
 
-export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, onClose, onSuccess, defaultNetOff }) {
-  const today = new Date().toISOString().split("T")[0];
+export default function ReLoanModal({ loanId, kycId, clientName, currentLoan, onClose, onSuccess, defaultNetOff, defaultDate }) {
+  // Opened from the Vasuli sheet, it starts on the date chosen there.
+  const today = defaultDate || new Date().toISOString().split("T")[0];
   const [kycLoading, setKycLoading] = useState(!!kycId);
   const [submitting, setSubmitting] = useState(false);
 

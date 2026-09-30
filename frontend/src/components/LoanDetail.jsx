@@ -296,6 +296,8 @@ export default function LoanDetail() {
               <span className="hidden sm:inline">Edit</span>
             </button>
           )}
+          {/* Sadar muneem cannot give a re-loan (the server refuses it). */}
+          {user?.role !== "sadar_muneem" && (
           <button
             onClick={() => setShowReloan(true)}
             className="flex items-center gap-1.5 bg-primary/10 text-primary border border-primary/20 px-2.5 py-2 rounded-lg text-sm font-semibold hover:bg-primary/20 transition-colors"
@@ -305,6 +307,7 @@ export default function LoanDetail() {
             <RefreshCw size={15} />
             <span className="hidden sm:inline">Re-Loan</span>
           </button>
+          )}
           {(user?.role === "admin" || user?.role === "maalik") && (
             <button
               onClick={handleDelete}

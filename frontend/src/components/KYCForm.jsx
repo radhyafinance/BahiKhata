@@ -7,7 +7,7 @@ import {
   MapPin, User, Users, Shield, Camera,
   ToggleLeft, ToggleRight, Lock, UserPlus
 } from "lucide-react";
-import { API, STEPS, emptyPerson } from "./kyc/utils";
+import { API, STEPS, emptyPerson, aadhaarLooksValid } from "./kyc/utils";
 import { PersonSection } from "./kyc/PersonSection";
 import { LivePhotoGPS } from "./kyc/LivePhotoGPS";
 import { ReviewSection } from "./kyc/ReviewSection";
@@ -113,6 +113,10 @@ export default function KYCForm() {
       if (!p.dob) { toast.error("Date of birth required"); return false; }
       if (!p.relative_name) { toast.error("Husband's / Father's name required / पति/पिता का नाम अनिवार्य है"); return false; }
       if (!p.address) { toast.error("Address required"); return false; }
+      if (p.aadhaar_number && !aadhaarLooksValid(p.aadhaar_number)) {
+        toast.error("Borrower Aadhaar number is not valid — check each digit (use Override if the scan misread it) / आधार नंबर सही नहीं है");
+        return false;
+      }
       // An admin can switch Aadhaar off for an Illaka.
       if (selectedIllaka?.aadhaar_required !== false) {
         if (!p.aadhaar_number) { toast.error("Aadhaar number required"); return false; }
@@ -121,8 +125,17 @@ export default function KYCForm() {
       }
       return true;
     }
+    if (step === 3 && includeCoBorrower && formData.coBorrower.aadhaar_number
+        && !aadhaarLooksValid(formData.coBorrower.aadhaar_number)) {
+      toast.error("Co-borrower Aadhaar number is not valid — check each digit / सह-उधारकर्ता का आधार नंबर सही नहीं है");
+      return false;
+    }
     if (step === 4 && includeGuarantor) {
       if (!formData.guarantor.phone) { toast.error("Guarantor phone required / गारंटर का फ़ोन नंबर अनिवार्य है"); return false; }
+      if (formData.guarantor.aadhaar_number && !aadhaarLooksValid(formData.guarantor.aadhaar_number)) {
+        toast.error("Guarantor Aadhaar number is not valid — check each digit / गारंटर का आधार नंबर सही नहीं है");
+        return false;
+      }
     }
     if (step === 5) {
       if (!formData.livePhotoPath) { toast.error("Live photo is required / लाइव फोटो अनिवार्य है"); return false; }
