@@ -17,6 +17,7 @@ What --apply repairs (each has exactly one correct state, so it is safe):
   3. Lock records not refreshed for 3 minutes → removed. A working request
      refreshes its lock every 10 seconds, so these belong to a stopped server.
   9. Loans marked closed that still owe money → reopened (active or overdue).
+    Loans an admin or maalik closed by hand in the app are settled and left alone.
  12. Year-end closing records whose Gyal count does not match their loans → count corrected.
 
 What it only reports (each needs a person to decide):
@@ -38,6 +39,8 @@ What it only reports (each needs a person to decide):
      were not (a restart stopped the closing part-way) → run that closing again.
  15. Clients who cannot be given new money because a loan of theirs over three
      years old still owes (these are written off at the next closing).
+ 16. Loans closed by hand that still owe money: settled in the loan book but
+     still counted in Loans Portfolio / Aasami Khata.
 """
 import asyncio, os, sys
 from datetime import datetime, timezone, timedelta, date as date_type
@@ -304,7 +307,7 @@ async def main():
     found = 0
     for lid, ln in loans.items():
         if (ln.get("status") != "closed" or ln.get("netoff_closed") or ln.get("is_gyal")
-                or ln.get("total_repayable") is None):
+                or ln.get("closed_by_admin") or ln.get("total_repayable") is None):
             continue
         owed = round(float(ln.get("total_repayable") or 0) - float(ln.get("total_paid") or 0), 2)
         if owed < 1.0 or "total_paid" not in ln:
@@ -417,7 +420,8 @@ async def main():
     found = 0
     for lid, ln in loans.items():
         cdate = latest.get(ln.get("illaka_id"))
-        if not cdate or ln.get("is_gyal") or ln.get("netoff_closed") or ln.get("total_repayable") is None:
+        if (not cdate or ln.get("is_gyal") or ln.get("netoff_closed") or ln.get("closed_by_admin")
+                or ln.get("total_repayable") is None):
             continue
         if not day(ln.get("loan_date")) or day(ln.get("loan_date")) > cutoff_36(cdate):
             continue
@@ -437,10 +441,11 @@ async def main():
 
     print("15. Clients who cannot be given new money because a loan over three years old still owes"
           " — written off at the next year-end closing (report only)")
-    today_cut = cutoff_36(date_type.today().isoformat())
+    from zoneinfo import ZoneInfo
+    today_cut = cutoff_36(datetime.now(ZoneInfo("Asia/Kolkata")).date().isoformat())
     found = 0
     for lid, ln in loans.items():
-        if ln.get("is_gyal") or ln.get("netoff_closed") or ln.get("total_repayable") is None:
+        if ln.get("is_gyal") or ln.get("netoff_closed") or ln.get("closed_by_admin") or ln.get("total_repayable") is None:
             continue
         owed = float(ln.get("total_repayable") or 0) - paid_total(ln)
         if day(ln.get("loan_date")) and day(ln.get("loan_date")) <= today_cut and owed >= 1.0:
@@ -450,6 +455,19 @@ async def main():
                       f"  owes ₹{owed:,.2f}{'  (imported)' if ln.get('is_import') else ''}")
     if found > 50:
         print(f"   … and {found - 50} more")
+    print(f"   {found} found\n")
+
+    print("16. Loans closed by hand by an admin or maalik that still owe money (report only)")
+    found = 0
+    for lid, ln in loans.items():
+        if not ln.get("closed_by_admin") or ln.get("total_repayable") is None:
+            continue
+        owed = float(ln.get("total_repayable") or 0) - paid_total(ln)
+        if owed >= 1.0:
+            found += 1
+            print(f"   {ln.get('loan_number')}  {ln.get('client_name')}  owes ₹{owed:,.2f}  closed by "
+                  f"{ln.get('closed_by_admin_name') or '?'} on {str(ln.get('closed_by_admin_at') or '')[:10]}"
+                  f"  — still counted in Loans Portfolio / Aasami")
     print(f"   {found} found\n")
 
     print("=" * 70)
